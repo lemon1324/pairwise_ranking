@@ -157,6 +157,9 @@ class ResultsWidget(QWidget):
         # Log-strength
         details["Log-Strength"] = f"{result.log_strength:.4f}"
 
+        # Standard error of log-strength (uncertainty)
+        details["Uncertainty (SE)"] = f"{result.log_strength_se:.4f}"
+
         # Win/loss record against each opponent
         item_id = result.item.id
         wins = {}
