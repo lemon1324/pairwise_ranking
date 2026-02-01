@@ -275,11 +275,13 @@ class BradleyTerryModel:
         """
         Compute the Fisher Information matrix for log-strength parameters.
 
-        Fisher Information matrix elements:
-        - Diagonal: I_ii = Σ_{k≠i} n_ik / (π_i + π_k)
-        - Off-diagonal: I_ij = -n_ij / (π_i + π_j)
+        Fisher Information matrix elements use p_ij * (1-p_ij) weighting:
+        - Diagonal: I_ii = Σ_{k≠i} n_ik * π_i * π_k / (π_i + π_k)²
+        - Off-diagonal: I_ij = -n_ij * π_i * π_j / (π_i + π_j)²
 
         Where n_ij = W[i,j] + W[j,i] (total comparisons between i and j).
+        The π_i * π_j / (π_i + π_j)² term equals p_ij * (1-p_ij), reflecting
+        that comparisons between evenly-matched items are more informative.
 
         Args:
             pi: Array of strength parameters.
@@ -298,11 +300,13 @@ class BradleyTerryModel:
                     for k in range(n):
                         if k != i:
                             n_ik = W[i, k] + W[k, i]
-                            I[i, i] += n_ik / (pi[i] + pi[k])
+                            pq = pi[i] * pi[k] / (pi[i] + pi[k]) ** 2
+                            I[i, i] += n_ik * pq
                 else:
                     # Off-diagonal
                     n_ij = W[i, j] + W[j, i]
-                    I[i, j] = -n_ij / (pi[i] + pi[j])
+                    pq = pi[i] * pi[j] / (pi[i] + pi[j]) ** 2
+                    I[i, j] = -n_ij * pq
 
         return I
 
@@ -325,17 +329,13 @@ class BradleyTerryModel:
 
         I = self._compute_fisher_information(pi)
 
-        try:
-            # Try to invert the Fisher Information matrix
-            I_inv = np.linalg.inv(I)
-            # Extract diagonal and take square root for standard errors
-            variances = np.diag(I_inv)
-            # Handle any negative values (numerical issues)
-            variances = np.maximum(variances, 0.0)
-            return np.sqrt(variances)
-        except np.linalg.LinAlgError:
-            # Singular matrix - return large values indicating high uncertainty
-            return np.full(n, 10.0, dtype=np.float64)
+        # Use pseudo-inverse since Fisher Information is rank n-1 (normalization constraint)
+        I_inv = np.linalg.pinv(I)
+        # Extract diagonal and take square root for standard errors
+        variances = np.diag(I_inv)
+        # Handle any negative values (numerical issues)
+        variances = np.maximum(variances, 0.0)
+        return np.sqrt(variances)
 
     def get_win_probability(self, item_a_id: str, item_b_id: str) -> float:
         """
