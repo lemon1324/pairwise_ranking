@@ -1,0 +1,22 @@
+[tool.poetry]
+name = "pairwise-ranking"
+version = "0.1.0"
+description = "A PyQt6 GUI application for pairwise comparison ranking using Bradley-Terry model"
+authors = ["lemon1324 <lemon1324@gmail.com>"]
+readme = "README.md"
+packages = [{include = "src"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+PyQt6 = "^6.6.0"
+numpy = "^1.26.0"
+
+[tool.poetry.group.dev.dependencies]
+# No additional dev dependencies needed - using built-in unittest
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+pairwise-ranking = "main:main"
