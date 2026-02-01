@@ -542,12 +542,10 @@ class PairSelector:
             count_a = self._item_comparison_count[idx_a]
             count_b = self._item_comparison_count[idx_b]
 
-            if count_a == 0 or count_b == 0:
-                # At least one item has never been compared - very high priority
-                score += self.settings.weight_uncompared * 10.0
-            elif count_a < 3 or count_b < 3:
-                # Few comparisons - moderate boost
-                score += self.settings.weight_uncompared * 3.0
+            # Smooth decay: 10 at min_count=0, ~3 at min_count=3
+            min_count = min(count_a, count_b)
+            uncompared_boost = 10.0 * np.exp(-0.4 * min_count)
+            score += self.settings.weight_uncompared * uncompared_boost
 
             # Also prefer pairs that haven't been compared directly
             pair_count = self._pair_comparison_count.get(pair, 0)
