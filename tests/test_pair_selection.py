@@ -183,23 +183,26 @@ class TestPairSelectorFreshness(unittest.TestCase):
 class TestPairSelectorUncertainty(unittest.TestCase):
     """Tests for uncertainty-based selection."""
 
-    def test_prefers_close_ratings(self):
-        """Test that selector prefers pairs with close ratings."""
+    def test_prefers_high_uncertainty_items(self):
+        """Test that selector prefers items with high estimation uncertainty (SE)."""
         items = [
-            Item(name="Top", id="top"),
-            Item(name="Middle", id="mid"),
-            Item(name="Bottom", id="bot"),
+            Item(name="Well-Known", id="known"),
+            Item(name="Unknown A", id="unknown_a"),
+            Item(name="Unknown B", id="unknown_b"),
         ]
 
-        # Clear ranking: top > mid > bot
+        # known has many comparisons, unknowns have few
         votes = [
-            Vote(winner_id="top", loser_id="mid", weight=3.0),
-            Vote(winner_id="top", loser_id="mid", weight=3.0),
-            Vote(winner_id="top", loser_id="bot", weight=3.0),
-            Vote(winner_id="top", loser_id="bot", weight=3.0),
-            Vote(winner_id="mid", loser_id="bot", weight=3.0),
-            Vote(winner_id="mid", loser_id="bot", weight=3.0),
+            Vote(winner_id="known", loser_id="unknown_a", weight=1.0),
+            Vote(winner_id="known", loser_id="unknown_a", weight=1.0),
+            Vote(winner_id="known", loser_id="unknown_a", weight=1.0),
+            Vote(winner_id="known", loser_id="unknown_a", weight=1.0),
+            Vote(winner_id="known", loser_id="unknown_b", weight=1.0),
+            Vote(winner_id="known", loser_id="unknown_b", weight=1.0),
+            Vote(winner_id="known", loser_id="unknown_b", weight=1.0),
+            Vote(winner_id="known", loser_id="unknown_b", weight=1.0),
         ]
+        # known: 8 comparisons, unknown_a: 4 comparisons, unknown_b: 4 comparisons
 
         # Compute rankings
         model = BradleyTerryModel(items)
@@ -215,11 +218,10 @@ class TestPairSelectorUncertainty(unittest.TestCase):
         selector = PairSelector(items, votes, settings)
         result = selector.select_pair(rankings)
 
-        # With uncertainty weighting, should prefer adjacent pairs
-        # (top-mid or mid-bot) over distant pairs (top-bot)
+        # With SE-based uncertainty, should prefer comparing the two unknowns
+        # (highest combined SE) over pairs involving well-known item
         result_ids = {result[0].id, result[1].id}
-        # top-bot is the most certain pair, so should be avoided
-        self.assertNotEqual(result_ids, {"top", "bot"})
+        self.assertEqual(result_ids, {"unknown_a", "unknown_b"})
 
 
 class TestPairSelectorTopTier(unittest.TestCase):
