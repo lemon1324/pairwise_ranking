@@ -8,7 +8,11 @@ import numpy as np
 
 from src.models.item import Item
 from src.models.vote import Vote
-from src.models.ranking import BradleyTerryModel, RankingResult
+from src.models.ranking import (
+    BradleyTerryModel,
+    RankingResult,
+    assign_active_ranks,
+)
 
 
 def fisher_information_reference(W: np.ndarray, pi: np.ndarray) -> np.ndarray:
@@ -340,6 +344,80 @@ class TestRankingResult(unittest.TestCase):
         self.assertEqual(result.elo_rating, 1600.0)
         self.assertEqual(result.rank, 1)
         self.assertEqual(result.comparison_count, 5)
+
+
+class TestAssignActiveRanks(unittest.TestCase):
+    """Tests for the assign_active_ranks helper."""
+
+    @staticmethod
+    def _result(item: Item, strength: float) -> RankingResult:
+        """Build a minimal RankingResult for the given item and strength."""
+        return RankingResult(
+            item=item,
+            strength=strength,
+            log_strength=float(np.log(strength)),
+            elo_rating=1500.0,
+            rank=0,
+            comparison_count=0,
+        )
+
+    def test_numbers_active_items_from_one(self):
+        """Test that active items are numbered 1..N by descending strength."""
+        a = Item(name="A", id="a")
+        b = Item(name="B", id="b")
+        c = Item(name="C", id="c")
+        results = [self._result(a, 1.0), self._result(b, 3.0), self._result(c, 2.0)]
+
+        ordered = assign_active_ranks(results)
+
+        self.assertEqual([r.item.id for r in ordered], ["b", "c", "a"])
+        self.assertEqual([r.rank for r in ordered], [1, 2, 3])
+
+    def test_retired_items_have_no_rank(self):
+        """Test that retired items sort by strength but carry rank None."""
+        a = Item(name="A", id="a")
+        b = Item(name="B", id="b")
+        c = Item(name="C", id="c")
+        b.retire()
+        results = [self._result(a, 1.0), self._result(b, 3.0), self._result(c, 2.0)]
+
+        ordered = assign_active_ranks(results)
+
+        self.assertEqual([r.item.id for r in ordered], ["b", "c", "a"])
+        self.assertIsNone(ordered[0].rank)
+        self.assertEqual(ordered[1].rank, 1)
+        self.assertEqual(ordered[2].rank, 2)
+
+    def test_all_retired_yields_no_ranks(self):
+        """Test that a fully retired list gets no ranks at all."""
+        a = Item(name="A", id="a")
+        b = Item(name="B", id="b")
+        a.retire()
+        b.retire()
+        results = [self._result(a, 1.0), self._result(b, 2.0)]
+
+        ordered = assign_active_ranks(results)
+
+        self.assertEqual([r.rank for r in ordered], [None, None])
+
+    def test_empty_results(self):
+        """Test that an empty list is handled."""
+        self.assertEqual(assign_active_ranks([]), [])
+
+    def test_model_ranks_everything_before_reassignment(self):
+        """Test that compute_rankings numbers retired items too."""
+        items = [Item(name="A", id="a"), Item(name="B", id="b")]
+        items[1].retire()
+        model = BradleyTerryModel(items)
+        model.add_votes([Vote(winner_id="a", loser_id="b", weight=2.0)])
+
+        results = model.compute_rankings()
+        self.assertEqual(sorted(r.rank for r in results), [1, 2])
+
+        ordered = assign_active_ranks(results)
+        ranks = {r.item.id: r.rank for r in ordered}
+        self.assertEqual(ranks["a"], 1)
+        self.assertIsNone(ranks["b"])
 
 
 if __name__ == "__main__":
