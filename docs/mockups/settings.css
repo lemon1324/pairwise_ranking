@@ -1,0 +1,408 @@
+/* Settings sheet: parameter table, slot list panel and title block. Loaded after sheet.css and bom.css. */
+
+.spec-sheet {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  grid-template-rows: auto 1fr auto;
+}
+
+/* Parameter table, snapped to the frame's top and left lines; its right rule is shared with the
+   slot panel and the title block. */
+.spec-params {
+  grid-column: 1;
+  grid-row: 1 / span 3;
+  border-right: var(--w-cell) solid var(--ink);
+}
+
+.spec {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.spec col.c-value {
+  width: 8.5rem;
+}
+
+.spec col.c-default {
+  width: 5rem;
+}
+
+.spec col.c-range {
+  width: 6rem;
+}
+
+.spec th,
+.spec td {
+  padding: var(--s-2) var(--s-3);
+  border-top: var(--w-cell) solid var(--hair);
+  border-left: var(--w-cell) solid var(--hair);
+  vertical-align: middle;
+  text-align: left;
+}
+
+.spec th:first-child,
+.spec td:first-child {
+  border-left: 0;
+}
+
+.spec thead th {
+  border-top: 0;
+  border-bottom: var(--w-cell) solid var(--ink);
+  border-left-color: var(--ink);
+  font-family: var(--font-label);
+  font-weight: 600;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.spec .spec-group th {
+  padding: var(--s-3) var(--s-3) var(--s-1);
+  border-top: var(--w-cell) solid var(--ink);
+  border-left: 0;
+  font-family: var(--font-label);
+  font-weight: 600;
+  font-size: 0.8125rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.spec tbody tr.spec-group:first-child th {
+  border-top: 0;
+}
+
+.spec-name {
+  display: block;
+  font-weight: 500;
+  font-size: 0.9375rem;
+  line-height: 1.25;
+}
+
+.spec-help {
+  display: block;
+  margin-top: 0.125rem;
+  font-size: 0.8125rem;
+  line-height: 1.3;
+  color: var(--ink-2);
+}
+
+.spec-phone-meta {
+  display: none;
+}
+
+.spec td.spec-default,
+.spec td.spec-range {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.8125rem;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+.spec-value {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.spec-value .input {
+  min-height: 2rem;
+  padding: 0.2rem 0.4rem;
+  text-align: right;
+}
+
+/* Revision triangle: marks a value changed since the last save, beside a bolder value. */
+.rev-mark {
+  flex: none;
+  width: 0.875rem;
+  height: 0.875rem;
+  visibility: hidden;
+  color: var(--ink);
+}
+
+.is-changed .rev-mark {
+  visibility: visible;
+}
+
+.is-changed .input {
+  font-weight: 600;
+  border-color: var(--ink);
+}
+
+.spec tr.is-error .input {
+  border-color: var(--warn-mark);
+  box-shadow: inset 0 0 0 1px var(--warn-mark);
+}
+
+.spec-error {
+  display: flex;
+  gap: var(--s-1);
+  margin: var(--s-1) 0 0;
+  font-size: 0.8125rem;
+  color: var(--ink);
+}
+
+.spec-error .icon {
+  color: var(--warn);
+  margin-top: 0.1rem;
+}
+
+.spec-error strong {
+  color: var(--warn);
+}
+
+/* Switch: a ruled square that fills when on, with the state in words beside it. */
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 2rem;
+  cursor: pointer;
+  font-size: 0.9375rem;
+}
+
+.switch input {
+  appearance: none;
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  margin: 0;
+  border: var(--w-cell) solid var(--ink);
+  background: var(--paper);
+  cursor: pointer;
+}
+
+.switch input:checked {
+  background: var(--ink);
+  box-shadow: inset 0 0 0 3px var(--paper);
+}
+
+.switch input:focus-visible {
+  outline: 2px solid var(--markup);
+  outline-offset: 2px;
+}
+
+.is-changed .switch-state {
+  font-weight: 600;
+}
+
+/* ---------- Slot list panel ---------- */
+
+.spec-slots {
+  grid-column: 2;
+  grid-row: 1;
+  padding: var(--s-3) var(--s-4) var(--s-4);
+  min-width: 0;
+}
+
+.spec-slots-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+  margin-bottom: var(--s-2);
+}
+
+.spec-slots-head h2 {
+  margin: 0;
+  font-family: var(--font-label);
+  font-weight: 600;
+  font-size: 0.8125rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.spec-slots textarea {
+  font-family: var(--font-num);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.spec-slots.is-changed textarea {
+  border-color: var(--ink);
+}
+
+.slot-board {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin: var(--s-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.slot-board .balloon {
+  min-width: 1.75rem;
+  height: 1.75rem;
+  padding: 0 0.25rem;
+  font-size: 0.75rem;
+}
+
+.slot-board .balloon.is-free {
+  border-style: dashed;
+  border-color: var(--line);
+  color: var(--ink-3);
+}
+
+.slot-board .balloon.is-dup {
+  border-color: var(--warn-mark);
+  border-width: 2px;
+}
+
+.slot-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1) var(--s-4);
+  margin: var(--s-2) 0 0;
+  font-size: 0.8125rem;
+  color: var(--ink-2);
+}
+
+.slot-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+}
+
+.slot-legend .balloon {
+  min-width: 1.125rem;
+  height: 1.125rem;
+  padding: 0;
+}
+
+.slot-legend .balloon.is-free {
+  border-style: dashed;
+  border-color: var(--line);
+}
+
+.slot-warning {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--s-2);
+  margin: var(--s-3) 0 0;
+  padding: var(--s-2) var(--s-3);
+  background: var(--warn-wash);
+  border: var(--w-cell) solid var(--warn-mark);
+  font-size: 0.875rem;
+}
+
+.slot-warning .icon {
+  color: var(--warn);
+  margin-top: 0.15rem;
+}
+
+.slot-warning strong {
+  color: var(--warn);
+}
+
+.slot-warning[hidden] {
+  display: none;
+}
+
+/* ---------- Title block ---------- */
+
+.spec-sheet > .titleblock {
+  grid-column: 2;
+  grid-row: 3;
+  align-self: end;
+  border-left: 0;
+}
+
+.tb-status.is-error .tb-text strong {
+  color: var(--warn);
+}
+
+.tb-press > button:disabled {
+  cursor: not-allowed;
+  color: var(--ink-3);
+}
+
+.tb-press > button:disabled:hover {
+  background: transparent;
+}
+
+.tb-press > button:disabled .key,
+.tb-press > button:disabled .icon {
+  color: var(--hair);
+}
+
+/* ---------- Narrower sheets and phones ---------- */
+
+@media (max-width: 64rem) {
+  .spec-sheet {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto auto;
+  }
+
+  .spec-params {
+    grid-row: 1;
+    border-right: 0;
+  }
+
+  .spec-slots {
+    grid-column: 1;
+    grid-row: 2;
+    border-top: var(--w-cell) solid var(--ink);
+  }
+
+  .spec-sheet > .titleblock {
+    grid-column: 1;
+    grid-row: 3;
+    border-top: var(--w-cell) solid var(--ink);
+  }
+}
+
+@media (max-width: 40rem) {
+  /* Phones drop the Default and Range columns (shown under each name instead). Collapsing
+     the columns keeps the group rows' colspan from reserving their width. */
+  .spec col.c-default,
+  .spec col.c-range {
+    visibility: collapse;
+    width: 0;
+  }
+
+  .spec col.c-value {
+    width: 7rem;
+  }
+
+  .spec-phone-meta {
+    display: block;
+    margin-top: 0.125rem;
+    font-family: var(--font-num);
+    font-size: 0.75rem;
+    color: var(--ink-3);
+  }
+
+  .spec th,
+  .spec td {
+    padding: var(--s-2);
+  }
+
+  .spec-value .input {
+    min-height: 2.75rem;
+  }
+
+  .spec-sheet > .titleblock {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: none;
+  }
+
+  .spec-sheet > .titleblock > .tb-cell {
+    grid-column: span 1;
+  }
+
+  .spec-sheet > .titleblock > .tb-title,
+  .spec-sheet > .titleblock > .tb-file,
+  .spec-sheet > .titleblock > .tb-sheet,
+  .spec-sheet > .titleblock > .tb-keyblock {
+    display: none;
+  }
+
+  .spec-sheet > .titleblock > .phone-wide {
+    grid-column: 1 / -1;
+  }
+}
