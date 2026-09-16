@@ -169,6 +169,39 @@ class TestItem(unittest.TestCase):
         self.assertEqual(item.identifier, "")
         self.assertFalse(item.has_identifier())
 
+    def test_category_default(self):
+        """Test that category defaults to 'Default'."""
+        item = Item(name="Test")
+        self.assertEqual(item.category, "Default")
+
+    def test_create_item_with_category(self):
+        """Test creating an item with an explicit category."""
+        item = Item(name="Test", category="Linear")
+        self.assertEqual(item.category, "Linear")
+
+    def test_to_dict_includes_category(self):
+        """Test that to_dict includes the category field."""
+        item = Item(name="Test", category="Tactile", id="test-id")
+        result = item.to_dict()
+        self.assertEqual(result["category"], "Tactile")
+
+    def test_roundtrip_category(self):
+        """Test that category survives to_dict/from_dict round-trip."""
+        original = Item(name="Test", category="Clicky", id="test-id")
+        restored = Item.from_dict(original.to_dict())
+        self.assertEqual(restored.category, "Clicky")
+
+    def test_from_dict_without_category(self):
+        """Test that from_dict without a category key yields 'Default'."""
+        data = {
+            "id": "test-id",
+            "name": "Test Item",
+            "description": "Test Description",
+            "identifier": "A-1",
+        }
+        item = Item.from_dict(data)
+        self.assertEqual(item.category, "Default")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
+import random
 import numpy as np
 
 from src.models.item import Item
@@ -598,17 +599,48 @@ class PairSelector:
 
         now = datetime.now()
 
-        # Score all pairs
+        # Determine whether to do a cross-category or within-category comparison.
+        # Draw a random number; if below cross_category_rate, attempt cross-category.
+        cross_category_rate = self.settings.cross_category_rate
+        do_cross = random.random() < cross_category_rate
+
+        # Build candidate list filtered by category intent, falling back to all pairs
+        # if the filtered set would be empty (e.g. only one category exists).
+        categories = [item.category for item in self.items]
+        unique_categories = set(categories)
+
+        if do_cross and len(unique_categories) > 1:
+            candidate_pairs = [
+                (i, j)
+                for i in range(n)
+                for j in range(i + 1, n)
+                if categories[i] != categories[j]
+            ]
+        elif not do_cross and len(unique_categories) > 1:
+            candidate_pairs = [
+                (i, j)
+                for i in range(n)
+                for j in range(i + 1, n)
+                if categories[i] == categories[j]
+            ]
+        else:
+            # Only one category, or rate is 0/1 with no mixed pairs available
+            candidate_pairs = [(i, j) for i in range(n) for j in range(i + 1, n)]
+
+        # Fall back to all pairs if the filtered set is empty
+        if not candidate_pairs:
+            candidate_pairs = [(i, j) for i in range(n) for j in range(i + 1, n)]
+
+        # Score all candidate pairs
         best_pair: Optional[tuple[int, int]] = None
         best_score = float('-inf')
 
-        for i in range(n):
-            for j in range(i + 1, n):
-                pair_score = self._score_pair(i, j, rankings, components, now)
+        for i, j in candidate_pairs:
+            pair_score = self._score_pair(i, j, rankings, components, now)
 
-                if pair_score > best_score:
-                    best_score = pair_score
-                    best_pair = (i, j)
+            if pair_score > best_score:
+                best_score = pair_score
+                best_pair = (i, j)
 
         if best_pair is None:
             # Fallback: return first two items

@@ -302,5 +302,85 @@ class TestPairSelectorStats(unittest.TestCase):
         self.assertEqual(stats["uncompared_items"], 0)  # all items have votes
 
 
+class TestPairSelectorCategories(unittest.TestCase):
+    """Tests for category-aware pair selection.
+
+    Deterministic because ``random.random() < 0.0`` is always False and
+    ``random.random() < 1.0`` is always True, so the cross/within decision
+    is fixed by the rate alone.
+    """
+
+    def _mixed_category_setup(self) -> tuple[list[Item], list[Vote]]:
+        """Two categories, each with one compared pair and one fresh uncompared item."""
+        items = [
+            Item(name="Linear 1", id="l1", category="Linear"),
+            Item(name="Linear 2", id="l2", category="Linear"),
+            Item(name="Linear New", id="l3", category="Linear"),
+            Item(name="Tactile 1", id="t1", category="Tactile"),
+            Item(name="Tactile 2", id="t2", category="Tactile"),
+            Item(name="Tactile New", id="t3", category="Tactile"),
+        ]
+        votes = [
+            Vote(winner_id="l1", loser_id="l2", weight=2.0),
+            Vote(winner_id="t1", loser_id="t2", weight=2.0),
+        ]
+        return items, votes
+
+    def _categories_of(self, pair: tuple[Item, Item]) -> set[str]:
+        return {pair[0].category, pair[1].category}
+
+    def test_rate_zero_always_returns_same_category_pair(self):
+        """cross_category_rate=0.0 must always produce a within-category pair."""
+        items, votes = self._mixed_category_setup()
+        settings = Settings(cross_category_rate=0.0)
+
+        for _ in range(20):
+            selector = PairSelector(items, votes, settings)
+            result = selector.select_pair()
+            self.assertIsNotNone(result)
+            self.assertEqual(len(self._categories_of(result)), 1)
+
+    def test_rate_one_always_returns_cross_category_pair(self):
+        """cross_category_rate=1.0 must always produce a cross-category pair."""
+        items, votes = self._mixed_category_setup()
+        settings = Settings(cross_category_rate=1.0)
+
+        for _ in range(20):
+            selector = PairSelector(items, votes, settings)
+            result = selector.select_pair()
+            self.assertIsNotNone(result)
+            self.assertEqual(len(self._categories_of(result)), 2)
+
+    def test_rate_one_single_category_falls_back_to_all_pairs(self):
+        """With only one category, rate 1.0 still returns a pair."""
+        items = [
+            Item(name="Item A", id="a", category="Default"),
+            Item(name="Item B", id="b", category="Default"),
+            Item(name="Item C", id="c", category="Default"),
+        ]
+        settings = Settings(cross_category_rate=1.0)
+
+        for _ in range(20):
+            selector = PairSelector(items, [], settings)
+            result = selector.select_pair()
+            self.assertIsNotNone(result)
+            self.assertEqual(len(result), 2)
+            self.assertNotEqual(result[0].id, result[1].id)
+            self.assertTrue({result[0].id, result[1].id} <= {"a", "b", "c"})
+
+    def test_rate_zero_single_category_returns_pair(self):
+        """With only one category, rate 0.0 also returns a pair."""
+        items = [
+            Item(name="Item A", id="a"),
+            Item(name="Item B", id="b"),
+        ]
+        settings = Settings(cross_category_rate=0.0)
+        selector = PairSelector(items, [], settings)
+        result = selector.select_pair()
+
+        self.assertIsNotNone(result)
+        self.assertEqual({result[0].id, result[1].id}, {"a", "b"})
+
+
 if __name__ == "__main__":
     unittest.main()

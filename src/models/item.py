@@ -24,6 +24,7 @@ class Item:
     name: str
     description: str = ""
     identifier: str = ""
+    category: str = "Default"
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
 
     def __post_init__(self):
@@ -83,6 +84,7 @@ class Item:
             "name": self.name,
             "description": self.description,
             "identifier": self.identifier,
+            "category": self.category,
         }
 
     @classmethod
@@ -103,5 +105,6 @@ class Item:
             name=data["name"],
             description=data.get("description", ""),
             identifier=data.get("identifier", ""),
+            category=data.get("category", "Default"),
             id=data.get("id", str(uuid.uuid4())),
         )
