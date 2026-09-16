@@ -23,6 +23,7 @@ __all__ = [
     "safe_project_filename",
     "ensure_pairrank_suffix",
     "ask_new_project",
+    "ask_duplicate_project",
     "ask_open_project_path",
     "ask_save_as_path",
 ]
@@ -138,4 +139,63 @@ def ask_new_project(
         return ProjectStorage.create_new(name, file_path)
     except (OSError, ValueError) as e:
         QMessageBox.critical(parent, "Error", f"Failed to create project:\n{e}")
+        return None
+
+
+def ask_duplicate_project(
+    parent: Optional[QWidget],
+    user_config: UserConfig,
+    source: Project,
+) -> Optional[Project]:
+    """
+    Prompt for a name and location, then save a vote-free copy of a project.
+
+    The copy carries the source project's items, settings and slots but starts
+    with no votes. Shows an error message box if the copy cannot be created.
+    The caller is responsible for recording the project in the recent projects
+    list.
+
+    Args:
+        parent: Parent widget for the dialogs.
+        user_config: User configuration, used for the default directory.
+        source: The project to copy.
+
+    Returns:
+        Optional[Project]: The newly created copy, or None if the user
+        cancelled or creation failed.
+    """
+    name, ok = QInputDialog.getText(
+        parent,
+        "Duplicate Project",
+        "New project name:",
+        text=f"{source.name} copy",
+    )
+
+    if not ok or not name.strip():
+        return None
+
+    name = name.strip()
+
+    file_path = ask_save_as_path(parent, user_config, name, title="Save Project Copy")
+    if file_path is None:
+        return None
+
+    # The save dialog only warns about overwriting in general terms; writing the
+    # copy over the source file would destroy the original project's votes.
+    if (
+        source.file_path is not None
+        and file_path.resolve() == source.file_path.resolve()
+    ):
+        QMessageBox.critical(
+            parent,
+            "Error",
+            "The copy must be saved to a different file than the original "
+            "project.",
+        )
+        return None
+
+    try:
+        return ProjectStorage.create_copy(source, name, file_path)
+    except (OSError, ValueError) as e:
+        QMessageBox.critical(parent, "Error", f"Failed to duplicate project:\n{e}")
         return None
