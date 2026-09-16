@@ -1,11 +1,14 @@
 """Unit tests for the ProjectStorage class."""
 
 import json
+import shutil
 import tempfile
 import unittest
 from datetime import datetime
 from pathlib import Path
+from unittest.mock import patch
 
+import src.data.project_storage as project_storage_module
 from src.data.project_storage import ProjectStorage
 from src.models.project import Project
 from src.models.item import Item
@@ -23,9 +26,7 @@ class TestProjectStorage(unittest.TestCase):
 
     def tearDown(self):
         """Clean up test files."""
-        if self.test_file.exists():
-            self.test_file.unlink()
-        Path(self.temp_dir).rmdir()
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_save_and_load_empty_project(self):
         """Test saving and loading an empty project."""
@@ -178,6 +179,83 @@ class TestProjectStorage(unittest.TestCase):
         # Should have newlines and indentation
         self.assertIn("\n", content)
         self.assertIn("  ", content)
+
+    def test_save_leaves_no_tmp_file(self):
+        """Test that a successful save leaves no temporary file behind."""
+        project = Project(name="Atomic Test")
+        ProjectStorage.save(project, self.test_file)
+
+        self.assertTrue(self.test_file.exists())
+        tmp_path = self.test_file.with_name(self.test_file.name + ".tmp")
+        self.assertFalse(tmp_path.exists())
+        self.assertEqual(
+            sorted(p.name for p in Path(self.temp_dir).iterdir()),
+            ["test.pairrank"],
+        )
+
+    def test_second_save_creates_backup_of_previous_content(self):
+        """Test that saving over an existing file backs up the previous content."""
+        project = Project(name="Backup Test")
+        ProjectStorage.save(project, self.test_file)
+        first_content = self.test_file.read_bytes()
+
+        backup_path = self.test_file.with_suffix(".pairrank.bak")
+        self.assertFalse(backup_path.exists())
+
+        project.name = "Backup Test Modified"
+        project.items.append(Item(name="New Item", id="new-item"))
+        ProjectStorage.save(project, self.test_file)
+
+        self.assertTrue(backup_path.exists())
+        self.assertEqual(backup_path.read_bytes(), first_content)
+        self.assertNotEqual(self.test_file.read_bytes(), first_content)
+        self.assertEqual(ProjectStorage.load(self.test_file).name, "Backup Test Modified")
+
+    def test_failed_save_leaves_original_untouched(self):
+        """Test that a failure during serialization leaves the original file intact."""
+        project = Project(name="Failure Test")
+        ProjectStorage.save(project, self.test_file)
+        original_content = self.test_file.read_bytes()
+
+        project.name = "Should Not Be Written"
+
+        def boom(*args, **kwargs):
+            raise RuntimeError("simulated serialization failure")
+
+        with patch.object(project_storage_module.json, "dump", side_effect=boom):
+            with self.assertRaises(RuntimeError):
+                ProjectStorage.save(project, self.test_file)
+
+        self.assertEqual(self.test_file.read_bytes(), original_content)
+        tmp_path = self.test_file.with_name(self.test_file.name + ".tmp")
+        self.assertFalse(tmp_path.exists())
+        self.assertFalse(self.test_file.with_suffix(".pairrank.bak").exists())
+
+    def test_load_empty_object_raises_value_error(self):
+        """Test that loading a JSON file with no project data raises ValueError."""
+        self.test_file.write_text("{}", encoding="utf-8")
+
+        with self.assertRaises(ValueError):
+            ProjectStorage.load(self.test_file)
+
+    def test_load_non_json_raises_value_error(self):
+        """Test that loading a file that is not JSON raises ValueError."""
+        self.test_file.write_text("this is not json", encoding="utf-8")
+
+        with self.assertRaises(ValueError) as ctx:
+            ProjectStorage.load(self.test_file)
+
+        self.assertIn("Invalid project file", str(ctx.exception))
+
+    def test_load_missing_vote_field_raises_value_error(self):
+        """Test that a vote entry missing required keys raises ValueError, not KeyError."""
+        data = {"name": "Bad Votes", "items": [], "votes": [{"winner_id": "a"}]}
+        self.test_file.write_text(json.dumps(data), encoding="utf-8")
+
+        with self.assertRaises(ValueError) as ctx:
+            ProjectStorage.load(self.test_file)
+
+        self.assertIn("Invalid project file", str(ctx.exception))
 
 
 if __name__ == "__main__":
