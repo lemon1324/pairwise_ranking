@@ -1,6 +1,7 @@
 /* Compare sheet: views, station scale and title block. Loaded after sheet.css. */
 
 .frame {
+  container: sheet / inline-size;
   position: relative;
   margin: var(--s-4) var(--s-5) var(--s-5);
   padding: 1.375rem;
@@ -61,44 +62,93 @@
   right: 0;
 }
 
+/* Zone count follows sheet width, roughly one zone per 170px, kept even. */
+.zones-top li:nth-child(-n + 8),
+.zones-bottom li:nth-child(-n + 8) {
+  display: none;
+}
+
+@container sheet (min-width: 44rem) {
+  .zones-top li:nth-child(-n + 8),
+  .zones-bottom li:nth-child(-n + 8) {
+    display: grid;
+  }
+
+  .zones-top li:nth-child(-n + 6),
+  .zones-bottom li:nth-child(-n + 6) {
+    display: none;
+  }
+}
+
+@container sheet (min-width: 64rem) {
+  .zones-top li:nth-child(-n + 6),
+  .zones-bottom li:nth-child(-n + 6) {
+    display: grid;
+  }
+
+  .zones-top li:nth-child(-n + 4),
+  .zones-bottom li:nth-child(-n + 4) {
+    display: none;
+  }
+}
+
+@container sheet (min-width: 85rem) {
+  .zones-top li:nth-child(-n + 4),
+  .zones-bottom li:nth-child(-n + 4) {
+    display: grid;
+  }
+
+  .zones-top li:nth-child(-n + 2),
+  .zones-bottom li:nth-child(-n + 2) {
+    display: none;
+  }
+}
+
+@container sheet (min-width: 106rem) {
+  .zones-top li:nth-child(-n + 2),
+  .zones-bottom li:nth-child(-n + 2) {
+    display: grid;
+  }
+}
+
 /* Zone boundary ticks: short marks from each frame line into the band. */
 .zones li {
   position: relative;
 }
 
-.zones li + li::before {
+.zones li:not(:last-child)::after {
   content: "";
   position: absolute;
   background: var(--line);
 }
 
-.zones-top li + li::before,
-.zones-bottom li + li::before {
-  left: 0;
+.zones-top li:not(:last-child)::after,
+.zones-bottom li:not(:last-child)::after {
+  right: 0;
   width: 1px;
   height: 0.5rem;
 }
 
-.zones-top li + li::before {
+.zones-top li:not(:last-child)::after {
   top: 0;
 }
 
-.zones-bottom li + li::before {
+.zones-bottom li:not(:last-child)::after {
   bottom: 0;
 }
 
-.zones-left li + li::before,
-.zones-right li + li::before {
-  top: 0;
+.zones-left li:not(:last-child)::after,
+.zones-right li:not(:last-child)::after {
+  bottom: 0;
   height: 1px;
   width: 0.5rem;
 }
 
-.zones-left li + li::before {
+.zones-left li:not(:last-child)::after {
   left: 0;
 }
 
-.zones-right li + li::before {
+.zones-right li:not(:last-child)::after {
   right: 0;
 }
 
@@ -393,10 +443,6 @@
 
 .strength i:nth-child(3) {
   height: 100%;
-}
-
-.strength-b {
-  flex-direction: row-reverse;
 }
 
 .strength-equal {
