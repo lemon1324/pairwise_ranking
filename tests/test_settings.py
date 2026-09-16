@@ -99,6 +99,28 @@ class TestSettings(unittest.TestCase):
         self.assertEqual(original.top_tier_mode, restored.top_tier_mode)
         self.assertEqual(original.decay_timescale_days, restored.decay_timescale_days)
 
+    def test_cross_category_rate_default(self):
+        """Test that cross_category_rate defaults to 0.1."""
+        settings = Settings()
+        self.assertEqual(settings.cross_category_rate, 0.1)
+
+    def test_cross_category_rate_roundtrip(self):
+        """Test that cross_category_rate survives to_dict/from_dict round-trip."""
+        original = Settings(cross_category_rate=0.35)
+        data = original.to_dict()
+        self.assertEqual(data["cross_category_rate"], 0.35)
+
+        restored = Settings.from_dict(data)
+        self.assertEqual(restored.cross_category_rate, 0.35)
+
+    def test_cross_category_rate_from_dict_partial(self):
+        """Test that from_dict without cross_category_rate uses the default."""
+        settings = Settings.from_dict({"weight_uncertainty": 2.0})
+        self.assertEqual(settings.cross_category_rate, 0.1)
+
+        settings = Settings.from_dict({"cross_category_rate": 0.75})
+        self.assertEqual(settings.cross_category_rate, 0.75)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -28,6 +28,7 @@ class Settings:
     top_tier_count: int = 10
     top_tier_weight: float = 2.0
     blinded_comparison_mode: bool = False
+    cross_category_rate: float = 0.1
 
     def to_dict(self) -> dict:
         """
@@ -46,6 +47,7 @@ class Settings:
             "top_tier_count": self.top_tier_count,
             "top_tier_weight": self.top_tier_weight,
             "blinded_comparison_mode": self.blinded_comparison_mode,
+            "cross_category_rate": self.cross_category_rate,
         }
 
     @classmethod
@@ -69,4 +71,5 @@ class Settings:
             top_tier_count=int(data.get("top_tier_count", 10)),
             top_tier_weight=float(data.get("top_tier_weight", 2.0)),
             blinded_comparison_mode=bool(data.get("blinded_comparison_mode", False)),
+            cross_category_rate=float(data.get("cross_category_rate", 0.1)),
         )

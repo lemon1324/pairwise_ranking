@@ -114,6 +114,25 @@ class SettingsWidget(QWidget):
 
         layout.addWidget(top_tier_group)
 
+        # Category Comparison group
+        category_group = QGroupBox("Category Comparisons")
+        category_layout = QFormLayout(category_group)
+
+        self.cross_category_rate_spin = QDoubleSpinBox()
+        self.cross_category_rate_spin.setRange(0.0, 1.0)
+        self.cross_category_rate_spin.setSingleStep(0.05)
+        self.cross_category_rate_spin.setDecimals(2)
+        self.cross_category_rate_spin.setToolTip(
+            "Fraction of comparisons that cross category boundaries.\n"
+            "Cross-category votes calibrate ELO so ratings are comparable across categories\n"
+            "(e.g. a 1700 in 'Tactile' feels similar to a 1700 in 'Linear').\n"
+            "0.0 = always compare within the same category.\n"
+            "1.0 = ignore categories entirely."
+        )
+        category_layout.addRow("Cross-category rate:", self.cross_category_rate_spin)
+
+        layout.addWidget(category_group)
+
         # Blinded Comparison Mode group
         blinded_group = QGroupBox("Comparison Mode")
         blinded_layout = QFormLayout(blinded_group)
@@ -181,6 +200,7 @@ class SettingsWidget(QWidget):
         self.top_tier_count_spin.setValue(self._settings.top_tier_count)
         self.top_tier_weight_spin.setValue(self._settings.top_tier_weight)
         self.blinded_mode_check.setChecked(self._settings.blinded_comparison_mode)
+        self.cross_category_rate_spin.setValue(self._settings.cross_category_rate)
 
         self._on_top_tier_toggled(self._settings.top_tier_mode)
 
@@ -201,6 +221,7 @@ class SettingsWidget(QWidget):
             top_tier_count=self.top_tier_count_spin.value(),
             top_tier_weight=self.top_tier_weight_spin.value(),
             blinded_comparison_mode=self.blinded_mode_check.isChecked(),
+            cross_category_rate=self.cross_category_rate_spin.value(),
         )
 
         self._settings = new_settings
