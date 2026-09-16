@@ -13,12 +13,19 @@ from PyQt6.QtWidgets import (
     QSpinBox,
     QCheckBox,
     QGroupBox,
+    QPlainTextEdit,
     QMessageBox,
 )
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtGui import QFont
 
 from src.models.settings import Settings
+
+
+SLOTS_HINT = (
+    "one slot per line or comma separated; "
+    "e.g. positions on a board, shelf labels, or bin numbers"
+)
 
 
 class SettingsWidget(QWidget):
@@ -29,9 +36,11 @@ class SettingsWidget(QWidget):
 
     Signals:
         settings_changed: Emitted when settings are saved (passes Settings object).
+        slots_changed: Emitted alongside settings_changed (passes the slot list).
     """
 
     settings_changed = pyqtSignal(Settings)
+    slots_changed = pyqtSignal(list)
 
     def __init__(self, parent: Optional[QWidget] = None):
         """
@@ -149,6 +158,26 @@ class SettingsWidget(QWidget):
 
         layout.addWidget(blinded_group)
 
+        # Slots group
+        slots_group = QGroupBox("Slots")
+        slots_layout = QVBoxLayout(slots_group)
+
+        slots_help = QLabel(
+            "Optional list of the positions this project has room for. When "
+            "set, an item's identifier is chosen from the free slots."
+        )
+        slots_help.setWordWrap(True)
+        slots_help.setStyleSheet("color: gray;")
+        slots_layout.addWidget(slots_help)
+
+        self.slots_edit = QPlainTextEdit()
+        self.slots_edit.setPlaceholderText(SLOTS_HINT)
+        self.slots_edit.setToolTip(SLOTS_HINT)
+        self.slots_edit.setMaximumHeight(120)
+        slots_layout.addWidget(self.slots_edit)
+
+        layout.addWidget(slots_group)
+
         layout.addStretch()
 
         # Buttons
@@ -178,6 +207,33 @@ class SettingsWidget(QWidget):
         spin.setSingleStep(0.5)
         spin.setDecimals(1)
         return spin
+
+    def set_slots(self, slots: list[str]) -> None:
+        """
+        Display a project's slot list.
+
+        Args:
+            slots: The slot labels, shown one per line.
+        """
+        self.slots_edit.setPlainText("\n".join(slots))
+
+    def get_slots(self) -> list[str]:
+        """
+        Read the slot list from the editor.
+
+        Entries may be separated by newlines or commas; blanks are dropped.
+        Duplicates are removed by :meth:`src.models.project.Project.set_slots`.
+
+        Returns:
+            list[str]: The slot labels as entered.
+        """
+        slots = []
+        for line in self.slots_edit.toPlainText().splitlines():
+            for part in line.split(","):
+                slot = part.strip()
+                if slot:
+                    slots.append(slot)
+        return slots
 
     def set_settings(self, settings: Settings) -> None:
         """
@@ -226,6 +282,7 @@ class SettingsWidget(QWidget):
 
         self._settings = new_settings
         self.settings_changed.emit(new_settings)
+        self.slots_changed.emit(self.get_slots())
 
         QMessageBox.information(self, "Settings Saved", "Settings have been saved.")
 
@@ -240,5 +297,7 @@ class SettingsWidget(QWidget):
         )
 
         if reply == QMessageBox.StandardButton.Yes:
+            # The slot list describes the project, not the algorithm, so a
+            # reset to defaults deliberately leaves it alone.
             self._settings = Settings()
             self._refresh_ui()

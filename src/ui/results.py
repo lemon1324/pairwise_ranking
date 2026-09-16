@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QCheckBox,
     QComboBox,
     QTreeWidget,
     QTreeWidgetItem,
@@ -66,6 +67,13 @@ class ResultsWidget(QWidget):
         header_layout.addWidget(QLabel("Category:"))
         header_layout.addWidget(self.category_filter)
 
+        self.show_retired_check = QCheckBox("Show retired")
+        self.show_retired_check.setToolTip(
+            "Include retired items. They keep their rating but are not ranked."
+        )
+        self.show_retired_check.toggled.connect(self._on_show_retired_toggled)
+        header_layout.addWidget(self.show_retired_check)
+
         self.export_btn = QPushButton("Export")
         self.export_btn.clicked.connect(self._on_export_clicked)
         header_layout.addWidget(self.export_btn)
@@ -108,9 +116,26 @@ class ResultsWidget(QWidget):
         self._refresh_category_filter()
         self._refresh_tree()
 
+    def _in_scope(self) -> list[RankingResult]:
+        """
+        Return the results the lifecycle filter lets through.
+
+        Returns:
+            list[RankingResult]: All results when retired items are shown,
+            otherwise the active ones only.
+        """
+        if self.show_retired_check.isChecked():
+            return list(self._rankings)
+        return [r for r in self._rankings if r.item.is_active()]
+
+    def _on_show_retired_toggled(self, checked: bool) -> None:
+        """Handle the show-retired checkbox being toggled."""
+        self._refresh_category_filter()
+        self._refresh_tree()
+
     def _refresh_category_filter(self) -> None:
-        """Rebuild the category filter dropdown from current rankings."""
-        categories = sorted({r.item.category for r in self._rankings})
+        """Rebuild the category filter dropdown from the visible results."""
+        categories = sorted({r.item.category for r in self._in_scope()})
         current = self._selected_category
 
         self.category_filter.blockSignals(True)
@@ -119,9 +144,10 @@ class ResultsWidget(QWidget):
         for cat in categories:
             self.category_filter.addItem(cat)
 
-        # Restore previous selection if still valid
+        # Restore previous selection if still valid, otherwise fall back to All
         idx = self.category_filter.findText(current)
         self.category_filter.setCurrentIndex(idx if idx >= 0 else 0)
+        self._selected_category = self.category_filter.currentText()
         self.category_filter.blockSignals(False)
 
     def _on_category_filter_changed(self, category: str) -> None:
@@ -145,21 +171,31 @@ class ResultsWidget(QWidget):
         """Refresh the tree display."""
         self.tree.clear()
 
+        in_scope = self._in_scope()
+
         # Apply category filter
-        if self._selected_category and self._selected_category != "All":
-            visible = [r for r in self._rankings if r.item.category == self._selected_category]
+        filtering_category = bool(self._selected_category) and self._selected_category != "All"
+        if filtering_category:
+            visible = [r for r in in_scope if r.item.category == self._selected_category]
         else:
-            visible = self._rankings
+            visible = in_scope
 
         for result in visible:
-            # Main item
+            is_active = result.item.is_active()
+            name = result.item.name if is_active else f"{result.item.name} (retired)"
+
+            # Main item; retired items are not numbered
             item = QTreeWidgetItem([
-                str(result.rank),
-                result.item.name,
+                "" if result.rank is None else str(result.rank),
+                name,
                 result.item.category,
                 f"{result.elo_rating:.0f}",
                 str(result.comparison_count),
             ])
+
+            if not is_active:
+                for col in range(5):
+                    item.setForeground(col, Qt.GlobalColor.gray)
 
             # Add details as child items
             details = self._get_item_details(result)
@@ -171,20 +207,47 @@ class ResultsWidget(QWidget):
 
             self.tree.addTopLevelItem(item)
 
-        # Summary
-        if self._rankings:
-            total_items = len(self._rankings)
-            shown_items = len(visible)
-            total_votes = len(self._votes)
-            if self._selected_category and self._selected_category != "All":
-                self.summary_label.setText(
-                    f"{shown_items} of {total_items} items (category: {self._selected_category}) "
-                    f"| {total_votes} total votes"
-                )
-            else:
-                self.summary_label.setText(f"{total_items} items | {total_votes} total votes")
+        self.summary_label.setText(self._summary_text(visible, filtering_category))
+
+    def _summary_text(
+        self,
+        visible: list[RankingResult],
+        filtering_category: bool,
+    ) -> str:
+        """
+        Build the summary line under the rankings tree.
+
+        Args:
+            visible: The results currently shown.
+            filtering_category: Whether a category filter is active.
+
+        Returns:
+            str: The summary text, empty when there is nothing to summarize.
+        """
+        if not self._rankings:
+            return ""
+
+        if filtering_category:
+            scoped = [
+                r for r in self._rankings
+                if r.item.category == self._selected_category
+            ]
+            scope_suffix = f" (category: {self._selected_category})"
         else:
-            self.summary_label.setText("")
+            scoped = self._rankings
+            scope_suffix = ""
+
+        active_shown = sum(1 for r in visible if r.item.is_active())
+        retired_shown = len(visible) - active_shown
+        retired_hidden = sum(1 for r in scoped if not r.item.is_active()) - retired_shown
+
+        parts = [f"{active_shown} active items{scope_suffix}"]
+        if retired_shown:
+            parts.append(f"{retired_shown} retired shown")
+        if retired_hidden:
+            parts.append(f"{retired_hidden} retired hidden")
+
+        return f"{', '.join(parts)} | {len(self._votes)} total votes"
 
     def _get_item_details(self, result: RankingResult) -> dict[str, str]:
         """
@@ -273,7 +336,7 @@ class ResultsWidget(QWidget):
                 )
                 for result in self._rankings:
                     writer.writerow([
-                        result.rank,
+                        "" if result.rank is None else result.rank,
                         result.item.name,
                         result.item.category,
                         f"{result.elo_rating:.0f}",
