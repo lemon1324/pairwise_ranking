@@ -9,6 +9,7 @@ from .ranking import (
     RankingResult,
     assign_active_ranks,
 )
+from .export import build_export_rows
 
 __all__ = [
     "Item",
@@ -18,4 +19,5 @@ __all__ = [
     "PairSelector",
     "RankingResult",
     "assign_active_ranks",
+    "build_export_rows",
 ]

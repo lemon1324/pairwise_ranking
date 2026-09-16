@@ -157,6 +157,21 @@ class Project:
         """
         self.slots = normalize_slots(raw)
 
+    def pop_last_vote(self) -> Optional[Vote]:
+        """
+        Remove and return the most recently recorded vote.
+
+        Votes are appended in the order they are cast, so the last entry is the
+        most recent one. This backs the "undo last vote" action.
+
+        Returns:
+            Optional[Vote]: The removed vote, or None if the project has no
+            votes.
+        """
+        if not self.votes:
+            return None
+        return self.votes.pop()
+
     def to_dict(self) -> dict:
         """
         Convert project to a dictionary representation.
