@@ -1,11 +1,47 @@
 """Unit tests for the Bradley-Terry ranking model."""
 
+import random
 import unittest
 from datetime import datetime, timedelta
+
+import numpy as np
 
 from src.models.item import Item
 from src.models.vote import Vote
 from src.models.ranking import BradleyTerryModel, RankingResult
+
+
+def fisher_information_reference(W: np.ndarray, pi: np.ndarray) -> np.ndarray:
+    """
+    Straightforward loop implementation of the Fisher Information matrix.
+
+    Kept here as an independent reference for the vectorized implementation in
+    :meth:`BradleyTerryModel._compute_fisher_information`.
+
+    Args:
+        W: Regularized win matrix.
+        pi: Array of strength parameters.
+
+    Returns:
+        np.ndarray: Fisher Information matrix (n x n).
+    """
+    n = len(pi)
+    info = np.zeros((n, n), dtype=np.float64)
+
+    for i in range(n):
+        for j in range(n):
+            if i == j:
+                for k in range(n):
+                    if k != i:
+                        n_ik = W[i, k] + W[k, i]
+                        pq = pi[i] * pi[k] / (pi[i] + pi[k]) ** 2
+                        info[i, i] += n_ik * pq
+            else:
+                n_ij = W[i, j] + W[j, i]
+                pq = pi[i] * pi[j] / (pi[i] + pi[j]) ** 2
+                info[i, j] = -n_ij * pq
+
+    return info
 
 
 class TestBradleyTerryModelBasic(unittest.TestCase):
@@ -248,6 +284,39 @@ class TestBradleyTerryModelProbability(unittest.TestCase):
 
         prob = model.get_win_probability("a", "b")
         self.assertEqual(prob, 0.5)
+
+
+class TestFisherInformation(unittest.TestCase):
+    """Tests comparing the vectorized Fisher matrix to a loop reference."""
+
+    def test_matches_loop_reference(self):
+        """Vectorized Fisher Information matches the loop reference."""
+        rng = random.Random(20240115)
+        items = [Item(name=f"Item {i}", id=str(i)) for i in range(6)]
+
+        votes = []
+        for _ in range(30):
+            winner, loser = rng.sample(range(6), 2)
+            votes.append(
+                Vote(
+                    winner_id=str(winner),
+                    loser_id=str(loser),
+                    weight=rng.choice([1.0, 2.0, 3.0]),
+                )
+            )
+
+        model = BradleyTerryModel(items)
+        model.add_votes(votes)
+        model.compute_rankings()
+
+        pi = model._strengths
+        W = model._apply_regularization()
+
+        expected = fisher_information_reference(W, pi)
+        actual = model._compute_fisher_information(pi)
+
+        self.assertEqual(actual.shape, expected.shape)
+        self.assertLess(float(np.max(np.abs(actual - expected))), 1e-9)
 
 
 class TestRankingResult(unittest.TestCase):
