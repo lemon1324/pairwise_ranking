@@ -126,10 +126,12 @@ class ComparisonWidget(QWidget):
     Signals:
         vote_submitted: Emitted when a vote is submitted (passes Vote object).
         skip_requested: Emitted when skip/equal is clicked.
+        undo_requested: Emitted when the undo button is clicked.
     """
 
     vote_submitted = pyqtSignal(Vote)
     skip_requested = pyqtSignal()
+    undo_requested = pyqtSignal()
 
     # Button configurations: (label, weight, is_for_a), derived from VOTE_WEIGHTS
     # so the model stays the single source of truth for preference strengths.
@@ -196,11 +198,31 @@ class ComparisonWidget(QWidget):
 
         layout.addLayout(buttons_layout)
 
+        # Undo row, below the preference buttons
+        undo_layout = QHBoxLayout()
+        undo_layout.addStretch()
+        self.undo_btn = QPushButton("Undo last vote")
+        self.undo_btn.setToolTip("Remove the most recent vote and show that pair again")
+        self.undo_btn.setEnabled(False)
+        self.undo_btn.clicked.connect(self.undo_requested.emit)
+        undo_layout.addWidget(self.undo_btn)
+        undo_layout.addStretch()
+        layout.addLayout(undo_layout)
+
         # Keyboard shortcuts hint
-        hint_label = QLabel("Keyboard: 1-7 for buttons, S to skip")
+        hint_label = QLabel("Keyboard: 1-7 for buttons, S to skip, Ctrl+Z to undo last vote")
         hint_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         hint_label.setStyleSheet("color: gray; font-size: 10px;")
         layout.addWidget(hint_label)
+
+    def set_undo_enabled(self, enabled: bool) -> None:
+        """
+        Enable or disable the undo button.
+
+        Args:
+            enabled: True when there is a vote that can be undone.
+        """
+        self.undo_btn.setEnabled(enabled)
 
     def set_pair(
         self,

@@ -21,6 +21,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
 
 from src.models.vote import Vote
+from src.models.export import build_export_rows
 from src.models.ranking import RankingResult
 
 
@@ -328,21 +329,22 @@ class ResultsWidget(QWidget):
         if not file_path:
             return
 
+        # The export mirrors what the Rankings tab currently shows.
+        category = (
+            self._selected_category
+            if self._selected_category and self._selected_category != "All"
+            else None
+        )
+        rows = build_export_rows(
+            self._rankings,
+            include_retired=self.show_retired_check.isChecked(),
+            category=category,
+        )
+
         try:
             with open(file_path, "w", encoding="utf-8", newline="") as f:
                 writer = csv.writer(f)
-                writer.writerow(
-                    ["Rank", "Name", "Category", "ELO Rating", "Comparisons", "Description"]
-                )
-                for result in self._rankings:
-                    writer.writerow([
-                        "" if result.rank is None else result.rank,
-                        result.item.name,
-                        result.item.category,
-                        f"{result.elo_rating:.0f}",
-                        result.comparison_count,
-                        result.item.description,
-                    ])
+                writer.writerows(rows)
 
             QMessageBox.information(
                 self,

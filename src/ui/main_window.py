@@ -115,6 +115,14 @@ class MainWindow(QMainWindow):
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
 
+        # Edit menu
+        edit_menu = menubar.addMenu("&Edit")
+
+        self.undo_action = QAction("&Undo Last Vote", self)
+        self.undo_action.setShortcut("Ctrl+Z")
+        self.undo_action.triggered.connect(self._on_undo_last_vote)
+        edit_menu.addAction(self.undo_action)
+
     def _refresh_recent_menu(self) -> None:
         """Refresh the recent projects submenu."""
         self.recent_menu.clear()
@@ -178,6 +186,7 @@ class MainWindow(QMainWindow):
         # Comparison signals
         self.comparison_widget.vote_submitted.connect(self._on_vote_submitted)
         self.comparison_widget.skip_requested.connect(self._on_skip_requested)
+        self.comparison_widget.undo_requested.connect(self._on_undo_last_vote)
 
         # Settings signals
         self.settings_widget.settings_changed.connect(self._on_settings_changed)
@@ -203,6 +212,7 @@ class MainWindow(QMainWindow):
         self._refresh_comparison()
         self._refresh_results()
         self._refresh_settings()
+        self._refresh_undo_state()
 
     def _compute_rankings(self) -> None:
         """Compute rankings from current items and votes."""
@@ -225,6 +235,21 @@ class MainWindow(QMainWindow):
         """Refresh the items list widget."""
         self.item_list_widget.set_items(self.items, self.project.slots)
 
+    def _eligible_comparison_items(self, active_items: list[Item]) -> list[Item]:
+        """
+        Narrow the active items down to those that can be compared right now.
+
+        Args:
+            active_items: The project's active items.
+
+        Returns:
+            list[Item]: The active items, further restricted to those with an
+            identifier when blinded comparison mode is on.
+        """
+        if self.settings.blinded_comparison_mode:
+            return [item for item in active_items if item.has_identifier()]
+        return active_items
+
     def _refresh_comparison(self) -> None:
         """Refresh the comparison widget with next pair."""
         blinded_mode = self.settings.blinded_comparison_mode
@@ -233,10 +258,7 @@ class MainWindow(QMainWindow):
         active_items = self.project.active_items()
 
         # In blinded mode, only include items with identifiers
-        if blinded_mode:
-            eligible_items = [item for item in active_items if item.has_identifier()]
-        else:
-            eligible_items = active_items
+        eligible_items = self._eligible_comparison_items(active_items)
 
         if len(eligible_items) < 2:
             if blinded_mode and len(active_items) >= 2:
@@ -270,12 +292,19 @@ class MainWindow(QMainWindow):
         self.settings_widget.set_settings(self.settings)
         self.settings_widget.set_slots(self.project.slots)
 
+    def _refresh_undo_state(self) -> None:
+        """Enable the undo action and button only when there is a vote to undo."""
+        can_undo = bool(self.project.votes)
+        self.undo_action.setEnabled(can_undo)
+        self.comparison_widget.set_undo_enabled(can_undo)
+
     def _on_data_changed(self) -> None:
         """Persist the project and refresh everything that depends on the data."""
         self._save_project()
         self._compute_rankings()
         self._refresh_comparison()
         self._refresh_results()
+        self._refresh_undo_state()
 
     def _on_item_added(self, item: Item) -> None:
         """Handle item added event."""
@@ -326,6 +355,42 @@ class MainWindow(QMainWindow):
     def _on_skip_requested(self) -> None:
         """Handle skip requested event - just get next pair."""
         self._refresh_comparison()
+
+    def _on_undo_last_vote(self) -> None:
+        """Remove the most recent vote and offer its pair again if possible."""
+        vote = self.project.pop_last_vote()
+        if vote is None:
+            return
+
+        self._on_data_changed()
+        self._show_pair_for_vote(vote)
+
+    def _show_pair_for_vote(self, vote: Vote) -> None:
+        """
+        Show the pair of an undone vote again, if both items are still eligible.
+
+        An item may have been retired, deleted or stripped of its identifier
+        since the vote was cast; in that case the pair cannot be offered and
+        whatever _refresh_comparison already chose stands.
+
+        Args:
+            vote: The vote that was undone.
+        """
+        eligible = self._eligible_comparison_items(self.project.active_items())
+        by_id = {item.id: item for item in eligible}
+
+        winner = by_id.get(vote.winner_id)
+        loser = by_id.get(vote.loser_id)
+        if winner is None or loser is None:
+            return
+
+        selector = PairSelector(eligible, self.votes, self.settings)
+        self.comparison_widget.set_pair(
+            winner,
+            loser,
+            selector.get_comparison_stats(),
+            blinded_mode=self.settings.blinded_comparison_mode,
+        )
 
     def _on_settings_changed(self, settings: Settings) -> None:
         """Handle settings changed event."""
