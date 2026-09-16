@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QComboBox,
     QTreeWidget,
     QTreeWidgetItem,
     QHeaderView,
@@ -38,6 +39,7 @@ class ResultsWidget(QWidget):
         super().__init__(parent)
         self._rankings: list[RankingResult] = []
         self._votes: list[Vote] = []
+        self._selected_category: str = "All"
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -56,6 +58,13 @@ class ResultsWidget(QWidget):
 
         header_layout.addStretch()
 
+        self.category_filter = QComboBox()
+        self.category_filter.addItem("All")
+        self.category_filter.setToolTip("Filter rankings by category")
+        self.category_filter.currentTextChanged.connect(self._on_category_filter_changed)
+        header_layout.addWidget(QLabel("Category:"))
+        header_layout.addWidget(self.category_filter)
+
         self.export_btn = QPushButton("Export")
         self.export_btn.clicked.connect(self._on_export_clicked)
         header_layout.addWidget(self.export_btn)
@@ -64,8 +73,8 @@ class ResultsWidget(QWidget):
 
         # Tree widget for rankings
         self.tree = QTreeWidget()
-        self.tree.setHeaderLabels(["Rank", "Name", "ELO Rating", "Comparisons"])
-        self.tree.setColumnCount(4)
+        self.tree.setHeaderLabels(["Rank", "Name", "Category", "ELO Rating", "Comparisons"])
+        self.tree.setColumnCount(5)
 
         # Configure columns
         header = self.tree.header()
@@ -73,6 +82,7 @@ class ResultsWidget(QWidget):
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
 
         self.tree.setAlternatingRowColors(True)
         self.tree.setRootIsDecorated(True)  # Show expand arrows
@@ -94,12 +104,39 @@ class ResultsWidget(QWidget):
         """
         self._rankings = rankings
         self._votes = votes
+        self._refresh_category_filter()
+        self._refresh_tree()
+
+    def _refresh_category_filter(self) -> None:
+        """Rebuild the category filter dropdown from current rankings."""
+        categories = sorted({r.item.category for r in self._rankings if r.item.category})
+        current = self._selected_category
+
+        self.category_filter.blockSignals(True)
+        self.category_filter.clear()
+        self.category_filter.addItem("All")
+        for cat in categories:
+            self.category_filter.addItem(cat)
+
+        # Restore previous selection if still valid
+        idx = self.category_filter.findText(current)
+        self.category_filter.setCurrentIndex(idx if idx >= 0 else 0)
+        self.category_filter.blockSignals(False)
+
+    def _on_category_filter_changed(self, category: str) -> None:
+        """Handle category filter change."""
+        self._selected_category = category
         self._refresh_tree()
 
     def set_no_rankings(self) -> None:
         """Display message when there are no rankings."""
         self._rankings = []
         self._votes = []
+        self._selected_category = "All"
+        self.category_filter.blockSignals(True)
+        self.category_filter.clear()
+        self.category_filter.addItem("All")
+        self.category_filter.blockSignals(False)
         self.tree.clear()
         self.summary_label.setText("Add items and perform comparisons to see rankings.")
 
@@ -107,11 +144,18 @@ class ResultsWidget(QWidget):
         """Refresh the tree display."""
         self.tree.clear()
 
-        for result in self._rankings:
+        # Apply category filter
+        if self._selected_category and self._selected_category != "All":
+            visible = [r for r in self._rankings if r.item.category == self._selected_category]
+        else:
+            visible = self._rankings
+
+        for result in visible:
             # Main item
             item = QTreeWidgetItem([
                 str(result.rank),
                 result.item.name,
+                result.item.category or "Default",
                 f"{result.elo_rating:.0f}",
                 str(result.comparison_count),
             ])
@@ -119,10 +163,9 @@ class ResultsWidget(QWidget):
             # Add details as child items
             details = self._get_item_details(result)
             for detail_key, detail_value in details.items():
-                detail_item = QTreeWidgetItem(["", detail_key, detail_value, ""])
-                detail_item.setForeground(0, Qt.GlobalColor.gray)
-                detail_item.setForeground(1, Qt.GlobalColor.gray)
-                detail_item.setForeground(2, Qt.GlobalColor.gray)
+                detail_item = QTreeWidgetItem(["", detail_key, "", detail_value, ""])
+                for col in range(5):
+                    detail_item.setForeground(col, Qt.GlobalColor.gray)
                 item.addChild(detail_item)
 
             self.tree.addTopLevelItem(item)
@@ -130,8 +173,15 @@ class ResultsWidget(QWidget):
         # Summary
         if self._rankings:
             total_items = len(self._rankings)
+            shown_items = len(visible)
             total_votes = len(self._votes)
-            self.summary_label.setText(f"{total_items} items | {total_votes} total votes")
+            if self._selected_category and self._selected_category != "All":
+                self.summary_label.setText(
+                    f"{shown_items} of {total_items} items (category: {self._selected_category}) "
+                    f"| {total_votes} total votes"
+                )
+            else:
+                self.summary_label.setText(f"{total_items} items | {total_votes} total votes")
         else:
             self.summary_label.setText("")
 
@@ -216,12 +266,13 @@ class ResultsWidget(QWidget):
 
         try:
             with open(file_path, "w", encoding="utf-8") as f:
-                f.write("Rank,Name,ELO Rating,Comparisons,Description\n")
+                f.write("Rank,Name,Category,ELO Rating,Comparisons,Description\n")
                 for result in self._rankings:
-                    # Escape description for CSV
+                    # Escape fields for CSV
                     desc = result.item.description.replace('"', '""')
-                    f.write(f'{result.rank},"{result.item.name}",{result.elo_rating:.0f},'
-                            f'{result.comparison_count},"{desc}"\n')
+                    category = (result.item.category or "Default").replace('"', '""')
+                    f.write(f'{result.rank},"{result.item.name}","{category}",'
+                            f'{result.elo_rating:.0f},{result.comparison_count},"{desc}"\n')
 
             QMessageBox.information(
                 self,
