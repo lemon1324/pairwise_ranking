@@ -14,8 +14,6 @@ from PyQt6.QtWidgets import (
     QTableWidgetItem,
     QHeaderView,
     QAbstractItemView,
-    QFileDialog,
-    QInputDialog,
     QMessageBox,
 )
 from PyQt6.QtCore import Qt
@@ -24,6 +22,7 @@ from PyQt6.QtGui import QFont
 from src.data.user_config import UserConfig
 from src.data.project_storage import ProjectStorage
 from src.models.project import Project
+from src.ui.project_dialogs import ask_new_project, ask_open_project_path
 
 
 class ProjectPickerDialog(QDialog):
@@ -155,75 +154,25 @@ class ProjectPickerDialog(QDialog):
 
     def _on_new_clicked(self) -> None:
         """Handle new project button click."""
-        # Get project name
-        name, ok = QInputDialog.getText(
-            self,
-            "New Project",
-            "Project name:",
-            text="My Rankings",
-        )
-
-        if not ok or not name.strip():
+        project = ask_new_project(self, self.user_config)
+        if project is None:
             return
 
-        name = name.strip()
-
-        # Get save location
-        default_dir = self.user_config.get_default_projects_dir()
-        default_dir.mkdir(parents=True, exist_ok=True)
-
-        # Create a safe filename from project name
-        safe_name = "".join(c if c.isalnum() or c in " _-" else "_" for c in name)
-        default_path = default_dir / f"{safe_name}{ProjectStorage.FILE_EXTENSION}"
-
-        file_path, _ = QFileDialog.getSaveFileName(
-            self,
-            "Save New Project",
-            str(default_path),
-            f"Pairrank Files (*{ProjectStorage.FILE_EXTENSION})",
+        self.selected_project = project
+        self.user_config.add_recent_project(
+            project.name,
+            project.file_path,
+            project.modified,
         )
-
-        if not file_path:
-            return
-
-        file_path = Path(file_path)
-
-        # Ensure correct extension
-        if file_path.suffix != ProjectStorage.FILE_EXTENSION:
-            file_path = file_path.with_suffix(ProjectStorage.FILE_EXTENSION)
-
-        try:
-            self.selected_project = ProjectStorage.create_new(name, file_path)
-            self.user_config.add_recent_project(
-                name,
-                file_path,
-                self.selected_project.modified,
-            )
-            self.accept()
-        except (OSError, ValueError) as e:
-            QMessageBox.critical(
-                self,
-                "Error",
-                f"Failed to create project:\n{e}",
-            )
+        self.accept()
 
     def _on_open_clicked(self) -> None:
         """Handle open project button click."""
-        default_dir = self.user_config.get_default_projects_dir()
-        if not default_dir.exists():
-            default_dir = Path.home()
-
-        file_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Open Project",
-            str(default_dir),
-            f"Pairrank Files (*{ProjectStorage.FILE_EXTENSION})",
-        )
-
-        if not file_path:
+        file_path = ask_open_project_path(self, self.user_config)
+        if file_path is None:
             return
 
-        self._open_project(Path(file_path))
+        self._open_project(file_path)
 
     def _on_recent_double_clicked(self) -> None:
         """Handle double-click on recent project."""
