@@ -30,10 +30,10 @@
       </div>
       <nav aria-label="Project sheets">
         <ul class="sheet-tabs">
-          <li><a href="#items"><span class="sheet-no">1</span>Items</a></li>
-          <li><a href="#compare" aria-current="page"><span class="sheet-no">2</span>Compare</a></li>
-          <li><a href="#rankings"><span class="sheet-no">3</span>Rankings</a></li>
-          <li><a href="#settings"><span class="sheet-no">4</span>Settings</a></li>
+          <li><a href="#items">Items</a></li>
+          <li><a href="#compare" aria-current="page">Compare</a></li>
+          <li><a href="#rankings">Rankings</a></li>
+          <li><a href="#settings">Settings</a></li>
         </ul>
       </nav>
       <button class="sheet-menu" type="button" aria-haspopup="menu">
@@ -54,10 +54,6 @@
       <div class="frame-inner">
         <section class="views" aria-label="Pair to compare">
           <article class="view" aria-labelledby="name-a">
-            <div class="view-label">
-              <svg class="view-mark" viewBox="0 0 14 14" aria-hidden="true"><rect x="0.5" y="0.5" width="13" height="13" fill="currentColor" stroke="currentColor"/></svg>
-              <span class="label">View A</span>
-            </div>
             <div class="view-body" data-side="a">
               <div class="view-open">
                 <h2 class="item-name" id="name-a">Gateron Oil King</h2>
@@ -68,23 +64,20 @@
                 </dl>
               </div>
               <div class="view-slot">
-                <span class="label">Slot</span>
                 <span class="balloon" id="blind-a">12</span>
+                <span class="label">Slot</span>
               </div>
             </div>
             <div class="view-ghost">No item</div>
+            <div class="view-label">
+              <svg class="view-mark" viewBox="0 0 14 14" aria-hidden="true"><rect x="0.5" y="0.5" width="13" height="13" fill="currentColor" stroke="currentColor"/></svg>
+              <span class="label">View A</span>
+            </div>
           </article>
 
           <div class="centreline" aria-hidden="true"></div>
 
           <article class="view" aria-labelledby="name-b">
-            <div class="view-label">
-              <svg class="view-mark" viewBox="0 0 14 14" aria-hidden="true">
-                <defs><pattern id="hatch" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="1.5" height="4" fill="currentColor"/></pattern></defs>
-                <rect x="0.5" y="0.5" width="13" height="13" fill="url(#hatch)" stroke="currentColor"/>
-              </svg>
-              <span class="label">View B</span>
-            </div>
             <div class="view-body" data-side="b">
               <div class="view-open">
                 <h2 class="item-name" id="name-b">Cherry MX Black Clear-Top (Hyperglide)</h2>
@@ -95,11 +88,18 @@
                 </dl>
               </div>
               <div class="view-slot">
-                <span class="label">Slot</span>
                 <span class="balloon" id="blind-b">7</span>
+                <span class="label">Slot</span>
               </div>
             </div>
             <div class="view-ghost">No item</div>
+            <div class="view-label">
+              <svg class="view-mark" viewBox="0 0 14 14" aria-hidden="true">
+                <defs><pattern id="hatch" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="1.5" height="4" fill="currentColor"/></pattern></defs>
+                <rect x="0.5" y="0.5" width="13" height="13" fill="url(#hatch)" stroke="currentColor"/>
+              </svg>
+              <span class="label">View B</span>
+            </div>
           </article>
         </section>
 
@@ -107,9 +107,9 @@
           <h2 class="visually-hidden" id="scale-title">Which is better?</h2>
           <div class="dimension" aria-hidden="true">
             <span class="label">A preferred</span>
-            <span class="rule"><svg viewBox="0 0 100 9" preserveAspectRatio="none"><path d="M0 4.5H100" stroke="currentColor" stroke-width="1" vector-effect="non-scaling-stroke"/></svg></span>
+            <span class="rule rule-a"><svg viewBox="0 0 100 9" preserveAspectRatio="none"><path d="M0 4.5H100" stroke="currentColor" stroke-width="1" vector-effect="non-scaling-stroke"/></svg><svg class="arrowhead" viewBox="0 0 9 9"><path d="M0 4.5L9 1.5V7.5Z" fill="currentColor"/></svg></span>
             <span class="zero">0</span>
-            <span class="rule"><svg viewBox="0 0 100 9" preserveAspectRatio="none"><path d="M0 4.5H100" stroke="currentColor" stroke-width="1" vector-effect="non-scaling-stroke"/></svg></span>
+            <span class="rule rule-b"><svg viewBox="0 0 100 9" preserveAspectRatio="none"><path d="M0 4.5H100" stroke="currentColor" stroke-width="1" vector-effect="non-scaling-stroke"/></svg><svg class="arrowhead" viewBox="0 0 9 9"><path d="M9 4.5L0 1.5V7.5Z" fill="currentColor"/></svg></span>
             <span class="label">B preferred</span>
           </div>
 
@@ -170,7 +170,8 @@
           <ol>
             <li>Keys <span class="key">1</span>–<span class="key">7</span> press the stations. <span class="key">S</span> skips, <span class="key">Ctrl</span> <span class="key">Z</span> undoes the last vote.</li>
             <li>Equal records no vote and moves to the next pair.</li>
-            <li>Tolerance is the median rating uncertainty. Ratings are relative to the items in this project.</li>
+            <li class="note-readings">Tolerance is the median rating uncertainty. Ratings are relative to the items in this project.</li>
+            <li class="note-legend"><span class="swatch fill-a" aria-hidden="true"></span> View A, left. <span class="swatch fill-b" aria-hidden="true"></span> View B, right. Bar count is vote weight.</li>
           </ol>
         </aside>
 
@@ -215,7 +216,7 @@
           <div class="tb-cell tb-undo">
             <button type="button" id="undo" aria-keyshortcuts="Control+Z">
               <span class="label">Undo</span>
-              <span class="tb-action"><svg class="icon" aria-hidden="true"><use href="#i-undo"/></svg>Undo</span>
+              <span class="tb-action"><svg class="icon" aria-hidden="true"><use href="#i-undo"/></svg><span id="undo-text">Undo</span></span>
               <span class="keys" aria-hidden="true"><span class="key">Ctrl</span><span class="key">Z</span></span>
             </button>
           </div>

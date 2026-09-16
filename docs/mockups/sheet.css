@@ -110,7 +110,7 @@ body {
 }
 
 a {
-  color: var(--markup);
+  color: var(--ink);
   text-decoration-thickness: 1px;
   text-underline-offset: 0.2em;
 }
@@ -180,7 +180,7 @@ html {
   place-items: center;
   min-width: 2rem;
   height: 2rem;
-  padding: 0 0.55rem;
+  padding: 0 0.3rem;
   border: var(--w-cell) solid var(--ink);
   border-radius: 999px;
   font-family: var(--font-num);
@@ -274,6 +274,7 @@ html {
 .sheet-menu {
   display: flex;
   align-items: center;
+  align-self: stretch;
   gap: var(--s-2);
   padding: 0 var(--s-5);
   border-left: var(--w-cell) solid var(--ink);
@@ -301,14 +302,6 @@ html {
   color: var(--ink);
   background: var(--paper-2);
   box-shadow: inset 0 -4px 0 var(--ink);
-}
-
-.sheet-tabs .sheet-no {
-  font-family: var(--font-num);
-  font-size: 0.6875rem;
-  font-weight: 400;
-  letter-spacing: 0;
-  color: var(--ink-3);
 }
 
 .sheet-foot {
@@ -418,10 +411,6 @@ html {
 
   .bottom-tabs .sheet-tabs li:first-child a {
     border-left: 0;
-  }
-
-  .bottom-tabs .sheet-no {
-    display: none;
   }
 }
 
