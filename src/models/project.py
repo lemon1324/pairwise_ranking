@@ -40,6 +40,95 @@ def normalize_slots(raw: list[str]) -> list[str]:
     return slots
 
 
+def active_identifiers(items: list[Item]) -> set[str]:
+    """
+    Collect the identifiers currently held by active items.
+
+    Args:
+        items: The items to inspect, active and retired.
+
+    Returns:
+        set[str]: Non-empty identifiers of the active items.
+    """
+    return {item.identifier for item in items if item.is_active() and item.identifier}
+
+
+def identifier_in_use(
+    items: list[Item],
+    identifier: str,
+    exclude_item_id: Optional[str] = None,
+) -> bool:
+    """
+    Check whether an identifier is already held by an active item.
+
+    Retired items never hold an identifier, so uniqueness only has to be
+    enforced among active items.
+
+    Args:
+        items: The items to inspect, active and retired.
+        identifier: The identifier to check. An empty identifier is never
+            considered in use.
+        exclude_item_id: Id of an item to ignore, typically the item being
+            edited or the item being replaced.
+
+    Returns:
+        bool: True if another active item already holds the identifier.
+    """
+    wanted = identifier.strip() if identifier else ""
+    if not wanted:
+        return False
+
+    for item in items:
+        if not item.is_active():
+            continue
+        if exclude_item_id is not None and item.id == exclude_item_id:
+            continue
+        if item.identifier == wanted:
+            return True
+    return False
+
+
+def free_slots(slots: list[str], items: list[Item]) -> list[str]:
+    """
+    Work out which of a slot list's entries no active item occupies.
+
+    Args:
+        slots: The slot labels defined by the project.
+        items: The items to inspect, active and retired.
+
+    Returns:
+        list[str]: Free slots in the order they are defined. Empty when no
+        slots are defined.
+    """
+    taken = active_identifiers(items)
+    return [slot for slot in slots if slot not in taken]
+
+
+def _require_entry_list(data: dict, key: str) -> list[dict]:
+    """
+    Read a list of JSON objects out of a project dictionary.
+
+    Args:
+        data: The parsed project dictionary.
+        key: The key to read, e.g. "items" or "votes".
+
+    Returns:
+        list[dict]: The entries, or an empty list when the key is absent.
+
+    Raises:
+        ValueError: If the value is present but is not a list of objects.
+    """
+    value = data.get(key)
+    if value is None:
+        return []
+    if not isinstance(value, list) or not all(isinstance(e, dict) for e in value):
+        raise ValueError(
+            f"Project data key '{key}' must be a list of objects, "
+            f"got {type(value).__name__}"
+        )
+    return value
+
+
 @dataclass
 class Project:
     """
@@ -85,15 +174,6 @@ class Project:
         """
         return [item for item in self.items if item.is_active()]
 
-    def retired_items(self) -> list[Item]:
-        """
-        Return the items that have been retired.
-
-        Returns:
-            list[Item]: Items whose status is retired, in project order.
-        """
-        return [item for item in self.items if not item.is_active()]
-
     def active_identifiers(self) -> set[str]:
         """
         Return the identifiers currently held by active items.
@@ -101,7 +181,7 @@ class Project:
         Returns:
             set[str]: Non-empty identifiers of active items.
         """
-        return {item.identifier for item in self.active_items() if item.identifier}
+        return active_identifiers(self.items)
 
     def identifier_in_use(
         self,
@@ -110,9 +190,6 @@ class Project:
     ) -> bool:
         """
         Check whether an identifier is already held by an active item.
-
-        Retired items never hold an identifier, so uniqueness only has to be
-        enforced among active items.
 
         Args:
             identifier: The identifier to check. An empty identifier is never
@@ -123,18 +200,7 @@ class Project:
         Returns:
             bool: True if another active item already holds the identifier.
         """
-        wanted = identifier.strip() if identifier else ""
-        if not wanted:
-            return False
-
-        for item in self.items:
-            if not item.is_active():
-                continue
-            if exclude_item_id is not None and item.id == exclude_item_id:
-                continue
-            if item.identifier == wanted:
-                return True
-        return False
+        return identifier_in_use(self.items, identifier, exclude_item_id)
 
     def free_slots(self) -> list[str]:
         """
@@ -144,8 +210,7 @@ class Project:
             list[str]: Free slots in the order they are defined. Empty when the
             project defines no slots.
         """
-        taken = self.active_identifiers()
-        return [slot for slot in self.slots if slot not in taken]
+        return free_slots(self.slots, self.items)
 
     def set_slots(self, raw: list[str]) -> None:
         """
@@ -203,8 +268,9 @@ class Project:
             Project: A new Project instance.
 
         Raises:
-            ValueError: If data is not a dictionary or the required 'name'
-                key is missing.
+            ValueError: If data is not a dictionary, if the required 'name'
+                key is missing or empty, or if 'items', 'votes', 'settings'
+                or 'slots' have the wrong shape.
             KeyError: If nested item or vote entries are missing required keys.
         """
         if not isinstance(data, dict):
@@ -213,6 +279,35 @@ class Project:
             )
         if "name" not in data:
             raise ValueError("Project data is missing required 'name' field")
+
+        name = data["name"]
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("Project data key 'name' must be a non-empty string")
+
+        # Validate every nested shape before building any child object, so a
+        # malformed file always surfaces as a ValueError naming the bad key.
+        item_entries = _require_entry_list(data, "items")
+        vote_entries = _require_entry_list(data, "votes")
+
+        settings_data = data.get("settings")
+        if settings_data is None:
+            settings_data = {}
+        elif not isinstance(settings_data, dict):
+            raise ValueError(
+                f"Project data key 'settings' must be an object, "
+                f"got {type(settings_data).__name__}"
+            )
+
+        slot_entries = data.get("slots")
+        if slot_entries is None:
+            slot_entries = []
+        elif not isinstance(slot_entries, list) or not all(
+            isinstance(slot, str) for slot in slot_entries
+        ):
+            raise ValueError(
+                f"Project data key 'slots' must be a list of strings, "
+                f"got {type(slot_entries).__name__}"
+            )
 
         created = data.get("created")
         if isinstance(created, str):
@@ -226,13 +321,13 @@ class Project:
         elif modified is None:
             modified = datetime.now()
 
-        items = [Item.from_dict(item_data) for item_data in data.get("items", [])]
-        votes = [Vote.from_dict(vote_data) for vote_data in data.get("votes", [])]
-        settings = Settings.from_dict(data.get("settings", {}))
-        slots = normalize_slots(data.get("slots") or [])
+        items = [Item.from_dict(item_data) for item_data in item_entries]
+        votes = [Vote.from_dict(vote_data) for vote_data in vote_entries]
+        settings = Settings.from_dict(settings_data)
+        slots = normalize_slots(slot_entries)
 
         return cls(
-            name=data["name"],
+            name=name,
             created=created,
             modified=modified,
             items=items,

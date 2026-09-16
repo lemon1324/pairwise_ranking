@@ -4,6 +4,7 @@ import json
 import shutil
 import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -258,6 +259,57 @@ class TestProjectStorage(unittest.TestCase):
         self.assertIn("Invalid project file", str(ctx.exception))
 
 
+class TestProjectStorageMalformedFiles(unittest.TestCase):
+    """Test cases for rejecting files whose nested shapes are wrong."""
+
+    #: (description, project dictionary, key expected in the error message)
+    BAD_SHAPES = [
+        ("items_not_objects", {"name": "x", "items": [1]}, "items"),
+        ("settings_not_object", {"name": "x", "settings": "x"}, "settings"),
+        ("votes_not_objects", {"name": "x", "votes": [1]}, "votes"),
+        ("slots_not_a_list", {"name": "x", "slots": "abc"}, "slots"),
+    ]
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.temp_dir = tempfile.mkdtemp()
+        self.test_file = Path(self.temp_dir) / "test.pairrank"
+
+    def tearDown(self):
+        """Clean up test files."""
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_from_dict_rejects_bad_shapes(self):
+        """Test that Project.from_dict raises ValueError naming the bad key."""
+        for label, data, key in self.BAD_SHAPES:
+            with self.subTest(label):
+                with self.assertRaises(ValueError) as ctx:
+                    Project.from_dict(data)
+                self.assertIn(key, str(ctx.exception))
+
+    def test_load_rejects_bad_shapes(self):
+        """Test that loading a file with a bad shape raises ValueError."""
+        for label, data, key in self.BAD_SHAPES:
+            with self.subTest(label):
+                self.test_file.write_text(json.dumps(data), encoding="utf-8")
+                with self.assertRaises(ValueError) as ctx:
+                    ProjectStorage.load(self.test_file)
+                self.assertIn(key, str(ctx.exception))
+
+    def test_load_wraps_unexpected_errors(self):
+        """Test that a non-ValueError failure becomes an Invalid project file."""
+        self.test_file.write_text(json.dumps({"name": "x"}), encoding="utf-8")
+
+        def boom(*args, **kwargs):
+            raise RuntimeError("simulated upgrade failure")
+
+        with patch.object(project_storage_module, "upgrade", side_effect=boom):
+            with self.assertRaises(ValueError) as ctx:
+                ProjectStorage.load(self.test_file)
+
+        self.assertIn("Invalid project file", str(ctx.exception))
+
+
 class TestProjectStorageMigration(unittest.TestCase):
     """Test cases for the load-time format migration."""
 
@@ -340,7 +392,7 @@ class TestProjectStorageMigration(unittest.TestCase):
 
         self.assertEqual(len(project.items), 2)
         self.assertEqual(len(project.active_items()), 2)
-        self.assertEqual(project.retired_items(), [])
+        self.assertTrue(all(item.is_active() for item in project.items))
         self.assertEqual(project.slots, [])
         self.assertEqual(len(project.votes), 1)
 
@@ -396,9 +448,60 @@ class TestProjectStorageMigration(unittest.TestCase):
         loaded = ProjectStorage.load(self.test_file)
 
         self.assertEqual(loaded.slots, ["1", "2"])
-        self.assertEqual([i.id for i in loaded.retired_items()], ["old-id"])
-        self.assertEqual(loaded.retired_items()[0].replaced_by, "new-id")
+        retired = [i for i in loaded.items if not i.is_active()]
+        self.assertEqual([i.id for i in retired], ["old-id"])
+        self.assertEqual(retired[0].replaced_by, "new-id")
         self.assertEqual(loaded.active_identifiers(), {"1"})
+
+    def test_migration_preserves_modified_timestamp(self):
+        """Test that migrating a v1 file does not look like a user edit."""
+        self._write_v1_file()
+
+        project = ProjectStorage.load(self.test_file)
+
+        expected = datetime(2024, 2, 1, 12, 0, 0)
+        self.assertEqual(project.modified, expected)
+        with open(self.test_file, encoding="utf-8") as f:
+            data = json.load(f)
+        self.assertEqual(data["modified"], expected.isoformat())
+
+    def test_migration_writes_no_regular_backup(self):
+        """Test that migrating writes only the .v1.bak, not a .pairrank.bak."""
+        self._write_v1_file()
+
+        ProjectStorage.load(self.test_file)
+
+        self.assertEqual(
+            sorted(p.name for p in Path(self.temp_dir).iterdir()),
+            ["test.pairrank", "test.pairrank.v1.bak"],
+        )
+
+    def test_migration_survives_a_read_only_file(self):
+        """Test that a failed re-save still yields the upgraded project."""
+        self._write_v1_file()
+
+        def deny(*args, **kwargs):
+            raise PermissionError("simulated read-only project file")
+
+        with patch.object(ProjectStorage, "save", side_effect=deny):
+            project = ProjectStorage.load(self.test_file)
+
+        self.assertEqual(project.name, "Legacy Project")
+        self.assertEqual(project.to_dict()[FORMAT_VERSION_KEY], CURRENT_FORMAT_VERSION)
+        self.assertEqual(len(project.active_items()), 2)
+
+    def test_migration_survives_an_unwritable_backup(self):
+        """Test that a failed backup still yields the upgraded project."""
+        self._write_v1_file()
+
+        def deny(*args, **kwargs):
+            raise PermissionError("simulated read-only directory")
+
+        with patch.object(Path, "write_bytes", side_effect=deny):
+            project = ProjectStorage.load(self.test_file)
+
+        self.assertEqual(project.to_dict()[FORMAT_VERSION_KEY], CURRENT_FORMAT_VERSION)
+        self.assertFalse(self.v1_backup.exists())
 
 
 if __name__ == "__main__":
