@@ -166,24 +166,27 @@
 .views {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 1.5rem minmax(0, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+/* Views are centred in their half of the sheet; space, not a rule, separates them. */
 .view {
   display: grid;
   grid-template-rows: 1fr auto;
+  justify-items: center;
   padding: var(--s-4) var(--s-6) var(--s-5);
   min-width: 0;
+  text-align: center;
 }
 
-/* View title under the view, drafting-style. */
+/* View title centred under the view and underlined, drafting-style. */
 .view-label {
   display: flex;
   align-items: center;
   gap: var(--s-2);
-  margin-top: var(--s-4);
-  padding-top: var(--s-2);
-  border-top: var(--w-cell) solid var(--hair);
+  margin-top: var(--s-5);
+  padding-bottom: var(--s-1);
+  border-bottom: var(--w-cell) solid var(--ink);
 }
 
 .view-mark {
@@ -213,8 +216,8 @@
 }
 
 .item-desc {
-  margin: var(--s-3) 0 0;
-  max-width: 46ch;
+  margin: var(--s-3) auto 0;
+  max-width: 42ch;
   color: var(--ink-2);
   font-size: 1.0625rem;
   text-wrap: pretty;
@@ -227,6 +230,7 @@
 .item-notes {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   gap: var(--s-2) var(--s-5);
   margin: var(--s-4) 0 0;
 }
@@ -245,8 +249,9 @@
 /* Blinded view: the slot balloon is the whole content. */
 .view-slot {
   display: none;
+  flex-direction: column;
   align-items: center;
-  gap: var(--s-3);
+  gap: var(--s-2);
 }
 
 .view-slot .balloon {
@@ -269,24 +274,11 @@
   display: none;
 }
 
-/* Centre line between the views: long dash, short dash. */
-.centreline {
-  justify-self: center;
-  width: 1px;
-  margin: var(--s-4) 0;
-  background: repeating-linear-gradient(
-    to bottom,
-    var(--line) 0 14px,
-    transparent 14px 18px,
-    var(--line) 18px 21px,
-    transparent 21px 25px
-  );
-}
-
 /* Ghosted views for the not-enough-items state. */
 .view-ghost {
   display: none;
   align-self: stretch;
+  justify-self: stretch;
   margin-top: var(--s-2);
   border: var(--w-cell) dashed var(--line);
   place-items: center;
@@ -993,19 +985,7 @@
 
   .views {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  .centreline {
-    width: auto;
-    height: 1px;
-    margin: 0 var(--s-4);
-    background: repeating-linear-gradient(
-      to right,
-      var(--line) 0 14px,
-      transparent 14px 18px,
-      var(--line) 18px 21px,
-      transparent 21px 25px
-    );
+    row-gap: var(--s-2);
   }
 
   .view {
@@ -1014,8 +994,8 @@
   }
 
   .view-label {
-    margin-top: var(--s-2);
-    padding-top: var(--s-1);
+    margin-top: var(--s-3);
+    padding-bottom: 0.125rem;
   }
 
   .item-name {
