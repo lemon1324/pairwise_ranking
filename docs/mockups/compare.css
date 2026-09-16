@@ -227,18 +227,27 @@
   display: none;
 }
 
+/* Category above slot, labels and values meeting at the view's centre axis;
+   phones keep them on one line to save height. */
 .item-notes {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: var(--s-2) var(--s-5);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  gap: var(--s-2) var(--s-3);
+  width: 100%;
   margin: var(--s-4) 0 0;
 }
 
 .item-notes div {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
+  display: contents;
+}
+
+.item-notes dt {
+  justify-self: end;
+}
+
+.item-notes dd {
+  justify-self: start;
 }
 
 .item-notes dd {
@@ -1008,6 +1017,12 @@
   }
 
   .item-notes {
+    display: flex;
+    align-items: center;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    column-gap: var(--s-4);
     margin-top: var(--s-2);
   }
 
