@@ -490,8 +490,7 @@
       }
     ],
     "openIssues": [
-      "Minor alignment inconsistencies inside the title block (user-noted); address when the real app is implemented.",
-      "Stray rule in sheet.css: `.sheet-tabs a:hover` shares `margin-left: auto` with `.sheet-menu`; sheet tabs have no evidenced hover fill. Not canonized; resolve in the real app."
+      "Minor alignment inconsistencies inside the title block (user-noted); address when the real app is implemented."
     ]
   },
   "components": [
