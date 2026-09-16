@@ -259,6 +259,66 @@ class TestProjectStorage(unittest.TestCase):
         self.assertIn("Invalid project file", str(ctx.exception))
 
 
+class TestProjectStorageCreateCopy(unittest.TestCase):
+    """Test cases for ProjectStorage.create_copy."""
+
+    def setUp(self):
+        """Set up a saved source project to copy."""
+        self.temp_dir = tempfile.mkdtemp()
+        self.source_file = Path(self.temp_dir) / "source.pairrank"
+        self.copy_file = Path(self.temp_dir) / "copy.pairrank"
+
+        items = [Item(name="Item 1", id="item-1"), Item(name="Item 2", id="item-2")]
+        votes = [Vote(winner_id="item-1", loser_id="item-2", weight=2.0, id="vote-1")]
+        self.source = Project(
+            name="Source Project",
+            items=items,
+            votes=votes,
+            settings=Settings(weight_uncertainty=1.5, decay_timescale_days=60.0),
+            slots=["A", "B"],
+        )
+        ProjectStorage.save(self.source, self.source_file)
+
+    def tearDown(self):
+        """Clean up test files."""
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_create_copy_writes_the_new_file(self):
+        """Test that the copy is written to the requested path."""
+        ProjectStorage.create_copy(self.source, "Copy Project", self.copy_file)
+        self.assertTrue(self.copy_file.exists())
+
+    def test_create_copy_sets_file_path(self):
+        """Test that the returned project points at the new file."""
+        copied = ProjectStorage.create_copy(
+            self.source, "Copy Project", self.copy_file
+        )
+        self.assertEqual(copied.file_path, self.copy_file)
+
+    def test_created_copy_round_trips(self):
+        """Test that loading the copy yields the source's setup and no votes."""
+        ProjectStorage.create_copy(self.source, "Copy Project", self.copy_file)
+
+        loaded = ProjectStorage.load(self.copy_file)
+
+        self.assertEqual(loaded.name, "Copy Project")
+        self.assertEqual(loaded.votes, [])
+        self.assertEqual([item.id for item in loaded.items], ["item-1", "item-2"])
+        self.assertEqual(loaded.settings.weight_uncertainty, 1.5)
+        self.assertEqual(loaded.settings.decay_timescale_days, 60.0)
+        self.assertEqual(loaded.slots, ["A", "B"])
+
+    def test_source_file_is_unchanged(self):
+        """Test that the source project's file keeps its votes."""
+        ProjectStorage.create_copy(self.source, "Copy Project", self.copy_file)
+
+        reloaded = ProjectStorage.load(self.source_file)
+
+        self.assertEqual(reloaded.name, "Source Project")
+        self.assertEqual(len(reloaded.votes), 1)
+        self.assertEqual(reloaded.votes[0].id, "vote-1")
+
+
 class TestProjectStorageMalformedFiles(unittest.TestCase):
     """Test cases for rejecting files whose nested shapes are wrong."""
 

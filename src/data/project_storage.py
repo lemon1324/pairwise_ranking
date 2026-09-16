@@ -208,6 +208,34 @@ class ProjectStorage:
         ProjectStorage.save(project, file_path)
         return project
 
+    @staticmethod
+    def create_copy(source: Project, name: str, file_path: Path) -> Project:
+        """
+        Create a copy of a project without its votes and save it.
+
+        The copy carries the source project's items, settings and slots, with
+        item ids preserved, but starts with no votes. The source project and
+        its file are left untouched.
+
+        Args:
+            source: The project to copy.
+            name: Name for the new project.
+            file_path: Path where the new project file will be saved.
+
+        Returns:
+            Project: The newly created and saved project.
+
+        Raises:
+            ValueError: If name is empty or only whitespace, or if file_path
+                doesn't have .pairrank extension.
+            OSError: If file cannot be written.
+        """
+        project = source.copy_without_votes(name)
+        project.file_path = file_path
+
+        ProjectStorage.save(project, file_path)
+        return project
+
 
 def safe_project_filename(name: str) -> str:
     """

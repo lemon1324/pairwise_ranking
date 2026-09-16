@@ -30,6 +30,7 @@ from src.ui.comparison import ComparisonWidget
 from src.ui.results import ResultsWidget
 from src.ui.settings import SettingsWidget
 from src.ui.project_dialogs import (
+    ask_duplicate_project,
     ask_new_project,
     ask_open_project_path,
     ask_save_as_path,
@@ -100,6 +101,10 @@ class MainWindow(QMainWindow):
         rename_action = QAction("&Rename Project...", self)
         rename_action.triggered.connect(self._on_rename_project)
         file_menu.addAction(rename_action)
+
+        duplicate_action = QAction("&Duplicate Without Votes...", self)
+        duplicate_action.triggered.connect(self._on_duplicate_project)
+        file_menu.addAction(duplicate_action)
 
         # Recent projects submenu
         self.recent_menu = file_menu.addMenu("Recent Projects")
@@ -457,6 +462,14 @@ class MainWindow(QMainWindow):
         file_path = ask_open_project_path(self, self.user_config)
         if file_path is not None:
             self._open_project_file(file_path)
+
+    def _on_duplicate_project(self) -> None:
+        """Handle File > Duplicate Without Votes."""
+        new_project = ask_duplicate_project(self, self.user_config, self.project)
+        if new_project is None:
+            return
+
+        self._switch_to_project(new_project)
 
     def _on_rename_project(self) -> None:
         """Handle File > Rename Project."""
