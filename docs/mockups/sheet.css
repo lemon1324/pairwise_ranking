@@ -1,0 +1,441 @@
+/*
+ * Pairwise Ranking web mockups: shared sheet styles.
+ *
+ * Static mid-fi mockups for the planned web frontend. Tokens and components here are the
+ * starting point for src/web/static when the real app is built; fonts are loaded from Google
+ * Fonts for the mockup only and must be self-hosted in the app (it runs on a LAN).
+ */
+
+:root {
+  color-scheme: light;
+
+  --paper: #f5f4ef;
+  --paper-2: #ebe9e2;
+  --paper-3: #e1dfd6;
+  --ink: #17181a;
+  --ink-2: #414246;
+  --ink-3: #66676b;
+  --line: #8e8c85;
+  --hair: #cbc9c0;
+
+  /* Markup blue: the live station, focus and links. Warn orange: problems only, never alone. */
+  --markup: #1d5bc2;
+  --markup-wash: #dde6f4;
+  --warn: #8f4700;
+  --warn-mark: #d9822b;
+  --warn-wash: #f5e5d1;
+
+  --font-ui: "Barlow", system-ui, sans-serif;
+  --font-label: "Barlow Condensed", "Barlow", system-ui, sans-serif;
+  --font-num: "JetBrains Mono", ui-monospace, monospace;
+
+  --w-frame: 2px;
+  --w-cell: 1px;
+
+  --s-1: 0.25rem;
+  --s-2: 0.5rem;
+  --s-3: 0.75rem;
+  --s-4: 1rem;
+  --s-5: 1.5rem;
+  --s-6: 2rem;
+  --s-7: 3rem;
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --paper: #131518;
+    --paper-2: #1b1e22;
+    --paper-3: #23272c;
+    --ink: #e8e6df;
+    --ink-2: #c0beb7;
+    --ink-3: #97958f;
+    --line: #6a6e75;
+    --hair: #353a41;
+    --markup: #86aef0;
+    --markup-wash: #1d2a40;
+    --warn: #f2ab62;
+    --warn-mark: #d9822b;
+    --warn-wash: #36271a;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: #131518;
+  --paper-2: #1b1e22;
+  --paper-3: #23272c;
+  --ink: #e8e6df;
+  --ink-2: #c0beb7;
+  --ink-3: #97958f;
+  --line: #6a6e75;
+  --hair: #353a41;
+  --markup: #86aef0;
+  --markup-wash: #1d2a40;
+  --warn: #f2ab62;
+  --warn-mark: #d9822b;
+  --warn-wash: #36271a;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 1rem;
+  line-height: 1.45;
+  font-feature-settings: "tnum" 1;
+}
+
+::selection {
+  background: var(--markup);
+  color: var(--paper);
+}
+
+:focus-visible {
+  outline: 2px solid var(--markup);
+  outline-offset: 2px;
+}
+
+a {
+  color: var(--markup);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+html {
+  scrollbar-color: var(--line) var(--paper);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.icon {
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Drafting label: condensed caps used for every cell caption. */
+.label {
+  font-family: var(--font-label);
+  font-weight: 600;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  line-height: 1.2;
+}
+
+.num {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Keyboard legend: a ruled cell, not a keycap. */
+.key {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.5rem;
+  height: 1.5rem;
+  padding: 0 0.3rem;
+  border: var(--w-cell) solid currentColor;
+  font-family: var(--font-num);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1;
+}
+
+/* Item balloon: the circled identifier of a drawing's parts list. */
+.balloon {
+  display: inline-grid;
+  place-items: center;
+  min-width: 2rem;
+  height: 2rem;
+  padding: 0 0.55rem;
+  border: var(--w-cell) solid var(--ink);
+  border-radius: 999px;
+  font-family: var(--font-num);
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/* Side fills: A solid, B hatched, so sides never rely on colour. */
+.fill-a {
+  background: currentColor;
+}
+
+.fill-b {
+  background: repeating-linear-gradient(
+    135deg,
+    currentColor 0 1.5px,
+    transparent 1.5px 4px
+  );
+  box-shadow: inset 0 0 0 1px currentColor;
+}
+
+/* ---------- Sheet shell ---------- */
+
+.sheet {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.sheet > main {
+  flex: 1;
+}
+
+.sheet-head nav {
+  display: flex;
+}
+
+.sheet-head {
+  display: flex;
+  align-items: stretch;
+  border-bottom: var(--w-frame) solid var(--ink);
+  min-height: 3.25rem;
+}
+
+.sheet-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-5);
+  margin-right: auto;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-content: center;
+}
+
+.sheet-title h1 {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  line-height: 1.2;
+}
+
+.sheet-file {
+  font-family: var(--font-num);
+  font-size: 0.8125rem;
+  color: var(--ink-3);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+}
+
+.sheet-file.is-warn {
+  color: var(--warn);
+}
+
+.sheet-tabs {
+  display: flex;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sheet-tabs li {
+  display: flex;
+}
+
+.sheet-tabs a,
+.sheet-menu {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 0 var(--s-5);
+  border-left: var(--w-cell) solid var(--ink);
+  color: var(--ink-2);
+  text-decoration: none;
+  font-family: var(--font-label);
+  font-weight: 600;
+  font-size: 0.9375rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: none;
+  border-top: 0;
+  border-right: 0;
+  border-bottom: 0;
+  cursor: pointer;
+}
+
+.sheet-tabs a:hover,
+.sheet-menu:hover {
+  background: var(--paper-2);
+  color: var(--ink);
+}
+
+.sheet-tabs a[aria-current="page"] {
+  color: var(--ink);
+  background: var(--paper-2);
+  box-shadow: inset 0 -4px 0 var(--ink);
+}
+
+.sheet-tabs .sheet-no {
+  font-family: var(--font-num);
+  font-size: 0.6875rem;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--ink-3);
+}
+
+.sheet-foot {
+  border-top: var(--w-cell) solid var(--hair);
+}
+
+/* Notice strip under the header (file changed on disk). */
+.notice {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-5);
+  border-bottom: var(--w-cell) solid var(--ink);
+  background: var(--paper-2);
+  font-size: 0.9375rem;
+}
+
+.notice[hidden] {
+  display: none;
+}
+
+.notice p {
+  margin: 0;
+  margin-right: auto;
+}
+
+.cell-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 2.25rem;
+  padding: 0 var(--s-3);
+  border: var(--w-cell) solid var(--ink);
+  background: transparent;
+  font-family: var(--font-label);
+  font-weight: 600;
+  font-size: 0.875rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.cell-button:hover:not(:disabled) {
+  background: var(--paper-3);
+}
+
+.cell-button:disabled {
+  color: var(--ink-3);
+  border-color: var(--hair);
+  cursor: not-allowed;
+}
+
+/* ---------- Mobile shell ---------- */
+
+@media (max-width: 40rem) {
+  .sheet-head {
+    min-height: 2.75rem;
+  }
+
+  .sheet-title {
+    padding: var(--s-2) var(--s-4);
+    gap: var(--s-2);
+  }
+
+  .sheet-title h1 {
+    font-size: 1rem;
+  }
+
+  .sheet-file:not(.is-warn) {
+    display: none;
+  }
+
+  .sheet-head nav {
+    display: none;
+  }
+
+  .sheet-menu {
+    padding: 0 var(--s-4);
+  }
+
+  .notice {
+    padding: var(--s-2) var(--s-4);
+    font-size: 0.875rem;
+    flex-wrap: wrap;
+  }
+
+  .bottom-tabs {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    background: var(--paper);
+    border-top: var(--w-frame) solid var(--ink);
+  }
+
+  .bottom-tabs .sheet-tabs {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .bottom-tabs .sheet-tabs a {
+    flex: 1;
+    justify-content: center;
+    min-height: 3.25rem;
+    padding: 0 var(--s-1);
+    font-size: 0.875rem;
+  }
+
+  .bottom-tabs .sheet-tabs li:first-child a {
+    border-left: 0;
+  }
+
+  .bottom-tabs .sheet-no {
+    display: none;
+  }
+}
+
+@media (min-width: 40.0625rem) {
+  .bottom-tabs {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
