@@ -84,9 +84,10 @@ class ItemDialog(QDialog):
         """
         super().__init__(parent)
         self.item = item
-        # The default category is always offered, first and without duplicates.
-        self._categories = list(
-            dict.fromkeys([DEFAULT_CATEGORY] + list(existing_categories or []))
+        # The one place the category list is built: the categories already in
+        # use plus the default, deduped and sorted.
+        self._categories = sorted(
+            dict.fromkeys(list(existing_categories or []) + [DEFAULT_CATEGORY])
         )
         self._taken_identifiers = set(taken_identifiers or set())
         self._free_slots = free_slots
@@ -134,17 +135,25 @@ class ItemDialog(QDialog):
 
         self.category_edit = QComboBox()
         self.category_edit.setEditable(True)
-        self.category_edit.setPlaceholderText("Enter or select category...")
+        self.category_edit.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self.category_edit.setPlaceholderText("Type a new category or pick one")
         self.category_edit.setToolTip(
             "Category for this item. Items are compared within their own category by default.\n"
-            "Type a new category name or select an existing one."
+            "The list is only a suggestion: any text you type is accepted."
         )
         self.category_edit.addItems(self._categories)
         self.category_edit.setCurrentText(DEFAULT_CATEGORY)
-        form.addRow("Category:", self.category_edit)
+        form.addRow("Category (type or pick):", self.category_edit)
 
         self.identifier_edit = self._create_identifier_widget()
-        form.addRow("Identifier:", self.identifier_edit)
+        # The label depends on which widget was built: only the dropdown form
+        # needs to tell the user that typing is allowed too.
+        identifier_label = (
+            "Identifier (type or pick):"
+            if isinstance(self.identifier_edit, QComboBox)
+            else "Identifier:"
+        )
+        form.addRow(identifier_label, self.identifier_edit)
 
         self.description_edit = QTextEdit()
         self.description_edit.setPlaceholderText("Enter description (optional)...")
@@ -184,8 +193,14 @@ class ItemDialog(QDialog):
 
         widget = QComboBox()
         widget.setEditable(True)
-        widget.setPlaceholderText("Select or enter a slot (optional)...")
-        widget.setToolTip(tooltip + "\nThe list shows the slots that are free.")
+        # Enter must never turn the typed text into a row of its own.
+        widget.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        widget.setPlaceholderText("Type or pick a slot (optional)")
+        widget.setToolTip(
+            tooltip
+            + "\nThe list shows the slots that are free; it is only a "
+            "suggestion, and any text you type is accepted."
+        )
 
         options = list(self._free_slots)
         # When editing, the item keeps its own slot at the top of the list.
@@ -193,7 +208,10 @@ class ItemDialog(QDialog):
             options = [self.item.identifier] + [
                 slot for slot in options if slot != self.item.identifier
             ]
-        widget.addItems([""] + options)
+        # Only real slots become rows. No row is selected to start with, so an
+        # empty edit text means "no identifier" and the placeholder shows.
+        widget.addItems(options)
+        widget.setCurrentIndex(-1)
         widget.setCurrentText("")
         return widget
 
