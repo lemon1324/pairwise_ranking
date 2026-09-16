@@ -49,7 +49,13 @@
 
   const blinded = () => mode === "blinded";
   const label = (key) => (blinded() ? ITEMS[key].slot : ITEMS[key].name);
-  const now = () => new Date().toTimeString().slice(0, 5);
+  // Sample clock: each new revision is stamped one minute after the latest one.
+  const nextTime = () => {
+    const last = s.log[s.log.length - 1];
+    const [h, m] = (last ? last.time : "21:04").split(":").map(Number);
+    const t = h * 60 + m + 1;
+    return `${String(Math.floor(t / 60) % 24).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
+  };
 
   function setText(id, text) {
     const el = $(id);
@@ -155,7 +161,7 @@
       winner: side === "a" ? a : b,
       loser: side === "a" ? b : a,
       weight,
-      time: now(),
+      time: nextTime(),
       undone: false,
       snap,
     });
