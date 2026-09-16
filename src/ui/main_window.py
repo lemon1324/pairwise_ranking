@@ -9,11 +9,9 @@ from PyQt6.QtWidgets import (
     QWidget,
     QVBoxLayout,
     QMessageBox,
-    QMenu,
     QFileDialog,
     QInputDialog,
 )
-from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QAction
 
 from src.data.project_storage import ProjectStorage
@@ -437,8 +435,3 @@ class MainWindow(QMainWindow):
         self._update_window_title()
         self._refresh_recent_menu()
         self._refresh_all()
-
-    def closeEvent(self, event) -> None:
-        """Handle window close event."""
-        # Data is saved incrementally via auto-save, so just accept the close
-        event.accept()
