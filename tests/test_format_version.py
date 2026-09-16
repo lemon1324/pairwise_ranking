@@ -149,7 +149,7 @@ class TestUpgrade(unittest.TestCase):
 
         self.assertEqual(len(project.items), 2)
         self.assertEqual(len(project.active_items()), 2)
-        self.assertEqual(project.retired_items(), [])
+        self.assertTrue(all(item.is_active() for item in project.items))
         self.assertEqual(project.slots, [])
         self.assertEqual(project.active_identifiers(), {"6", "7"})
         self.assertEqual(project.settings.cross_category_rate, 0.2)
