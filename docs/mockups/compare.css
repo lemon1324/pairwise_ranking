@@ -1,164 +1,9 @@
-/* Compare sheet: views, station scale and title block. Loaded after sheet.css. */
-
-.frame {
-  container: sheet / inline-size;
-  position: relative;
-  margin: var(--s-4) var(--s-5) var(--s-5);
-  padding: 1.375rem;
-  border: var(--w-frame) solid var(--ink);
-  display: flex;
-  min-height: 0;
-}
-
-/* Zone band between the outer and inner frame lines, marked on all four sides. */
-.zones {
-  position: absolute;
-  display: flex;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  font-family: var(--font-label);
-  font-size: 0.6875rem;
-  font-weight: 500;
-  color: var(--ink-3);
-  line-height: 1;
-  pointer-events: none;
-}
-
-.zones li {
-  flex: 1;
-  display: grid;
-  place-items: center;
-}
-
-.zones-top,
-.zones-bottom {
-  left: 1.375rem;
-  right: 1.375rem;
-  height: 1.375rem;
-}
-
-.zones-top {
-  top: 0;
-}
-
-.zones-bottom {
-  bottom: 0;
-}
-
-.zones-left,
-.zones-right {
-  top: 1.375rem;
-  bottom: 1.375rem;
-  width: 1.375rem;
-  flex-direction: column;
-}
-
-.zones-left {
-  left: 0;
-}
-
-.zones-right {
-  right: 0;
-}
-
-/* Zone count follows sheet width, roughly one zone per 170px, kept even. */
-.zones-top li:nth-child(-n + 8),
-.zones-bottom li:nth-child(-n + 8) {
-  display: none;
-}
-
-@container sheet (min-width: 44rem) {
-  .zones-top li:nth-child(-n + 8),
-  .zones-bottom li:nth-child(-n + 8) {
-    display: grid;
-  }
-
-  .zones-top li:nth-child(-n + 6),
-  .zones-bottom li:nth-child(-n + 6) {
-    display: none;
-  }
-}
-
-@container sheet (min-width: 64rem) {
-  .zones-top li:nth-child(-n + 6),
-  .zones-bottom li:nth-child(-n + 6) {
-    display: grid;
-  }
-
-  .zones-top li:nth-child(-n + 4),
-  .zones-bottom li:nth-child(-n + 4) {
-    display: none;
-  }
-}
-
-@container sheet (min-width: 85rem) {
-  .zones-top li:nth-child(-n + 4),
-  .zones-bottom li:nth-child(-n + 4) {
-    display: grid;
-  }
-
-  .zones-top li:nth-child(-n + 2),
-  .zones-bottom li:nth-child(-n + 2) {
-    display: none;
-  }
-}
-
-@container sheet (min-width: 106rem) {
-  .zones-top li:nth-child(-n + 2),
-  .zones-bottom li:nth-child(-n + 2) {
-    display: grid;
-  }
-}
-
-/* Zone boundary ticks: short marks from each frame line into the band. */
-.zones li {
-  position: relative;
-}
-
-.zones li:not(:last-child)::after {
-  content: "";
-  position: absolute;
-  background: var(--line);
-}
-
-.zones-top li:not(:last-child)::after,
-.zones-bottom li:not(:last-child)::after {
-  right: 0;
-  width: 1px;
-  height: 0.5rem;
-}
-
-.zones-top li:not(:last-child)::after {
-  top: 0;
-}
-
-.zones-bottom li:not(:last-child)::after {
-  bottom: 0;
-}
-
-.zones-left li:not(:last-child)::after,
-.zones-right li:not(:last-child)::after {
-  bottom: 0;
-  height: 1px;
-  width: 0.5rem;
-}
-
-.zones-left li:not(:last-child)::after {
-  left: 0;
-}
-
-.zones-right li:not(:last-child)::after {
-  right: 0;
-}
+/* Compare sheet: views, station scale and Compare title-block cells. Loaded after sheet.css. */
 
 .frame-inner {
-  flex: 1;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(34rem, 46rem);
   grid-template-rows: minmax(12rem, 1fr) auto auto;
-  border: var(--w-cell) solid var(--ink);
-  min-width: 0;
 }
 
 /* ---------- Views ---------- */
@@ -544,93 +389,6 @@
 
 /* ---------- Notes and title block ---------- */
 
-/* Sheet notes float free in the lower-left corner, bottom-aligned with the title block. */
-.notes {
-  padding: var(--s-3) var(--s-5) var(--s-4);
-  align-self: end;
-}
-
-.notes ol {
-  margin: var(--s-2) 0 0;
-  padding-left: 1.25rem;
-  color: var(--ink-2);
-  font-size: 0.9375rem;
-  max-width: 60ch;
-}
-
-.notes li + li {
-  margin-top: var(--s-1);
-}
-
-.swatch {
-  display: inline-block;
-  width: 0.75rem;
-  height: 0.75rem;
-  vertical-align: -0.05em;
-  color: var(--ink);
-}
-
-.notes li::marker {
-  font-family: var(--font-num);
-  font-size: 0.8125rem;
-  color: var(--ink-3);
-}
-
-.notes .key {
-  min-width: 1.25rem;
-  height: 1.25rem;
-  font-size: 0.75rem;
-  vertical-align: 0.05em;
-}
-
-.titleblock {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: var(--w-cell);
-  align-self: end;
-  background: var(--ink);
-  border-top: var(--w-cell) solid var(--ink);
-  border-left: var(--w-cell) solid var(--ink);
-}
-
-.tb-cell {
-  padding: var(--s-2) var(--s-3) var(--s-3);
-  background: var(--paper);
-  min-width: 0;
-}
-
-.tb-title {
-  grid-column: span 4;
-}
-
-.tb-file {
-  grid-column: span 2;
-}
-
-.tb-title-text {
-  margin: var(--s-1) 0 0;
-  font-size: 1.1875rem;
-  font-weight: 600;
-  line-height: 1.2;
-  letter-spacing: -0.005em;
-  text-wrap: balance;
-}
-
-.tb-file-text {
-  display: flex;
-  align-items: center;
-  gap: var(--s-1);
-  margin-top: var(--s-1);
-  font-family: var(--font-num);
-  font-size: 0.8125rem;
-  color: var(--ink-2);
-  overflow-wrap: anywhere;
-}
-
-.tb-file-text.is-warn {
-  color: var(--warn);
-}
-
 .tb-settled,
 .tb-tolerance,
 .tb-votes {
@@ -917,49 +675,6 @@
   display: none;
 }
 
-/* ---------- Mockup controls (not part of the product) ---------- */
-
-.mockup-controls {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--s-3) var(--s-6);
-  padding: var(--s-3) var(--s-5) var(--s-4);
-  color: var(--ink-2);
-  font-size: 0.875rem;
-}
-
-.mockup-controls fieldset {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--s-2) var(--s-4);
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-
-.mockup-controls legend {
-  float: left;
-  margin-right: var(--s-3);
-}
-
-.mockup-controls label {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  cursor: pointer;
-}
-
-.mockup-controls input {
-  accent-color: var(--markup);
-  margin: 0;
-}
-
-.mockup-controls p {
-  margin: 0;
-}
-
 /* ---------- Phone ---------- */
 
 @media (max-width: 64rem) {
@@ -967,29 +682,11 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .titleblock {
-    border-left: 0;
-  }
-
-  .notes {
-    display: none;
-  }
 }
 
 @media (max-width: 40rem) {
-  .frame {
-    margin: var(--s-2) var(--s-2) var(--s-3);
-    padding: 0;
-    border: 0;
-  }
-
-  .zones {
-    display: none;
-  }
-
   .frame-inner {
     grid-template-rows: auto auto auto;
-    border-width: var(--w-frame);
   }
 
   .views {
