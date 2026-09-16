@@ -219,6 +219,64 @@ class TestProject(unittest.TestCase):
         self.assertEqual(project.slots, [])
 
 
+class TestProjectRename(unittest.TestCase):
+    """Test cases for Project.rename."""
+
+    def test_rename_changes_the_name(self):
+        """Test that renaming replaces the display name."""
+        project = Project(name="Old Name")
+        project.rename("New Name")
+        self.assertEqual(project.name, "New Name")
+
+    def test_rename_strips_surrounding_whitespace(self):
+        """Test that a name with surrounding whitespace is stripped."""
+        project = Project(name="Old Name")
+        project.rename("  New Name  ")
+        self.assertEqual(project.name, "New Name")
+
+    def test_rename_to_empty_raises_value_error(self):
+        """Test that an empty name is rejected and the old name survives."""
+        project = Project(name="Old Name")
+        with self.assertRaises(ValueError):
+            project.rename("")
+        self.assertEqual(project.name, "Old Name")
+
+    def test_rename_to_whitespace_raises_value_error(self):
+        """Test that a whitespace-only name is rejected."""
+        project = Project(name="Old Name")
+        with self.assertRaises(ValueError):
+            project.rename("   ")
+        self.assertEqual(project.name, "Old Name")
+
+    def test_rename_leaves_other_fields_untouched(self):
+        """Test that renaming touches nothing but the name."""
+        item = Item(name="Item 1", identifier="A")
+        other = Item(name="Item 2", identifier="B")
+        vote = Vote(winner_id=item.id, loser_id=other.id, weight=1.0)
+        created = datetime(2024, 1, 1)
+        modified = datetime(2024, 1, 15)
+        project = Project(
+            name="Old Name",
+            created=created,
+            modified=modified,
+            items=[item, other],
+            votes=[vote],
+            settings=Settings(weight_uncertainty=2.0),
+            slots=["A", "B"],
+            file_path=Path("/tmp/project.pairrank"),
+        )
+
+        project.rename("New Name")
+
+        self.assertEqual(project.created, created)
+        self.assertEqual(project.modified, modified)
+        self.assertEqual(project.items, [item, other])
+        self.assertEqual(project.votes, [vote])
+        self.assertEqual(project.settings.weight_uncertainty, 2.0)
+        self.assertEqual(project.slots, ["A", "B"])
+        self.assertEqual(project.file_path, Path("/tmp/project.pairrank"))
+
+
 class TestProjectSlots(unittest.TestCase):
     """Test cases for the project slot list helpers."""
 

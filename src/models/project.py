@@ -165,6 +165,23 @@ class Project:
         self.name = self.name.strip()
         self.slots = normalize_slots(self.slots)
 
+    def rename(self, name: str) -> None:
+        """
+        Change the project's display name.
+
+        The file the project lives in is untouched; only the name stored
+        inside it changes.
+
+        Args:
+            name: The new name. Surrounding whitespace is stripped.
+
+        Raises:
+            ValueError: If the new name is empty or only whitespace.
+        """
+        if not name or not name.strip():
+            raise ValueError("Project name cannot be empty")
+        self.name = name.strip()
+
     def active_items(self) -> list[Item]:
         """
         Return the items that are still being compared.
