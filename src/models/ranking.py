@@ -206,8 +206,10 @@ class BradleyTerryModel:
         N = W + W.T
         np.fill_diagonal(N, 0.0)
 
-        # Total weighted wins per item (diagonal excluded)
-        wins = W.sum(axis=1) - np.diagonal(W)
+        # Total weighted wins per item. Votes cannot pit an item against
+        # itself and regularization skips the diagonal, so W's diagonal is
+        # always zero and the row sums need no correction.
+        wins = W.sum(axis=1)
 
         # Initialize strengths to 1
         pi = np.ones(n, dtype=np.float64)
