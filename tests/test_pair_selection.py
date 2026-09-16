@@ -301,6 +301,18 @@ class TestPairSelectorStats(unittest.TestCase):
         self.assertEqual(stats["total_votes"], 3)
         self.assertEqual(stats["uncompared_items"], 0)  # all items have votes
 
+    def test_stats_ignore_votes_involving_unknown_items(self):
+        """Test that votes involving items outside the selector are not counted as pairs."""
+        items = [Item(name="A", id="a"), Item(name="B", id="b")]
+        votes = [Vote(winner_id="a", loser_id="unknown", weight=2.0)]
+
+        selector = PairSelector(items, votes, Settings())
+        stats = selector.get_comparison_stats()
+
+        self.assertEqual(stats["total_possible_pairs"], 1)
+        self.assertEqual(stats["compared_pairs"], 0)
+        self.assertEqual(stats["uncompared_pairs"], 1)
+
 
 class TestPairSelectorCategories(unittest.TestCase):
     """Tests for category-aware pair selection.

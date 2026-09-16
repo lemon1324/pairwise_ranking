@@ -178,6 +178,18 @@ class TestProject(unittest.TestCase):
         self.assertEqual(project.items, [])
         self.assertEqual(project.votes, [])
 
+    def test_from_dict_missing_name_raises_value_error(self):
+        """Test that from_dict raises ValueError (not KeyError) when name is missing."""
+        with self.assertRaises(ValueError) as ctx:
+            Project.from_dict({})
+
+        self.assertIn("name", str(ctx.exception))
+
+    def test_from_dict_non_dict_raises_value_error(self):
+        """Test that from_dict raises ValueError when data is not a dictionary."""
+        with self.assertRaises(ValueError):
+            Project.from_dict([])
+
 
 if __name__ == "__main__":
     unittest.main()

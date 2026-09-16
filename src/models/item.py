@@ -5,6 +5,10 @@ from typing import Optional
 import uuid
 
 
+# Category assigned to items that have no explicit category
+DEFAULT_CATEGORY = "Default"
+
+
 @dataclass
 class Item:
     """
@@ -13,6 +17,9 @@ class Item:
     Attributes:
         name: The display name of the item.
         description: An optional longer description of the item.
+        identifier: An optional short label (e.g. a slot code) for the item.
+        category: The category the item belongs to. Whitespace is stripped and
+            an empty value is replaced with DEFAULT_CATEGORY.
         id: A unique identifier for the item. Auto-generated if not provided.
 
     Example:
@@ -24,7 +31,7 @@ class Item:
     name: str
     description: str = ""
     identifier: str = ""
-    category: str = "Default"
+    category: str = DEFAULT_CATEGORY
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
 
     def __post_init__(self):
@@ -39,6 +46,9 @@ class Item:
         self.name = self.name.strip()
         self.description = self.description.strip() if self.description else ""
         self.identifier = self.identifier.strip() if self.identifier else ""
+        self.category = self.category.strip() if self.category else ""
+        if not self.category:
+            self.category = DEFAULT_CATEGORY
 
     def has_identifier(self) -> bool:
         """
@@ -77,7 +87,7 @@ class Item:
         Convert item to a dictionary representation.
 
         Returns:
-            dict: Dictionary with 'id', 'name', 'description', and 'identifier' keys.
+            dict: Dictionary with 'id', 'name', 'description', 'identifier', and 'category' keys.
         """
         return {
             "id": self.id,
@@ -93,7 +103,8 @@ class Item:
         Create an Item from a dictionary.
 
         Args:
-            data: Dictionary containing 'name' and optionally 'description', 'identifier', and 'id'.
+            data: Dictionary containing 'name' and optionally 'description',
+                'identifier', 'category', and 'id'.
 
         Returns:
             Item: A new Item instance.
@@ -105,6 +116,6 @@ class Item:
             name=data["name"],
             description=data.get("description", ""),
             identifier=data.get("identifier", ""),
-            category=data.get("category", "Default"),
+            category=data.get("category", DEFAULT_CATEGORY),
             id=data.get("id", str(uuid.uuid4())),
         )
