@@ -227,8 +227,9 @@ html {
   min-height: 3.25rem;
 }
 
+/* Project title shows in the header on phones only; wider sheets carry it in the title block. */
 .sheet-title {
-  display: flex;
+  display: none;
   align-items: baseline;
   gap: var(--s-3);
   padding: var(--s-2) var(--s-5);
@@ -244,19 +245,6 @@ html {
   font-weight: 600;
   letter-spacing: -0.005em;
   line-height: 1.2;
-}
-
-.sheet-file {
-  font-family: var(--font-num);
-  font-size: 0.8125rem;
-  color: var(--ink-3);
-  display: inline-flex;
-  align-items: center;
-  gap: var(--s-1);
-}
-
-.sheet-file.is-warn {
-  color: var(--warn);
 }
 
 .sheet-tabs {
@@ -293,6 +281,14 @@ html {
 }
 
 .sheet-tabs a:hover,
+.sheet-menu {
+  margin-left: auto;
+}
+
+.sheet-head .sheet-tabs li:first-child a {
+  border-left: 0;
+}
+
 .sheet-menu:hover {
   background: var(--paper-2);
   color: var(--ink);
@@ -362,16 +358,13 @@ html {
   }
 
   .sheet-title {
+    display: flex;
     padding: var(--s-2) var(--s-4);
     gap: var(--s-2);
   }
 
   .sheet-title h1 {
     font-size: 1rem;
-  }
-
-  .sheet-file:not(.is-warn) {
-    display: none;
   }
 
   .sheet-head nav {

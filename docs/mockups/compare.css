@@ -167,7 +167,6 @@
   grid-column: 1 / -1;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 1.5rem minmax(0, 1fr);
-  border-bottom: var(--w-cell) solid var(--ink);
 }
 
 .view {
@@ -316,8 +315,8 @@
 
 .scale {
   grid-column: 1 / -1;
-  border-bottom: var(--w-cell) solid var(--ink);
   position: relative;
+  padding-top: var(--s-4);
 }
 
 .dimension {
@@ -544,10 +543,10 @@
 
 /* ---------- Notes and title block ---------- */
 
+/* Sheet notes float free in the lower left, top-aligned with the title block. */
 .notes {
-  padding: var(--s-4) var(--s-5);
-  border-right: var(--w-cell) solid var(--ink);
-  align-self: stretch;
+  padding: var(--s-3) var(--s-5) var(--s-5);
+  align-self: start;
 }
 
 .notes ol {
@@ -586,23 +585,49 @@
 .titleblock {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--w-cell);
+  align-self: end;
+  background: var(--ink);
+  border-top: var(--w-cell) solid var(--ink);
+  border-left: var(--w-cell) solid var(--ink);
 }
 
 .tb-cell {
   padding: var(--s-2) var(--s-3) var(--s-3);
-  border-left: var(--w-cell) solid var(--ink);
-  border-top: var(--w-cell) solid var(--ink);
+  background: var(--paper);
   min-width: 0;
 }
 
-.tb-cell:nth-child(-n + 3) {
-  border-top: 0;
+.tb-title {
+  grid-column: span 4;
 }
 
-.tb-cell:first-child,
-.tb-revision,
-.tb-state {
-  border-left: 0;
+.tb-file {
+  grid-column: span 2;
+}
+
+.tb-title-text {
+  margin: var(--s-1) 0 0;
+  font-size: 1.1875rem;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.005em;
+  text-wrap: balance;
+}
+
+.tb-file-text {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  margin-top: var(--s-1);
+  font-family: var(--font-num);
+  font-size: 0.8125rem;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.tb-file-text.is-warn {
+  color: var(--warn);
 }
 
 .tb-settled,
@@ -614,8 +639,6 @@
 .tb-hidden {
   grid-column: span 4;
   display: none;
-  border-left: 0;
-  border-top: 0;
   align-content: center;
 }
 
@@ -943,6 +966,10 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .titleblock {
+    border-left: 0;
+  }
+
   .notes {
     display: none;
   }
@@ -1142,9 +1169,13 @@
     padding: var(--s-1) var(--s-3) var(--s-2);
   }
 
+  .tb-title,
+  .tb-file {
+    display: none;
+  }
+
   .tb-settled {
     grid-column: 1;
-    border-top: 0;
   }
 
   .tb-tolerance {
@@ -1159,7 +1190,6 @@
 
   .tb-hidden {
     grid-column: 1 / span 2;
-    border-top: 0;
   }
 
   .tb-hidden p {
@@ -1172,8 +1202,6 @@
 
   .tb-mode {
     grid-column: 3;
-    border-top: 0;
-    border-left: var(--w-cell) solid var(--ink);
   }
 
   .tb-mode .label {
