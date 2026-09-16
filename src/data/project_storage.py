@@ -6,6 +6,7 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 
+from src.data.format_version import CURRENT_FORMAT_VERSION, upgrade
 from src.models.project import Project
 from src.models.settings import Settings
 
@@ -25,6 +26,7 @@ class ProjectStorage:
 
     FILE_EXTENSION = ".pairrank"
     BACKUP_EXTENSION = ".pairrank.bak"
+    MIGRATION_BACKUP_TEMPLATE = ".pairrank.v{version}.bak"
 
     @staticmethod
     def save(project: Project, file_path: Path) -> None:
@@ -73,7 +75,14 @@ class ProjectStorage:
     @staticmethod
     def load(file_path: Path) -> Project:
         """
-        Load a project from a .pairrank file.
+        Load a project from a .pairrank file, upgrading it if necessary.
+
+        Files written in an older format version are upgraded in memory. When
+        that happens the original bytes are copied once to a
+        ``.pairrank.v<old>.bak`` file beside the project (never overwriting an
+        existing one) and the upgraded project is saved immediately, so the
+        migration runs only the first time the file is opened. Loading a file
+        that is already current writes nothing.
 
         Args:
             file_path: Path to the .pairrank file.
@@ -83,8 +92,9 @@ class ProjectStorage:
 
         Raises:
             FileNotFoundError: If file doesn't exist.
-            ValueError: If file_path doesn't have .pairrank extension, or if
-                the file is not valid JSON or is missing required data.
+            ValueError: If file_path doesn't have .pairrank extension, if the
+                file is not valid JSON or is missing required data, or if the
+                file was written by a newer version of the application.
         """
         if file_path.suffix != ProjectStorage.FILE_EXTENSION:
             raise ValueError(f"File must have {ProjectStorage.FILE_EXTENSION} extension")
@@ -92,12 +102,28 @@ class ProjectStorage:
         if not file_path.exists():
             raise FileNotFoundError(f"Project file not found: {file_path}")
 
+        original_bytes = file_path.read_bytes()
+
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            return Project.from_dict(data, file_path=file_path)
-        except (json.JSONDecodeError, KeyError, TypeError) as e:
+            data = json.loads(original_bytes.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
             raise ValueError(f"Invalid project file: {e}") from e
+
+        try:
+            upgraded, started_version = upgrade(data)
+            project = Project.from_dict(upgraded, file_path=file_path)
+        except (KeyError, TypeError) as e:
+            raise ValueError(f"Invalid project file: {e}") from e
+
+        if started_version < CURRENT_FORMAT_VERSION:
+            backup_path = file_path.with_suffix(
+                ProjectStorage.MIGRATION_BACKUP_TEMPLATE.format(version=started_version)
+            )
+            if not backup_path.exists():
+                backup_path.write_bytes(original_bytes)
+            ProjectStorage.save(project, file_path)
+
+        return project
 
     @staticmethod
     def create_new(name: str, file_path: Path) -> Project:
