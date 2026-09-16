@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-09-16T22:05:52+00:00",
+  "generatedAt": "2026-09-16T22:55:00+00:00",
   "title": "Design System: Pairwise Ranking",
   "extensions": {
     "colorMeta": {
@@ -387,19 +387,35 @@
       },
       "title": {
         "displayName": "Sheet Title",
-        "purpose": "Project name in the title block TITLE cell and phone top bar."
+        "purpose": "Project name in a view sheet's TITLE cell."
+      },
+      "lead": {
+        "displayName": "Empty-State Lead",
+        "purpose": "Lead sentence of an empty state (Compare empty scale, empty parts list)."
+      },
+      "title-compact": {
+        "displayName": "Compact Title",
+        "purpose": "Project name in a parts-list TITLE cell; Compare item descriptions and phone title-block figures."
       },
       "body": {
         "displayName": "Body",
-        "purpose": "Default text; station names at 600."
+        "purpose": "Default text; station names; sheet number."
       },
       "body-secondary": {
         "displayName": "Secondary Body",
-        "purpose": "Notes, revision rows, warning copy, category values."
+        "purpose": "Notes, revision rows, warning copy, inputs, callout actions; parts-list names at 500."
+      },
+      "body-compact": {
+        "displayName": "Parts-List Data",
+        "purpose": "Category and status cells, title-block text cells, mono table figures, Rankings detail."
       },
       "label": {
         "displayName": "Drafting Label",
-        "purpose": "Condensed caps caption for every cell, view title and notes heading."
+        "purpose": "Condensed caps caption for every cell, view title, notes heading and table header."
+      },
+      "label-small": {
+        "displayName": "Small Label",
+        "purpose": "Tags, weighted-record headers, zone labels; glyph size of small 1.25rem key legends."
       },
       "tab": {
         "displayName": "Tab",
@@ -411,7 +427,7 @@
       },
       "number": {
         "displayName": "Number",
-        "purpose": "Keys, balloons, weights, revision numbers, times, file name."
+        "purpose": "Keys, balloons, weights, ranks, revision numbers, times, file name."
       }
     },
     "shadows": [
@@ -424,6 +440,11 @@
         "name": "hatch-edge",
         "value": "inset 0 0 0 1px currentColor",
         "purpose": "Closes the edge of a hatched B fill; not elevation."
+      },
+      {
+        "name": "field-error",
+        "value": "inset 0 0 0 1px var(--warn-mark)",
+        "purpose": "Doubles the border of a field in error; a heavier rule, not elevation."
       }
     ],
     "motion": [
@@ -436,6 +457,11 @@
         "name": "station-hover",
         "value": "120ms",
         "purpose": "Station background change."
+      },
+      {
+        "name": "callout-in",
+        "value": "160ms",
+        "purpose": "Row callout fades in from 0.25rem toward its row."
       },
       {
         "name": "view-swap",
@@ -474,23 +500,24 @@
       },
       {
         "name": "zones-6",
-        "value": "@container sheet min-width: 44rem"
+        "value": "@container sheet min-width: 60rem"
       },
       {
         "name": "zones-8",
-        "value": "@container sheet min-width: 64rem"
+        "value": "@container sheet min-width: 90rem"
       },
       {
-        "name": "zones-10",
-        "value": "@container sheet min-width: 85rem"
-      },
-      {
-        "name": "zones-12",
-        "value": "@container sheet min-width: 106rem"
+        "name": "bom-column",
+        "value": "one parts-list column per 36rem of drawing-area width"
       }
     ],
     "openIssues": [
-      "Minor alignment inconsistencies inside the title block (user-noted); address when the real app is implemented."
+      "Minor alignment inconsistencies inside the title block (user-noted); address when the real app is implemented.",
+      "Rankings puts the RETIRED tag inside the ellipsis-truncated name, so a long name can clip the tag and leave ink 3 as the only retired signal (Never Alone Rule).",
+      "The Rankings detail callout title sets the rank (#n) in Barlow, not JetBrains Mono (Every Number In Mono Rule).",
+      "When the row callout fits neither below nor above its row, bom.js falls back to below, where it can run past the column limit into the title block or be clipped by the drawing area.",
+      "The phone top-bar project name declares 1.125rem but is only visible on phones, where it is overridden to 1rem; the 1.125rem value is dead and not part of the ramp.",
+      "Table rows draw focus at -2px while title-block and callout cells use -4px."
     ]
   },
   "components": [
@@ -556,38 +583,55 @@
       "description": "Warning orange only with icon and words; names cause and recovery.",
       "html": "<div class=\"ds-warn\" role=\"alert\"><svg viewBox=\"0 0 16 16\" aria-hidden=\"true\"><path d=\"M8 2L1.5 13.5h13z\"/><path d=\"M8 6.5v3.2\"/><path d=\"M8 11.6v.1\"/></svg><div><p><strong>Vote not saved.</strong> Couldn’t write switches-2026.pairrank: permission denied. Nothing was recorded.</p><button class=\"ds-cb\" type=\"button\">Retry save</button></div></div>",
       "css": ":host{--paper:#f5f4ef;--paper-2:#ebe9e2;--paper-3:#e1dfd6;--ink:#17181a;--ink-2:#414246;--ink-3:#66676b;--line:#8e8c85;--hair:#cbc9c0;--markup:#1d5bc2;--markup-wash:#dde6f4;--warn:#8f4700;--warn-mark:#d9822b;--warn-wash:#f5e5d1;--font-ui:'Barlow',system-ui,sans-serif;--font-label:'Barlow Condensed','Barlow',system-ui,sans-serif;--font-num:'JetBrains Mono',ui-monospace,monospace;} .ds-warn{display:grid;grid-template-columns:auto minmax(0,1fr);gap:.5rem .75rem;padding:.5rem .75rem;background:var(--warn-wash);border:1px solid var(--warn-mark);color:var(--ink);font-family:var(--font-ui);max-width:32rem;} .ds-warn svg{width:1.25rem;height:1.25rem;margin-top:.1rem;stroke:var(--warn);stroke-width:1.5;fill:none;stroke-linecap:round;stroke-linejoin:round;} .ds-warn p{margin:0;font-size:.9375rem;} .ds-warn strong{color:var(--warn);} .ds-cb{margin-top:.25rem;min-height:2.25rem;padding:0 .75rem;border:1px solid var(--warn);background:transparent;color:var(--ink);font-family:var(--font-label);font-weight:600;font-size:.875rem;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;} .ds-cb:hover{background:var(--paper-3);} .ds-cb:focus-visible{outline:2px solid var(--markup);outline-offset:2px;}"
+    },
+    {
+      "name": "Parts List",
+      "kind": "custom",
+      "refersTo": "bom-row",
+      "description": "Ruled BOM table: balloon find numbers, hair row rules, hover paper-2, selected markup-wash with bold name, retired ink 3 with a RETIRED tag, no slot as a dashed balloon with a NO SLOT tag.",
+      "html": "<table class=\"ds-bom\"><thead><tr><th style=\"width:3.5rem\">Slot</th><th>Name</th><th style=\"width:6.25rem\">Status</th></tr></thead><tbody><tr tabindex=\"0\"><td class=\"f\"><span class=\"ds-balloon\">4</span></td><td><span class=\"nm\">Gateron Oil King</span><span class=\"ds\">Smooth, deep</span></td><td>Active</td></tr><tr class=\"sel\" tabindex=\"0\"><td class=\"f\"><span class=\"ds-balloon\">7</span></td><td><span class=\"nm\">JWK Black Lubed</span></td><td>Active</td></tr><tr tabindex=\"0\"><td class=\"f\"><span class=\"ds-balloon empty\">–</span></td><td><span class=\"nm\">Cherry MX Black</span></td><td><span class=\"ds-tag\">No slot</span></td></tr><tr class=\"ret\" tabindex=\"0\"><td class=\"f\"><span class=\"ds-balloon\">2</span></td><td><span class=\"nm\">Alpaca V2</span></td><td><span class=\"ds-tag\">Retired</span></td></tr></tbody></table>",
+      "css": ":host{--paper:#f5f4ef;--paper-2:#ebe9e2;--paper-3:#e1dfd6;--ink:#17181a;--ink-2:#414246;--ink-3:#66676b;--line:#8e8c85;--hair:#cbc9c0;--markup:#1d5bc2;--markup-wash:#dde6f4;--warn:#8f4700;--warn-mark:#d9822b;--warn-wash:#f5e5d1;--font-ui:'Barlow',system-ui,sans-serif;--font-label:'Barlow Condensed','Barlow',system-ui,sans-serif;--font-num:'JetBrains Mono',ui-monospace,monospace;} .ds-bom{width:100%;max-width:36rem;border-collapse:collapse;table-layout:fixed;border:1px solid var(--ink);background:var(--paper);color:var(--ink);font-family:var(--font-ui);} .ds-bom th{padding:.5rem .75rem;border-bottom:1px solid var(--ink);border-left:1px solid var(--ink);text-align:left;font-family:var(--font-label);font-weight:600;font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2);} .ds-bom td{padding:.375rem .75rem;border-top:1px solid var(--hair);border-left:1px solid var(--hair);font-size:.875rem;color:var(--ink-2);vertical-align:middle;} .ds-bom th:first-child,.ds-bom td:first-child{border-left:0;} .ds-bom tbody tr:first-child td{border-top:0;} .ds-bom td.f{text-align:center;} .ds-bom tr{cursor:pointer;} .ds-bom tbody tr:hover td{background:var(--paper-2);} .ds-bom tr:focus-visible{outline:2px solid var(--markup);outline-offset:-2px;} .ds-bom tr.sel td{background:var(--markup-wash);} .nm{display:block;font-weight:500;font-size:.9375rem;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;} .sel .nm{font-weight:600;} .ds{display:block;font-size:.8125rem;color:var(--ink-2);} .ret td,.ret .nm{color:var(--ink-3);} .ds-balloon{display:inline-grid;place-items:center;min-width:1.75rem;height:1.75rem;padding:0 .25rem;border:1px solid var(--ink);border-radius:999px;font-family:var(--font-num);font-size:.8125rem;font-weight:500;line-height:1;color:var(--ink);} .ds-balloon.empty{border-style:dashed;border-color:var(--line);color:var(--ink-3);} .ds-tag{display:inline-block;padding:.0625rem .3rem;border:1px solid var(--line);font-family:var(--font-label);font-weight:600;font-size:.6875rem;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2);line-height:1.2;}"
+    },
+    {
+      "name": "Row Callout",
+      "kind": "custom",
+      "refersTo": "row-callout",
+      "description": "Popover beside the find-number column, 0.5rem off the selected row, 2px ink rule, no shadow; 1px elbow leader from a 7px dot; action cells with key legends.",
+      "html": "<div class=\"ds-wrap\"><div class=\"ds-row\"><span class=\"ds-find\">7</span><span>JWK Black Lubed</span></div><div class=\"ds-pop\"><div class=\"ds-acts\"><button type=\"button\">Edit<span class=\"ds-key\">↵</span></button><button type=\"button\">Retire<span class=\"ds-key\">R</span></button><button type=\"button\">Replace<span class=\"ds-key\">P</span></button><button type=\"button\">Delete<span class=\"ds-key\">Del</span></button></div></div></div>",
+      "css": ":host{--paper:#f5f4ef;--paper-2:#ebe9e2;--paper-3:#e1dfd6;--ink:#17181a;--ink-2:#414246;--ink-3:#66676b;--line:#8e8c85;--hair:#cbc9c0;--markup:#1d5bc2;--markup-wash:#dde6f4;--warn:#8f4700;--warn-mark:#d9822b;--warn-wash:#f5e5d1;--font-ui:'Barlow',system-ui,sans-serif;--font-label:'Barlow Condensed','Barlow',system-ui,sans-serif;--font-num:'JetBrains Mono',ui-monospace,monospace;} .ds-wrap{position:relative;max-width:36rem;padding-bottom:4rem;background:var(--paper);font-family:var(--font-ui);color:var(--ink);} .ds-row{display:grid;grid-template-columns:3.5rem 1fr;align-items:center;height:2.5rem;background:var(--markup-wash);border-top:1px solid var(--hair);border-bottom:1px solid var(--hair);font-weight:600;font-size:.9375rem;} .ds-find{justify-self:center;font-family:var(--font-num);font-size:.8125rem;display:inline-grid;place-items:center;width:1.75rem;height:1.75rem;border:1px solid var(--ink);border-radius:999px;} .ds-pop{position:absolute;left:calc(3.5rem + .375rem);right:.375rem;top:calc(2.5rem + .5rem);background:var(--paper);border:2px solid var(--ink);} .ds-pop::before{content:'';position:absolute;left:calc(-.75rem - 2px);top:calc(-.5rem - 2px);width:.75rem;height:calc(.5rem + 2px + 1.125rem);border-left:1px solid var(--ink);border-bottom:1px solid var(--ink);} .ds-pop::after{content:'';position:absolute;left:calc(-.75rem - 2px - 3px);top:calc(-.5rem - 2px - 3px);width:7px;height:7px;border-radius:50%;background:var(--ink);} .ds-acts{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:1px;background:var(--ink);} .ds-acts button{display:flex;align-items:center;justify-content:space-between;gap:.5rem;min-height:2.5rem;padding:.25rem .75rem;border:0;background:var(--paper);color:var(--ink);font:inherit;font-weight:600;font-size:.9375rem;cursor:pointer;white-space:nowrap;} .ds-acts button:hover{background:var(--paper-2);} .ds-acts button:active{background:var(--paper-3);} .ds-acts button:focus-visible{outline:2px solid var(--markup);outline-offset:-4px;} .ds-key{display:inline-grid;place-items:center;min-width:1.375rem;height:1.375rem;padding:0 .3rem;border:1px solid currentColor;font-family:var(--font-num);font-size:.75rem;font-weight:500;line-height:1;}"
     }
   ],
   "narrative": {
     "northStar": "The Drawing Set",
-    "overview": "Every screen of the web app is one sheet from a single engineering drawing set. The ground is drafting paper, structure is drawn in ink at a strict line-weight scale, and a sheet is read the way a drawing is read: a frame with zone markings, views in the drawing area, notes in the lower-left, a closed ruled title block in the lower-right. Compare is the first sheet (two views and a dimensioned seven-station scale). Items and Rankings are meant to be parts-list (BOM) sheets in the same set, and Settings and the project picker are sheets too. A new surface should look like another sheet of the same set, not like a new app.\n\nThe world is dense but calm. Space, alignment and line weight carry the hierarchy. There are no cards, no shadows, no button chrome and no rounded corners except the item balloon, which is round because drawings circle their part identifiers. Drafting notation is what gives the sheets their character: zones per ASME Y14.1, balloons, dimension lines with arrowheads, underlined view titles, revision rows, tolerance given as ±. None of it is decoration. Each piece has the job it has on a real drawing.\n\nColour is almost absent. Ink on paper does the work. One markup blue marks the live thing (the station just pressed, keyboard focus, selection), and one warning orange appears only with an icon and words. The primary user has deuteranopia, so colour never carries meaning alone: side A is a solid fill and side B is hatched, strength is shown by bar count, and every state has a label or a shape.",
+    "overview": "Every screen of the web app is one sheet from a single engineering drawing set. The ground is drafting paper, structure is drawn in ink at a strict line-weight scale, and a sheet is read the way a drawing is read: a frame with zone markings, the drawing area, and a closed ruled title block in the lower-right. Compare is a view sheet (two views, a dimensioned seven-station scale and notes in the lower-left). Items and Rankings are parts-list (BOM) sheets: a ruled table snapped to the frame, folding into columns and continuation sheets, with a keys block inside the title block. Settings and the project picker are sheets too. A new surface should look like another sheet of the same set, not like a new app.\n\nThe world is dense but calm. Space, alignment and line weight carry the hierarchy. There are no cards, no shadows, no button chrome and no rounded corners except the item balloon, which is round because drawings circle their part identifiers, and the leader dot that ties a callout to its row. Drafting notation is what gives the sheets their character: zones per ASME Y14.1, balloons and find numbers, dimension lines with arrowheads, underlined view titles, revision rows, parts lists, sheet n of N, and tolerance given as ±. None of it is decoration. Each piece has the job it has on a real drawing.\n\nColour is almost absent. Ink on paper does the work. One markup blue marks the live thing (the station just pressed, the selected row, keyboard focus), and one warning orange appears only with an icon and words. The primary user has deuteranopia, so colour never carries meaning alone: side A is a solid fill and side B is hatched, strength is shown by bar count, and every state has a label or a shape.",
     "keyCharacteristics": [
       "A drafting-paper ground with ink linework in three weights: frame 2px, cell 1px, construction hairline.",
-      "The sheet anatomy is fixed: a zoned frame, views, notes in the lower-left and the title block in the lower-right.",
+      "The sheet anatomy is fixed: a zoned frame, the drawing area, and the title block closing the lower-right corner.",
       "Controls are ruled cells. Nothing is raised, rounded or filled with chrome.",
       "Three families, each with one job: a condensed caps label face, a workhorse sans for names and prose, and tabular mono for every number.",
       "Solid means A and hatched means B, so sides and states never depend on colour.",
+      "Lists are parts lists: ruled tables that fold into columns and sheets rather than scroll, with the selected row's work in a popover callout tied to its row by a leader.",
       "Motion is one short, discrete tick per action, and none under reduced motion."
     ],
     "rules": [
       {
         "name": "The One Pencil Rule",
-        "body": "Markup blue marks only what is live right now: the pressed station, focus and selection. It is never used for decoration, brand, headings or a resting state.",
+        "body": "Markup blue marks only what is live right now: the pressed station, the selected row, focus and text selection. It is never used for decoration, brand, headings or a resting state.",
         "section": "colors"
       },
       {
         "name": "The Never Alone Rule",
-        "body": "Every colour signal has a non-colour twin. Warnings carry an icon and words. Sides carry solid versus hatched fills and left versus right position. Strength carries bar count. Red against green never carries meaning.",
+        "body": "Every colour signal has a non-colour twin. Warnings carry an icon and words. Sides carry solid versus hatched fills and left versus right position. Strength carries bar count. A selected row also bolds its name, and a retired row also carries a RETIRED tag. Red against green never carries meaning.",
         "section": "colors"
       },
       {
         "name": "The Every Number In Mono Rule",
-        "body": "Any figure the user might compare or scan (a count, rating, weight, slot, time, key or file name) is set in JetBrains Mono with tabular numerals. Words stay in Barlow.",
+        "body": "Any figure the user might compare or scan (a count, rating, rank, weight, slot, time, key or file name) is set in JetBrains Mono with tabular numerals. Words stay in Barlow.",
         "section": "typography"
       },
       {
         "name": "The Caption Not Kicker Rule",
-        "body": "Condensed caps labels name the cell or view they sit in, the way lettering names a field on a title block. They never float above a heading as a decorative eyebrow.",
+        "body": "Condensed caps labels name the cell, column or view they sit in, the way lettering names a field on a title block. They never float above a heading as a decorative eyebrow.",
         "section": "typography"
       },
       {
@@ -597,22 +641,25 @@
       }
     ],
     "dos": [
-      "Do draw every new screen as a sheet in the same set: the zoned frame, content in the drawing area, notes in the lower-left, and a closed ruled title block in the lower-right carrying TITLE and FILE.",
-      "Do mark zones per ASME Y14.1: numbers right to left on the top and bottom, letters bottom to top on both sides, and a zone count that follows sheet width.",
+      "Do draw every new screen as a sheet in the same set: the zoned frame, content in the drawing area, and a closed ruled title block in the lower-right carrying TITLE and FILE. View sheets put notes in the lower-left; parts-list sheets put their keys in the title block.",
+      "Do mark zones per ASME Y14.1: numbers right to left on the top and bottom, letters bottom to top on both sides, and an even zone count that follows sheet width (4, 6 or 8).",
       "Do keep line weights to the scale: 2px frame, 1px cells, `line` or `hair` for construction and row rules.",
-      "Do set every number, key, slot and file name in JetBrains Mono with tabular figures.",
-      "Do pair every colour signal with a shape, pattern, position or words: solid A, hatched B, bar count for strength, and an icon plus text for warnings.",
-      "Do keep markup blue for the live mark, focus and selection only.",
+      "Do set every number, key, slot, rank and file name in JetBrains Mono with tabular figures.",
+      "Do pair every colour signal with a shape, pattern, position or words: solid A, hatched B, bar count for strength, a bold name for selection, a tag for retired or unslotted rows, and an icon plus text for warnings.",
+      "Do keep markup blue for the live mark, the selected row, focus and text selection only.",
+      "Do show lists as parts lists that fold into columns and continuation sheets, snapped to the frame, with the sheet number in the title block's bottom-right cell.",
+      "Do put a selected row's actions, forms and detail in the row callout popover, and make clicking the selected row again equal Esc.",
       "Do keep motion to one discrete tick per action (140–260ms, `cubic-bezier(0.16, 1, 0.3, 1)`), with none under `prefers-reduced-motion`.",
       "Do self-host Barlow, Barlow Condensed and JetBrains Mono in the real app."
     ],
     "donts": [
-      "Don't divide views, scales or notes with rules, and don't draw a centre line. Space and alignment separate them, and the title block is the only closed ruled region in the drawing area.",
-      "Don't use shadows for elevation, rounded cards, pill buttons or raised keycaps. Controls are ruled cells.",
-      "Don't round anything except slot-identifier balloons.",
+      "Don't divide views, scales or notes with rules, and don't draw a centre line. Space and alignment separate them on view sheets.",
+      "Don't use shadows for elevation, rounded cards, pill buttons, modal dialogs or raised keycaps. Controls are ruled cells, and the row callout popover is set off by its 2px rule, not a shadow.",
+      "Don't round anything except slot-identifier balloons and the callout's leader dot.",
+      "Don't refold a parts list when a row is selected, and don't cover the find-number column; the callout is a popover beside it, tied to the row by a leader.",
       "Don't use markup blue or warning orange decoratively, and don't use orange without an icon and words.",
       "Don't convey side, state, category or strength by colour alone, and never set red against green.",
-      "Don't put condensed caps labels above headings as eyebrows. A label names the cell or view it belongs to.",
+      "Don't put condensed caps labels above headings as eyebrows. A label names the cell, column or view it belongs to.",
       "Don't present ratings as absolute. Readings carry units and ± tolerance."
     ]
   }
