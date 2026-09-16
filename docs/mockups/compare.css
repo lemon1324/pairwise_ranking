@@ -544,10 +544,10 @@
 
 /* ---------- Notes and title block ---------- */
 
-/* Sheet notes float free in the lower left, top-aligned with the title block. */
+/* Sheet notes float free in the lower-left corner, bottom-aligned with the title block. */
 .notes {
-  padding: var(--s-3) var(--s-5) var(--s-5);
-  align-self: start;
+  padding: var(--s-3) var(--s-5) var(--s-4);
+  align-self: end;
 }
 
 .notes ol {
