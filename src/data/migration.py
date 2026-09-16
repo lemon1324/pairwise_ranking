@@ -3,7 +3,7 @@
 from datetime import datetime
 from pathlib import Path
 
-from src.data.storage import Storage
+from src.data.legacy_storage import LegacyCsvStorage
 from src.data.project_storage import ProjectStorage
 from src.models.project import Project
 
@@ -90,8 +90,8 @@ class StorageMigration:
         if not data_dir.exists():
             raise FileNotFoundError(f"Data directory not found: {data_dir}")
 
-        # Load data using the old Storage class
-        storage = Storage(data_dir)
+        # Load data using the legacy CSV loader
+        storage = LegacyCsvStorage(data_dir)
         items = storage.load_items()
         votes = storage.load_votes()
         settings = storage.load_settings()

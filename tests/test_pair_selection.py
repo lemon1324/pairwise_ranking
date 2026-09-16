@@ -1,11 +1,12 @@
 """Unit tests for the PairSelector class."""
 
+import random
 import unittest
 from datetime import datetime, timedelta
 
 from src.models.item import Item
 from src.models.vote import Vote
-from src.models.ranking import PairSelector, BradleyTerryModel, RankingResult
+from src.models.ranking import PairSelector, BradleyTerryModel
 from src.models.settings import Settings
 
 
@@ -392,6 +393,53 @@ class TestPairSelectorCategories(unittest.TestCase):
 
         self.assertIsNotNone(result)
         self.assertEqual({result[0].id, result[1].id}, {"a", "b"})
+
+
+class TestPairSelectorRng(unittest.TestCase):
+    """Tests for the injectable random source."""
+
+    def _mixed_category_items(self) -> list[Item]:
+        """Two categories with three items each, so both filters are non-empty."""
+        return [
+            Item(name="Linear 1", id="l1", category="Linear"),
+            Item(name="Linear 2", id="l2", category="Linear"),
+            Item(name="Linear 3", id="l3", category="Linear"),
+            Item(name="Tactile 1", id="t1", category="Tactile"),
+            Item(name="Tactile 2", id="t2", category="Tactile"),
+            Item(name="Tactile 3", id="t3", category="Tactile"),
+        ]
+
+    def test_seeded_selectors_pick_identical_pairs(self):
+        """Two selectors seeded identically produce the same sequence of pairs."""
+        items = self._mixed_category_items()
+        votes = [
+            Vote(winner_id="l1", loser_id="l2", weight=2.0),
+            Vote(winner_id="t1", loser_id="t2", weight=2.0),
+            Vote(winner_id="l1", loser_id="t1", weight=2.0),
+        ]
+        settings = Settings(cross_category_rate=0.5)
+
+        def pair_sequence() -> list[tuple[str, str]]:
+            selector = PairSelector(items, votes, settings, rng=random.Random(42))
+            sequence = []
+            for _ in range(20):
+                result = selector.select_pair()
+                self.assertIsNotNone(result)
+                sequence.append((result[0].id, result[1].id))
+            return sequence
+
+        first = pair_sequence()
+        second = pair_sequence()
+
+        self.assertEqual(first, second)
+
+        # The seeded stream must exercise both branches, otherwise the test
+        # would pass even if the rate were ignored.
+        category_of = {item.id: item.category for item in items}
+        distinct_categories = {
+            len({category_of[a], category_of[b]}) for a, b in first
+        }
+        self.assertEqual(distinct_categories, {1, 2})
 
 
 if __name__ == "__main__":

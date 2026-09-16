@@ -1,8 +1,9 @@
 """Bradley-Terry ranking model and pair selection algorithm."""
 
+from collections import deque
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional
+from typing import Callable, Optional
 import random
 import numpy as np
 
@@ -142,15 +143,8 @@ class BradleyTerryModel:
             np.ndarray: Regularized win matrix.
         """
         n = self.n_items
-        regularized = self._win_matrix.copy()
-
-        # Add epsilon to all pairs (except diagonal)
-        for i in range(n):
-            for j in range(n):
-                if i != j:
-                    regularized[i, j] += self.epsilon
-
-        return regularized
+        # Add epsilon to all pairs (except the diagonal)
+        return self._win_matrix + self.epsilon * (1.0 - np.eye(n))
 
     def compute_rankings(self) -> list[RankingResult]:
         """
@@ -178,26 +172,27 @@ class BradleyTerryModel:
         # Apply regularization
         W = self._apply_regularization()
 
+        # Pair comparison totals n_ij = W[i, j] + W[j, i], diagonal excluded
+        N = W + W.T
+        np.fill_diagonal(N, 0.0)
+
+        # Total weighted wins per item (diagonal excluded)
+        wins = W.sum(axis=1) - np.diagonal(W)
+
         # Initialize strengths to 1
         pi = np.ones(n, dtype=np.float64)
 
-        # MM algorithm iteration
+        # MM algorithm iteration (simultaneous update of all strengths)
         for _ in range(self.max_iterations):
-            pi_old = pi.copy()
+            pi_old = pi
 
-            for i in range(n):
-                # Total weighted wins for item i
-                w_i = np.sum(W[i, :]) - W[i, i]
+            # Denominator_i = sum over j != i of n_ij / (pi_i + pi_j)
+            denom = (N / (pi_old[:, None] + pi_old[None, :])).sum(axis=1)
 
-                # Denominator: sum over j != i of n_ij / (pi_i + pi_j)
-                denom = 0.0
-                for j in range(n):
-                    if j != i:
-                        n_ij = W[i, j] + W[j, i]
-                        denom += n_ij / (pi[i] + pi[j])
-
-                if denom > 0:
-                    pi[i] = w_i / denom
+            updated = np.divide(
+                wins, denom, out=np.zeros_like(pi_old), where=denom > 0
+            )
+            pi = np.where(denom > 0, updated, pi_old)
 
             # Normalize to geometric mean = 1
             log_mean = np.mean(np.log(pi + 1e-300))  # Avoid log(0)
@@ -290,24 +285,18 @@ class BradleyTerryModel:
         Returns:
             np.ndarray: Fisher Information matrix (n x n).
         """
-        n = self.n_items
         W = self._apply_regularization()
-        I = np.zeros((n, n), dtype=np.float64)
 
-        for i in range(n):
-            for j in range(n):
-                if i == j:
-                    # Diagonal: sum over all k != i
-                    for k in range(n):
-                        if k != i:
-                            n_ik = W[i, k] + W[k, i]
-                            pq = pi[i] * pi[k] / (pi[i] + pi[k]) ** 2
-                            I[i, i] += n_ik * pq
-                else:
-                    # Off-diagonal
-                    n_ij = W[i, j] + W[j, i]
-                    pq = pi[i] * pi[j] / (pi[i] + pi[j]) ** 2
-                    I[i, j] = -n_ij * pq
+        # Pair comparison totals with the diagonal excluded
+        N = W + W.T
+        np.fill_diagonal(N, 0.0)
+
+        # pq_ij = p_ij * (1 - p_ij) = pi_i * pi_j / (pi_i + pi_j)^2
+        pq = np.outer(pi, pi) / (pi[:, None] + pi[None, :]) ** 2
+
+        weighted = N * pq
+        I = -weighted
+        np.fill_diagonal(I, weighted.sum(axis=1))
 
         return I
 
@@ -324,10 +313,6 @@ class BradleyTerryModel:
         Returns:
             np.ndarray: Array of standard errors for each item.
         """
-        n = self.n_items
-        if n < 2:
-            return np.zeros(n, dtype=np.float64)
-
         I = self._compute_fisher_information(pi)
 
         # Use pseudo-inverse since Fisher Information is rank n-1 (normalization constraint)
@@ -385,6 +370,7 @@ class PairSelector:
         items: list[Item],
         votes: list[Vote],
         settings: Settings,
+        rng: Optional[random.Random] = None,
     ):
         """
         Initialize the pair selector.
@@ -393,10 +379,13 @@ class PairSelector:
             items: List of all items.
             votes: List of all votes.
             settings: Application settings with selection weights.
+            rng: Random source used for the cross-category draw. Defaults to a
+                fresh ``random.Random``; pass a seeded instance for determinism.
         """
         self.items = list(items)
         self.votes = list(votes)
         self.settings = settings
+        self._rng = rng if rng is not None else random.Random()
 
         # Build item ID to index mapping
         self._id_to_idx = {item.id: i for i, item in enumerate(self.items)}
@@ -417,6 +406,9 @@ class PairSelector:
         # Total comparisons per item
         self._item_comparison_count = [0] * n
 
+        # Adjacency list of the comparison graph (indices of compared items)
+        self._adjacency: list[set[int]] = [set() for _ in range(n)]
+
         for vote in self.votes:
             winner_idx = self._id_to_idx.get(vote.winner_id)
             loser_idx = self._id_to_idx.get(vote.loser_id)
@@ -433,6 +425,10 @@ class PairSelector:
             if winner_idx is None or loser_idx is None:
                 continue
 
+            # Record the comparison edge
+            self._adjacency[winner_idx].add(loser_idx)
+            self._adjacency[loser_idx].add(winner_idx)
+
             pair = vote.get_pair_unordered()
 
             # Increment pair count
@@ -447,50 +443,66 @@ class PairSelector:
         """
         Find connected components in the comparison graph.
 
+        Uses an iterative breadth-first search over the adjacency list built in
+        :meth:`_build_vote_structures`.
+
         Returns:
             list[set[int]]: List of sets, each containing item indices in a component.
         """
         n = len(self.items)
         visited = [False] * n
-        components = []
+        components: list[set[int]] = []
 
-        def dfs(node: int, component: set[int]):
-            visited[node] = True
-            component.add(node)
+        for start in range(n):
+            if visited[start]:
+                continue
 
-            # Find neighbors (items that have been compared with this one)
-            for vote in self.votes:
-                pair = vote.get_pair_unordered()
-                item_ids = list(pair)
+            visited[start] = True
+            component = {start}
+            queue = deque([start])
 
-                if len(item_ids) != 2:
-                    continue
+            while queue:
+                node = queue.popleft()
+                for neighbor in self._adjacency[node]:
+                    if not visited[neighbor]:
+                        visited[neighbor] = True
+                        component.add(neighbor)
+                        queue.append(neighbor)
 
-                idx0 = self._id_to_idx.get(item_ids[0])
-                idx1 = self._id_to_idx.get(item_ids[1])
-
-                if idx0 is None or idx1 is None:
-                    continue
-
-                if idx0 == node and not visited[idx1]:
-                    dfs(idx1, component)
-                elif idx1 == node and not visited[idx0]:
-                    dfs(idx0, component)
-
-        for i in range(n):
-            if not visited[i]:
-                component: set[int] = set()
-                dfs(i, component)
-                components.append(component)
+            components.append(component)
 
         return components
+
+    def _candidate_pairs(
+        self,
+        predicate: Optional[Callable[[int, int], bool]] = None,
+    ) -> list[tuple[int, int]]:
+        """
+        Build the list of candidate index pairs.
+
+        Args:
+            predicate: Optional filter receiving the two indices. When None,
+                every unordered pair is returned.
+
+        Returns:
+            list[tuple[int, int]]: Candidate pairs as (i, j) with i < j.
+        """
+        n = len(self.items)
+        return [
+            (i, j)
+            for i in range(n)
+            for j in range(i + 1, n)
+            if predicate is None or predicate(i, j)
+        ]
 
     def _score_pair(
         self,
         idx_a: int,
         idx_b: int,
-        rankings: Optional[list[RankingResult]],
-        components: list[set[int]],
+        se_by_id: dict[str, float],
+        rank_by_id: dict[str, int],
+        n_ranked: int,
+        component_index: list[int],
         now: datetime,
     ) -> float:
         """
@@ -499,8 +511,10 @@ class PairSelector:
         Args:
             idx_a: Index of first item.
             idx_b: Index of second item.
-            rankings: Current ranking results (if available).
-            components: Connected components in comparison graph.
+            se_by_id: Log-strength standard error per item id (empty if no rankings).
+            rank_by_id: Rank per item id (empty if no rankings).
+            n_ranked: Number of ranked items, used as the fallback rank.
+            component_index: Connected component number for each item index.
             now: Current time for freshness calculation.
 
         Returns:
@@ -514,24 +528,16 @@ class PairSelector:
 
         # 1. Uncertainty score: prefer pairs with high estimation uncertainty
         # Uses sum of standard errors from Bradley-Terry Fisher Information
-        if rankings and self.settings.weight_uncertainty > 0:
-            se_a = next((r.log_strength_se for r in rankings if r.item.id == item_a.id), 1.0)
-            se_b = next((r.log_strength_se for r in rankings if r.item.id == item_b.id), 1.0)
+        if se_by_id and self.settings.weight_uncertainty > 0:
+            se_a = se_by_id.get(item_a.id, 1.0)
+            se_b = se_by_id.get(item_b.id, 1.0)
             # Higher combined SE = higher uncertainty = higher priority
             uncertainty_score = se_a + se_b
             score += self.settings.weight_uncertainty * uncertainty_score
 
         # 2. Connectivity score: prefer pairs that connect different components
         if self.settings.weight_connectivity > 0:
-            component_a = None
-            component_b = None
-            for comp in components:
-                if idx_a in comp:
-                    component_a = comp
-                if idx_b in comp:
-                    component_b = comp
-
-            if component_a is not None and component_b is not None and component_a != component_b:
+            if component_index[idx_a] != component_index[idx_b]:
                 # This pair would connect two components - high priority
                 score += self.settings.weight_connectivity * 10.0
 
@@ -561,11 +567,11 @@ class PairSelector:
                 score += self.settings.weight_uncompared * 1.5
 
         # 5. Top-tier focus: prefer comparisons involving top items
-        if self.settings.top_tier_mode and rankings:
+        if self.settings.top_tier_mode and rank_by_id:
             top_n = self.settings.top_tier_count
 
-            rank_a = next((r.rank for r in rankings if r.item.id == item_a.id), len(rankings))
-            rank_b = next((r.rank for r in rankings if r.item.id == item_b.id), len(rankings))
+            rank_a = rank_by_id.get(item_a.id, n_ranked)
+            rank_b = rank_by_id.get(item_b.id, n_ranked)
 
             is_top_a = rank_a <= top_n
             is_top_b = rank_b <= top_n
@@ -601,49 +607,58 @@ class PairSelector:
         if n < 2:
             return None
 
-        # Find connected components
+        # Find connected components and map each item index to its component
         components = self._find_connected_components()
+        component_index = [0] * n
+        for comp_number, component in enumerate(components):
+            for idx in component:
+                component_index[idx] = comp_number
 
         now = datetime.now()
+
+        # Look up ranking-derived values once instead of scanning per pair
+        se_by_id: dict[str, float] = {}
+        rank_by_id: dict[str, int] = {}
+        if rankings:
+            se_by_id = {r.item.id: r.log_strength_se for r in rankings}
+            rank_by_id = {r.item.id: r.rank for r in rankings}
+        n_ranked = len(rankings) if rankings else 0
 
         # Determine whether to do a cross-category or within-category comparison.
         # Draw a random number; if below cross_category_rate, attempt cross-category.
         cross_category_rate = self.settings.cross_category_rate
-        do_cross = random.random() < cross_category_rate
+        do_cross = self._rng.random() < cross_category_rate
 
         # Build candidate list filtered by category intent, falling back to all pairs
         # if the filtered set would be empty (e.g. only one category exists).
         categories = [item.category for item in self.items]
         unique_categories = set(categories)
 
-        if do_cross and len(unique_categories) > 1:
-            candidate_pairs = [
-                (i, j)
-                for i in range(n)
-                for j in range(i + 1, n)
-                if categories[i] != categories[j]
-            ]
-        elif not do_cross and len(unique_categories) > 1:
-            candidate_pairs = [
-                (i, j)
-                for i in range(n)
-                for j in range(i + 1, n)
-                if categories[i] == categories[j]
-            ]
+        if len(unique_categories) > 1:
+            if do_cross:
+                candidate_pairs = self._candidate_pairs(
+                    lambda i, j: categories[i] != categories[j]
+                )
+            else:
+                candidate_pairs = self._candidate_pairs(
+                    lambda i, j: categories[i] == categories[j]
+                )
         else:
-            # Only one category, or rate is 0/1 with no mixed pairs available
-            candidate_pairs = [(i, j) for i in range(n) for j in range(i + 1, n)]
+            # Only one category, so the filter would be a no-op
+            candidate_pairs = self._candidate_pairs()
 
         # Fall back to all pairs if the filtered set is empty
         if not candidate_pairs:
-            candidate_pairs = [(i, j) for i in range(n) for j in range(i + 1, n)]
+            candidate_pairs = self._candidate_pairs()
 
         # Score all candidate pairs
         best_pair: Optional[tuple[int, int]] = None
         best_score = float('-inf')
 
         for i, j in candidate_pairs:
-            pair_score = self._score_pair(i, j, rankings, components, now)
+            pair_score = self._score_pair(
+                i, j, se_by_id, rank_by_id, n_ranked, component_index, now
+            )
 
             if pair_score > best_score:
                 best_score = pair_score
