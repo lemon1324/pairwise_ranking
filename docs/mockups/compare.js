@@ -44,6 +44,7 @@
   });
 
   let s = initial();
+  let holdMark = false;
   let mode = "normal";
 
   const blinded = () => mode === "blinded";
@@ -84,21 +85,24 @@
   }
 
   function renderFigures() {
+    const readings = s.votes && mode !== "empty";
     setText("votes", String(s.votes));
     $("session").innerHTML = `${s.session} this<br>session`;
-    setText("settled", s.votes ? `${s.settled}/41` : "—");
-    setText("tolerance", s.votes ? `±${s.tolerance}` : "—");
+    setText("settled", readings ? `${s.settled}/41` : "—");
+    setText("tolerance", readings ? `±${s.tolerance}` : "—");
     setText("pairs", `${s.pairsCompared} of 861`);
   }
 
   function renderLog(newRev) {
     const rows = $("rev-rows");
     rows.innerHTML = "";
-    const shown = s.log.slice(-2);
+    const shown = mode === "empty" ? [] : s.log.slice(-2);
     if (!shown.length) {
       const li = document.createElement("li");
       li.className = "rev-empty";
-      li.textContent = "No votes yet. The first vote you record appears here.";
+      li.textContent = mode === "empty"
+        ? "No pair to compare, so there is nothing to record or undo."
+        : "No votes yet. The first vote you record appears here.";
       rows.append(li);
     }
     shown.forEach((entry, i) => {
@@ -117,13 +121,15 @@
         `</span><span class="rev-time">${entry.time}</span>`;
       rows.append(li);
     });
-    $("undo").disabled = !s.log.some((e) => !e.undone) || mode === "empty";
+    const canUndo = s.log.some((e) => !e.undone) && mode !== "empty";
+    $("undo").disabled = !canUndo;
+    $("undo-text").textContent = canUndo ? "Undo" : "Nothing to undo";
   }
 
   function mark(station) {
     stations.forEach((el) => el.classList.remove("is-marked"));
     station.classList.add("is-marked");
-    setTimeout(() => station.classList.remove("is-marked"), 420);
+    if (!holdMark) setTimeout(() => station.classList.remove("is-marked"), 420);
   }
 
   function vote(station) {
@@ -254,4 +260,8 @@
   const picker = document.querySelector(`input[name="state"][value="${startState}"]`);
   if (picker) picker.checked = true;
   setMode(picker ? startState : "normal");
+  // ?vote=1..7 presses a station on load; ?hold keeps the mark lit (review captures only).
+  holdMark = params.has("hold");
+  const startVote = Number(params.get("vote"));
+  if (startVote >= 1 && startVote <= 7) setTimeout(() => vote(stations[startVote - 1]), 50);
 })();
