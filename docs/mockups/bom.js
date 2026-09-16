@@ -164,27 +164,39 @@
       callout.innerHTML = html;
       o.field.append(callout);
 
-      // The callout spans its whole column, so it never half-covers a number, and sits a
-      // leader's length off the row; the leader drops from the row's find-number cell.
+      // The callout spans its whole column and snaps to row rules on both edges: its near edge
+      // sits on the selected row's rule, and its height rounds up to whole rows, so no row is
+      // ever cut in half. A dot on its edge marks the selected row's find number.
       const fieldBox = o.field.getBoundingClientRect();
       const rowBox = tr.getBoundingClientRect();
       const colEl = tr.closest(".bom-col");
       const colBox = colEl.getBoundingClientRect();
       const findBox = tr.cells[0].getBoundingClientRect();
-      const gap = 0.625 * rem();
       callout.style.left = `${colBox.left - fieldBox.left}px`;
       callout.style.width = `${colBox.width}px`;
       callout.style.setProperty("--leader-x", `${findBox.left + findBox.width / 2 - colBox.left}px`);
-      callout.style.setProperty("--leader-len", `${gap}px`);
 
-      const below = rowBox.bottom - fieldBox.top + gap;
+      const colRows = [...colEl.querySelectorAll("tr[data-id]")].map((r) => r.getBoundingClientRect());
+      const headBottom = colEl.querySelector("thead").getBoundingClientRect().bottom;
+      const rowTop = rowBox.top - fieldBox.top;
+      const rowBottom = rowBox.bottom - fieldBox.top;
       const bottomLimit = colEl.classList.contains("is-last") ? limits.lastColBottom : limits.bottom;
       const h = callout.offsetHeight;
-      if (below + h > bottomLimit && rowBox.top - fieldBox.top - gap - h >= 0) {
+
+      // Below: grow to the first row bottom that fits the content.
+      const belowEdge = colRows.map((b) => b.bottom - fieldBox.top).find((y) => y >= rowBottom + h - 0.5);
+      const belowHeight = (belowEdge ?? rowBottom + h) - rowBottom;
+      // Above: grow up to the last row top (or the header's bottom rule) that fits the content.
+      const aboveEdges = [headBottom - fieldBox.top, ...colRows.map((b) => b.top - fieldBox.top)];
+      const aboveEdge = aboveEdges.filter((y) => y <= rowTop - h + 0.5).pop();
+
+      if (rowBottom + belowHeight > bottomLimit && aboveEdge != null) {
         callout.classList.add("is-above");
-        callout.style.top = `${rowBox.top - fieldBox.top - gap - h}px`;
+        callout.style.top = `${aboveEdge}px`;
+        callout.style.height = `${rowTop - aboveEdge}px`;
       } else {
-        callout.style.top = `${below}px`;
+        callout.style.top = `${rowBottom}px`;
+        callout.style.height = `${belowHeight}px`;
       }
       // Phones scroll the long sheet; keep the callout clear of the bottom tab bar.
       if (PHONE.matches) callout.scrollIntoView({ block: "nearest" });
