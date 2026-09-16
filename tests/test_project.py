@@ -4,7 +4,13 @@ import unittest
 from datetime import datetime
 from pathlib import Path
 
-from src.models.project import CURRENT_FORMAT_VERSION, Project
+from src.models.project import (
+    CURRENT_FORMAT_VERSION,
+    Project,
+    active_identifiers,
+    free_slots,
+    identifier_in_use,
+)
 from src.models.item import Item
 from src.models.vote import Vote
 from src.models.ranking import PairSelector
@@ -282,10 +288,6 @@ class TestProjectItemLifecycle(unittest.TestCase):
         """Test that active_items returns only active items."""
         self.assertEqual(self.project.active_items(), [self.active])
 
-    def test_retired_items(self):
-        """Test that retired_items returns only retired items."""
-        self.assertEqual(self.project.retired_items(), [self.retired])
-
     def test_active_identifiers(self):
         """Test that active_identifiers only reports active, non-empty ids."""
         self.assertEqual(self.project.active_identifiers(), {"1"})
@@ -321,6 +323,120 @@ class TestProjectItemLifecycle(unittest.TestCase):
         )
         self.assertEqual(selector.items, [self.active])
         self.assertIsNone(selector.select_pair())
+
+
+class TestProjectFromDictValidation(unittest.TestCase):
+    """Test cases for the shape validation done by Project.from_dict."""
+
+    def assert_rejects(self, data: dict, key: str):
+        """Assert that from_dict rejects data with a message naming a key."""
+        with self.assertRaises(ValueError) as ctx:
+            Project.from_dict(data)
+        self.assertIn(key, str(ctx.exception))
+
+    def test_items_must_be_a_list_of_objects(self):
+        """Test that a non-object entry in 'items' raises ValueError."""
+        self.assert_rejects({"name": "x", "items": [1]}, "items")
+
+    def test_items_must_not_be_a_scalar(self):
+        """Test that a scalar 'items' value raises ValueError."""
+        self.assert_rejects({"name": "x", "items": "nope"}, "items")
+
+    def test_votes_must_be_a_list_of_objects(self):
+        """Test that a non-object entry in 'votes' raises ValueError."""
+        self.assert_rejects({"name": "x", "votes": [1]}, "votes")
+
+    def test_settings_must_be_an_object(self):
+        """Test that a non-object 'settings' value raises ValueError."""
+        self.assert_rejects({"name": "x", "settings": "x"}, "settings")
+
+    def test_slots_must_be_a_list(self):
+        """Test that a string 'slots' value raises ValueError."""
+        self.assert_rejects({"name": "x", "slots": "abc"}, "slots")
+
+    def test_slots_must_hold_strings(self):
+        """Test that a non-string slot entry raises ValueError."""
+        self.assert_rejects({"name": "x", "slots": [1, 2]}, "slots")
+
+    def test_name_must_be_a_non_empty_string(self):
+        """Test that an empty or non-string name raises ValueError."""
+        self.assert_rejects({"name": ""}, "name")
+        self.assert_rejects({"name": "   "}, "name")
+        self.assert_rejects({"name": 5}, "name")
+
+    def test_null_optional_keys_are_treated_as_absent(self):
+        """Test that explicit nulls fall back to the empty defaults."""
+        project = Project.from_dict(
+            {"name": "x", "items": None, "votes": None, "settings": None, "slots": None}
+        )
+
+        self.assertEqual(project.items, [])
+        self.assertEqual(project.votes, [])
+        self.assertEqual(project.slots, [])
+        self.assertEqual(project.settings, Settings())
+
+
+class TestSlotModuleFunctions(unittest.TestCase):
+    """Test cases for the module-level slot helpers shared with the UI."""
+
+    def setUp(self):
+        """Build a mixed list of active and retired items."""
+        self.active = Item(name="Active", identifier="1", id="active-id")
+        self.other = Item(name="Other", identifier="3", id="other-id")
+        self.blank = Item(name="Blank", id="blank-id")
+        self.retired = Item(name="Retired", identifier="2", id="retired-id")
+        self.retired.retire()
+        self.items = [self.active, self.other, self.blank, self.retired]
+
+    def test_active_identifiers_skips_retired_and_blank(self):
+        """Test that only non-empty identifiers of active items are reported."""
+        self.assertEqual(active_identifiers(self.items), {"1", "3"})
+
+    def test_active_identifiers_of_empty_list(self):
+        """Test that an empty item list yields no identifiers."""
+        self.assertEqual(active_identifiers([]), set())
+
+    def test_identifier_in_use_true(self):
+        """Test that an identifier held by an active item is in use."""
+        self.assertTrue(identifier_in_use(self.items, "1"))
+
+    def test_identifier_in_use_strips_and_ignores_empty(self):
+        """Test that the checked identifier is stripped and blanks are free."""
+        self.assertTrue(identifier_in_use(self.items, "  1  "))
+        self.assertFalse(identifier_in_use(self.items, ""))
+        self.assertFalse(identifier_in_use(self.items, "   "))
+
+    def test_identifier_in_use_excludes_item(self):
+        """Test that an item does not block its own identifier."""
+        self.assertFalse(
+            identifier_in_use(self.items, "1", exclude_item_id="active-id")
+        )
+
+    def test_identifier_of_retired_item_is_free(self):
+        """Test that a retired item's old identifier is not in use."""
+        self.assertFalse(identifier_in_use(self.items, "2"))
+
+    def test_free_slots_excludes_taken(self):
+        """Test that slots held by active items are not free."""
+        self.assertEqual(free_slots(["1", "2", "3", "4"], self.items), ["2", "4"])
+
+    def test_free_slots_preserves_definition_order(self):
+        """Test that free slots come back in the order they were defined."""
+        self.assertEqual(free_slots(["4", "2"], self.items), ["4", "2"])
+
+    def test_free_slots_of_empty_slot_list(self):
+        """Test that a project without slots has no free slots."""
+        self.assertEqual(free_slots([], self.items), [])
+
+    def test_project_methods_delegate(self):
+        """Test that the Project methods agree with the module functions."""
+        project = Project(name="P", items=self.items, slots=["1", "2", "4"])
+
+        self.assertEqual(project.active_identifiers(), active_identifiers(self.items))
+        self.assertEqual(project.free_slots(), free_slots(project.slots, self.items))
+        self.assertEqual(
+            project.identifier_in_use("3"), identifier_in_use(self.items, "3")
+        )
 
 
 class TestProjectPopLastVote(unittest.TestCase):

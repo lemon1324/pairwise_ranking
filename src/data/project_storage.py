@@ -29,7 +29,13 @@ class ProjectStorage:
     MIGRATION_BACKUP_TEMPLATE = ".pairrank.v{version}.bak"
 
     @staticmethod
-    def save(project: Project, file_path: Path) -> None:
+    def save(
+        project: Project,
+        file_path: Path,
+        *,
+        touch_modified: bool = True,
+        backup: bool = True,
+    ) -> None:
         """
         Save a project to a .pairrank file.
 
@@ -42,6 +48,12 @@ class ProjectStorage:
         Args:
             project: The Project to save.
             file_path: Path to save the file to.
+            touch_modified: Whether to stamp the project as modified now. The
+                format migration in :meth:`load` passes False so that reading
+                an old file does not look like an edit.
+            backup: Whether to copy an existing target to ``.pairrank.bak``
+                first. The format migration passes False because it writes its
+                own ``.pairrank.v<old>.bak`` instead.
 
         Raises:
             ValueError: If file_path doesn't have .pairrank extension.
@@ -50,7 +62,8 @@ class ProjectStorage:
         if file_path.suffix != ProjectStorage.FILE_EXTENSION:
             raise ValueError(f"File must have {ProjectStorage.FILE_EXTENSION} extension")
 
-        project.modified = datetime.now()
+        if touch_modified:
+            project.modified = datetime.now()
         project.file_path = file_path
 
         # Ensure parent directory exists
@@ -63,7 +76,7 @@ class ProjectStorage:
                 f.flush()
                 os.fsync(f.fileno())
 
-            if file_path.exists():
+            if backup and file_path.exists():
                 backup_path = file_path.with_suffix(ProjectStorage.BACKUP_EXTENSION)
                 shutil.copy2(file_path, backup_path)
 
@@ -81,8 +94,12 @@ class ProjectStorage:
         that happens the original bytes are copied once to a
         ``.pairrank.v<old>.bak`` file beside the project (never overwriting an
         existing one) and the upgraded project is saved immediately, so the
-        migration runs only the first time the file is opened. Loading a file
-        that is already current writes nothing.
+        migration runs only the first time the file is opened. That re-save
+        keeps the file's original modified timestamp and writes no
+        ``.pairrank.bak``, so reading a file never looks like an edit. If the
+        backup or the re-save cannot be written the upgraded project is still
+        returned and a warning is printed. Loading a file that is already
+        current writes nothing.
 
         Args:
             file_path: Path to the .pairrank file.
@@ -112,18 +129,55 @@ class ProjectStorage:
         try:
             upgraded, started_version = upgrade(data)
             project = Project.from_dict(upgraded, file_path=file_path)
-        except (KeyError, TypeError) as e:
+        except ValueError:
+            # Already a clear message about what is wrong with the file.
+            raise
+        except Exception as e:
             raise ValueError(f"Invalid project file: {e}") from e
 
         if started_version < CURRENT_FORMAT_VERSION:
-            backup_path = file_path.with_suffix(
-                ProjectStorage.MIGRATION_BACKUP_TEMPLATE.format(version=started_version)
+            ProjectStorage._migrate_in_place(
+                project, file_path, original_bytes, started_version
             )
-            if not backup_path.exists():
-                backup_path.write_bytes(original_bytes)
-            ProjectStorage.save(project, file_path)
 
         return project
+
+    @staticmethod
+    def _migrate_in_place(
+        project: Project,
+        file_path: Path,
+        original_bytes: bytes,
+        started_version: int,
+    ) -> None:
+        """
+        Back up the original file and write the upgraded project over it.
+
+        A failure here is not fatal: the caller already holds a usable,
+        upgraded project in memory, so the migration is simply skipped (and
+        retried the next time the file is opened).
+
+        Args:
+            project: The upgraded project.
+            file_path: The project file that was read.
+            original_bytes: The exact bytes read from that file.
+            started_version: The format version the file was written in.
+        """
+        backup_path = file_path.with_suffix(
+            ProjectStorage.MIGRATION_BACKUP_TEMPLATE.format(version=started_version)
+        )
+        try:
+            if not backup_path.exists():
+                backup_path.write_bytes(original_bytes)
+            # The migration is not a user edit: keep the recorded modified
+            # timestamp and leave the regular .pairrank.bak alone.
+            ProjectStorage.save(
+                project, file_path, touch_modified=False, backup=False
+            )
+        except OSError as e:
+            print(
+                f"Warning: could not migrate {file_path} to format version "
+                f"{CURRENT_FORMAT_VERSION}: {e}"
+            )
 
     @staticmethod
     def create_new(name: str, file_path: Path) -> Project:
