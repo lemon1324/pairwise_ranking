@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
     QWidget,
     QVBoxLayout,
     QMessageBox,
+    QInputDialog,
 )
 from PyQt6.QtGui import QAction
 
@@ -95,6 +96,10 @@ class MainWindow(QMainWindow):
         open_action.setShortcut("Ctrl+O")
         open_action.triggered.connect(self._on_open_project)
         file_menu.addAction(open_action)
+
+        rename_action = QAction("&Rename Project...", self)
+        rename_action.triggered.connect(self._on_rename_project)
+        file_menu.addAction(rename_action)
 
         # Recent projects submenu
         self.recent_menu = file_menu.addMenu("Recent Projects")
@@ -452,6 +457,34 @@ class MainWindow(QMainWindow):
         file_path = ask_open_project_path(self, self.user_config)
         if file_path is not None:
             self._open_project_file(file_path)
+
+    def _on_rename_project(self) -> None:
+        """Handle File > Rename Project."""
+        new_name, ok = QInputDialog.getText(
+            self,
+            "Rename Project",
+            "Project name:",
+            text=self.project.name,
+        )
+        if not ok:
+            return
+
+        new_name = new_name.strip()
+        if not new_name or new_name == self.project.name:
+            return
+
+        # Only the name inside the project changes; the file keeps its path.
+        self.project.rename(new_name)
+        self._on_data_changed()
+        self._update_window_title()
+
+        if self.project.file_path:
+            self.user_config.add_recent_project(
+                self.project.name,
+                self.project.file_path,
+                self.project.modified,
+            )
+        self._refresh_recent_menu()
 
     def _on_save_as(self) -> None:
         """Handle File > Save As."""
