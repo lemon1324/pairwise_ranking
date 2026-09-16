@@ -1,7 +1,14 @@
 """Unit tests for the Item model."""
 
 import unittest
-from src.models.item import Item, DEFAULT_CATEGORY
+from datetime import datetime
+
+from src.models.item import (
+    DEFAULT_CATEGORY,
+    STATUS_ACTIVE,
+    STATUS_RETIRED,
+    Item,
+)
 
 
 class TestItem(unittest.TestCase):
@@ -226,6 +233,148 @@ class TestItem(unittest.TestCase):
         """Test that from_dict normalizes a blank category to the default."""
         item = Item.from_dict({"name": "x", "category": "   "})
         self.assertEqual(item.category, "Default")
+
+
+class TestItemLifecycle(unittest.TestCase):
+    """Test cases for the active/retired item lifecycle."""
+
+    def test_new_item_is_active(self):
+        """Test that a freshly created item is active with no retirement data."""
+        item = Item(name="Test")
+        self.assertEqual(item.status, STATUS_ACTIVE)
+        self.assertTrue(item.is_active())
+        self.assertIsNone(item.retired_at)
+        self.assertIsNone(item.replaced_by)
+
+    def test_invalid_status_raises_error(self):
+        """Test that an unknown status raises ValueError."""
+        with self.assertRaises(ValueError):
+            Item(name="Test", status="dormant")
+
+    def test_retire_sets_status_and_timestamp(self):
+        """Test that retire marks the item retired and records the time."""
+        item = Item(name="Test", identifier="A-1")
+        item.retire()
+
+        self.assertEqual(item.status, STATUS_RETIRED)
+        self.assertFalse(item.is_active())
+        self.assertIsInstance(item.retired_at, datetime)
+
+    def test_retire_clears_identifier(self):
+        """Test that retiring an item frees its identifier."""
+        item = Item(name="Test", identifier="A-1")
+        item.retire()
+
+        self.assertEqual(item.identifier, "")
+        self.assertFalse(item.has_identifier())
+
+    def test_retire_accepts_explicit_time(self):
+        """Test that retire records the timestamp it is given."""
+        when = datetime(2024, 5, 1, 9, 30, 0)
+        item = Item(name="Test")
+        item.retire(now=when)
+
+        self.assertEqual(item.retired_at, when)
+
+    def test_retire_records_replacement(self):
+        """Test that retire stores the id of the replacing item."""
+        item = Item(name="Test", identifier="A-1")
+        item.retire(replaced_by="successor-id")
+
+        self.assertEqual(item.replaced_by, "successor-id")
+
+    def test_reactivate_restores_active_state(self):
+        """Test that reactivate clears the retirement fields."""
+        item = Item(name="Test", identifier="A-1")
+        item.retire(replaced_by="successor-id")
+        item.reactivate()
+
+        self.assertEqual(item.status, STATUS_ACTIVE)
+        self.assertTrue(item.is_active())
+        self.assertIsNone(item.retired_at)
+        self.assertIsNone(item.replaced_by)
+        self.assertEqual(item.identifier, "")
+
+    def test_reactivate_with_identifier(self):
+        """Test that reactivate assigns the identifier it is given."""
+        item = Item(name="Test", identifier="A-1")
+        item.retire()
+        item.reactivate("B-2")
+
+        self.assertEqual(item.identifier, "B-2")
+
+    def test_reactivate_strips_identifier(self):
+        """Test that reactivate strips whitespace from the identifier."""
+        item = Item(name="Test")
+        item.retire()
+        item.reactivate("  B-2  ")
+
+        self.assertEqual(item.identifier, "B-2")
+
+    def test_to_dict_includes_lifecycle_fields(self):
+        """Test that to_dict writes status, retired_at and replaced_by."""
+        item = Item(name="Test", id="test-id")
+        result = item.to_dict()
+
+        self.assertEqual(result["status"], STATUS_ACTIVE)
+        self.assertIsNone(result["retired_at"])
+        self.assertIsNone(result["replaced_by"])
+
+    def test_to_dict_writes_retired_at_as_iso(self):
+        """Test that a retired item serializes retired_at as ISO text."""
+        item = Item(name="Test", id="test-id")
+        item.retire(now=datetime(2024, 5, 1, 9, 30, 0), replaced_by="next-id")
+        result = item.to_dict()
+
+        self.assertEqual(result["status"], STATUS_RETIRED)
+        self.assertEqual(result["retired_at"], "2024-05-01T09:30:00")
+        self.assertEqual(result["replaced_by"], "next-id")
+        self.assertEqual(result["identifier"], "")
+
+    def test_from_dict_without_status_is_active(self):
+        """Test that a dict without a status key yields an active item."""
+        item = Item.from_dict({"name": "Test", "identifier": "A-1"})
+
+        self.assertEqual(item.status, STATUS_ACTIVE)
+        self.assertTrue(item.is_active())
+        self.assertIsNone(item.retired_at)
+        self.assertIsNone(item.replaced_by)
+
+    def test_from_dict_parses_retired_at(self):
+        """Test that from_dict parses retired_at from ISO text."""
+        item = Item.from_dict({
+            "name": "Test",
+            "status": STATUS_RETIRED,
+            "retired_at": "2024-05-01T09:30:00",
+            "replaced_by": "next-id",
+        })
+
+        self.assertEqual(item.status, STATUS_RETIRED)
+        self.assertEqual(item.retired_at, datetime(2024, 5, 1, 9, 30, 0))
+        self.assertEqual(item.replaced_by, "next-id")
+
+    def test_from_dict_null_retired_at(self):
+        """Test that a null retired_at is read as None."""
+        item = Item.from_dict({"name": "Test", "status": STATUS_ACTIVE, "retired_at": None})
+        self.assertIsNone(item.retired_at)
+
+    def test_from_dict_invalid_status_raises_error(self):
+        """Test that from_dict rejects an unknown status."""
+        with self.assertRaises(ValueError):
+            Item.from_dict({"name": "Test", "status": "archived"})
+
+    def test_retired_item_roundtrip(self):
+        """Test that a retired item survives to_dict/from_dict unchanged."""
+        original = Item(name="Test", description="Desc", category="Linear", id="test-id")
+        original.retire(now=datetime(2024, 5, 1, 9, 30, 0), replaced_by="next-id")
+
+        restored = Item.from_dict(original.to_dict())
+
+        self.assertEqual(restored.status, original.status)
+        self.assertEqual(restored.retired_at, original.retired_at)
+        self.assertEqual(restored.replaced_by, original.replaced_by)
+        self.assertEqual(restored.identifier, "")
+        self.assertEqual(restored.category, "Linear")
 
 
 if __name__ == "__main__":

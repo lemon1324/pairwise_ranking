@@ -3,6 +3,19 @@
 from .item import Item
 from .vote import Vote
 from .settings import Settings
-from .ranking import BradleyTerryModel, PairSelector, RankingResult
+from .ranking import (
+    BradleyTerryModel,
+    PairSelector,
+    RankingResult,
+    assign_active_ranks,
+)
 
-__all__ = ["Item", "Vote", "Settings", "BradleyTerryModel", "PairSelector", "RankingResult"]
+__all__ = [
+    "Item",
+    "Vote",
+    "Settings",
+    "BradleyTerryModel",
+    "PairSelector",
+    "RankingResult",
+    "assign_active_ranks",
+]

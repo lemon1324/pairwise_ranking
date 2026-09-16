@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import src.data.project_storage as project_storage_module
+from src.data.format_version import CURRENT_FORMAT_VERSION, FORMAT_VERSION_KEY
 from src.data.project_storage import ProjectStorage
 from src.models.project import Project
 from src.models.item import Item
@@ -255,6 +256,149 @@ class TestProjectStorage(unittest.TestCase):
             ProjectStorage.load(self.test_file)
 
         self.assertIn("Invalid project file", str(ctx.exception))
+
+
+class TestProjectStorageMigration(unittest.TestCase):
+    """Test cases for the load-time format migration."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.temp_dir = tempfile.mkdtemp()
+        self.test_file = Path(self.temp_dir) / "test.pairrank"
+        self.v1_backup = Path(self.temp_dir) / "test.pairrank.v1.bak"
+
+    def tearDown(self):
+        """Clean up test files."""
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def _write_v1_file(self) -> bytes:
+        """Write a version 1 project file and return its exact bytes."""
+        data = {
+            "name": "Legacy Project",
+            "created": "2024-01-01T12:00:00",
+            "modified": "2024-02-01T12:00:00",
+            "items": [
+                {
+                    "id": "item-1",
+                    "name": "TTC Venus",
+                    "description": "Linear",
+                    "identifier": "6",
+                    "category": "Linear",
+                },
+                {
+                    "id": "item-2",
+                    "name": "Boba U4T",
+                    "description": "Tactile",
+                    "identifier": "7",
+                    "category": "Tactile",
+                },
+            ],
+            "votes": [
+                {
+                    "id": "vote-1",
+                    "winner_id": "item-1",
+                    "loser_id": "item-2",
+                    "weight": 2.0,
+                    "timestamp": "2024-01-10T10:00:00",
+                }
+            ],
+            "settings": {"weight_uncertainty": 1.5},
+        }
+        self.test_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        return self.test_file.read_bytes()
+
+    def test_load_v1_creates_backup_with_original_bytes(self):
+        """Test that loading a v1 file backs the original bytes up once."""
+        original = self._write_v1_file()
+
+        ProjectStorage.load(self.test_file)
+
+        self.assertTrue(self.v1_backup.exists())
+        self.assertEqual(self.v1_backup.read_bytes(), original)
+
+    def test_load_v1_rewrites_file_as_current_version(self):
+        """Test that loading a v1 file saves it back in the current format."""
+        self._write_v1_file()
+
+        ProjectStorage.load(self.test_file)
+
+        with open(self.test_file, encoding="utf-8") as f:
+            data = json.load(f)
+
+        self.assertEqual(data[FORMAT_VERSION_KEY], CURRENT_FORMAT_VERSION)
+        self.assertEqual(data["slots"], [])
+        for item in data["items"]:
+            self.assertEqual(item["status"], "active")
+            self.assertIsNone(item["retired_at"])
+            self.assertIsNone(item["replaced_by"])
+
+    def test_load_v1_yields_all_active_project(self):
+        """Test that real-shaped v1 data loads as an all-active project."""
+        self._write_v1_file()
+
+        project = ProjectStorage.load(self.test_file)
+
+        self.assertEqual(len(project.items), 2)
+        self.assertEqual(len(project.active_items()), 2)
+        self.assertEqual(project.retired_items(), [])
+        self.assertEqual(project.slots, [])
+        self.assertEqual(len(project.votes), 1)
+
+    def test_second_load_creates_no_second_backup(self):
+        """Test that reloading a migrated file does not back it up again."""
+        self._write_v1_file()
+        ProjectStorage.load(self.test_file)
+        backup_bytes = self.v1_backup.read_bytes()
+        migrated_bytes = self.test_file.read_bytes()
+
+        ProjectStorage.load(self.test_file)
+
+        self.assertEqual(self.v1_backup.read_bytes(), backup_bytes)
+        self.assertEqual(self.test_file.read_bytes(), migrated_bytes)
+
+    def test_load_current_version_writes_nothing(self):
+        """Test that loading an up-to-date file touches no files at all."""
+        project = Project(name="Current", items=[Item(name="A", id="a")])
+        ProjectStorage.save(project, self.test_file)
+        before = self.test_file.read_bytes()
+
+        loaded = ProjectStorage.load(self.test_file)
+
+        self.assertEqual(loaded.name, "Current")
+        self.assertEqual(self.test_file.read_bytes(), before)
+        self.assertEqual(
+            sorted(p.name for p in Path(self.temp_dir).iterdir()),
+            ["test.pairrank"],
+        )
+
+    def test_load_newer_version_raises_value_error(self):
+        """Test that a file from a newer application version is rejected."""
+        data = {"name": "Future", FORMAT_VERSION_KEY: CURRENT_FORMAT_VERSION + 1}
+        self.test_file.write_text(json.dumps(data), encoding="utf-8")
+
+        with self.assertRaises(ValueError) as ctx:
+            ProjectStorage.load(self.test_file)
+
+        self.assertIn("newer", str(ctx.exception))
+        self.assertFalse(self.v1_backup.exists())
+
+    def test_migration_preserves_retired_items_on_resave(self):
+        """Test that lifecycle data survives a save/load round trip."""
+        item = Item(name="Old", identifier="1", id="old-id")
+        item.retire(replaced_by="new-id")
+        project = Project(
+            name="Lifecycle",
+            items=[item, Item(name="New", identifier="1", id="new-id")],
+            slots=["1", "2"],
+        )
+        ProjectStorage.save(project, self.test_file)
+
+        loaded = ProjectStorage.load(self.test_file)
+
+        self.assertEqual(loaded.slots, ["1", "2"])
+        self.assertEqual([i.id for i in loaded.retired_items()], ["old-id"])
+        self.assertEqual(loaded.retired_items()[0].replaced_by, "new-id")
+        self.assertEqual(loaded.active_identifiers(), {"1"})
 
 
 if __name__ == "__main__":
