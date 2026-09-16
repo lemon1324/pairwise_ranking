@@ -95,10 +95,10 @@
           <tbody>${top
             .map((r) => `<tr><td>${esc(byId(r.id)?.name ?? "Deleted item")}</td><td class="n">${r.won}</td><td class="n">${r.lost}</td></tr>`)
             .join("")}</tbody>
-        </table>${more > 0 ? `<p class="record more">and ${more} more opponents</p>` : ""}`
+        </table>${more > 0 ? `<p class="record more">and ${more} more ${more === 1 ? "opponent" : "opponents"}</p>` : ""}`
       : `<p class="field-hint">No votes involve this item yet.</p>`;
     return `<div class="strip-body">
-      <p class="strip-title"><span class="label">Detail</span>${it.rank ? `#${it.rank} ` : ""}${esc(it.name)}</p>
+      <p class="strip-title">${it.rank ? `#${it.rank} ` : ""}${esc(it.name)}</p>
       <div class="strip-detail">
         <dl>
           ${figures}

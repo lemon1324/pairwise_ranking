@@ -277,23 +277,37 @@ html.bom-fixed .bom-sheet > .titleblock {
   animation: strip-in 160ms var(--ease-out);
 }
 
-/* Leader from the find number into the callout. */
+/* Leader: a short line from the selected row's find number to the callout's rule, ending in
+   a dot on the row like a balloon leader. bom.js sets its position and length. */
 .bom-callout::before {
   content: "";
   position: absolute;
-  top: -1px;
-  left: -0.75rem;
-  width: 0.75rem;
-  height: 1.25rem;
-  border-left: var(--w-cell) solid var(--ink);
-  border-bottom: var(--w-cell) solid var(--ink);
+  left: var(--leader-x, 1.75rem);
+  bottom: 100%;
+  width: 1px;
+  height: var(--leader-len, 0.625rem);
+  background: var(--ink);
+}
+
+.bom-callout::after {
+  content: "";
+  position: absolute;
+  left: calc(var(--leader-x, 1.75rem) - 2px);
+  bottom: calc(100% + var(--leader-len, 0.625rem) - 2px);
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--ink);
 }
 
 .bom-callout.is-above::before {
-  top: auto;
-  bottom: -1px;
-  border-bottom: 0;
-  border-top: var(--w-cell) solid var(--ink);
+  bottom: auto;
+  top: 100%;
+}
+
+.bom-callout.is-above::after {
+  bottom: auto;
+  top: calc(100% + var(--leader-len, 0.625rem) - 2px);
 }
 
 @keyframes strip-in {
@@ -792,6 +806,12 @@ textarea.input {
 /* ---------- Phone ---------- */
 
 @media (max-width: 40rem) {
+  /* Scrolled-to callouts clear the top bar and the sticky bottom tabs. */
+  html {
+    scroll-padding-top: 3.5rem;
+    scroll-padding-bottom: 4.5rem;
+  }
+
   .bom-field {
     padding: var(--s-3) var(--s-2) var(--s-3);
   }
