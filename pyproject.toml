@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pairwise-ranking"
-version = "0.1.0"
+version = "0.2.0"
 description = "A PyQt6 GUI application for pairwise comparison ranking using Bradley-Terry model"
 authors = ["lemon1324 <lemon1324@gmail.com>"]
 readme = "README.md"
