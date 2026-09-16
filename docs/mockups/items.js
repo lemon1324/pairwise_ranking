@@ -149,14 +149,14 @@
     const describedBy = (name) => (error && error.field === name ? ` aria-invalid="true" aria-describedby="err-${name}"` : "");
     let slotHint;
     if (!slots) slotHint = "No slot list: any identifier, unique among active items.";
-    else if (free.length) slotHint = `Free: <span class="num">${free.map(esc).join(", ")}</span>`;
+    else if (free.length) slotHint = `free: <span class="num">${free.map(esc).join(", ")}</span>`;
     else slotHint = "No free slots. Retire an item or extend the slot list in Settings.";
     const note =
       mode === "replace"
         ? `<p class="field-hint field-wide">Saving retires ${esc(it.name)} (its votes are kept) and adds this item in its slot.</p>`
         : "";
     return `<div class="strip-body">
-      <p class="strip-title"><span class="label">Form</span>${titles[mode]}</p>
+      <p class="strip-title">${titles[mode]}</p>
       <form class="strip-form" data-form="${mode}" novalidate>
         ${mode === "reactivate" ? "" : `<div class="${fieldCls("name")} field-wide">
           <label class="label" for="f-name">Name</label>
@@ -239,10 +239,13 @@
     } else {
       const used = usedSlots().size;
       const free = freeSlots();
-      const listed = free.length > 8 ? `${free.slice(0, 6).join(" ")}</span> and ${free.length - 6} more<span>` : free.join(" ");
+      const listed =
+        free.length > 8
+          ? `<span class="num">${free.slice(0, 6).join(", ")}</span> and ${free.length - 6} more`
+          : `<span class="num">${free.join(", ")}</span>`;
       $("tb-slots").innerHTML =
         `<span class="num">${used}/${slots.length}</span> used · ` +
-        (free.length ? `free <span class="num">${listed}</span>` : `<strong>none free</strong>`);
+        (free.length ? `free: ${listed}` : `<strong>none free</strong>`);
     }
     $("tb-counts").innerHTML =
       `<span class="num">${act.length}</span> active · <span class="num">${retired}</span> retired`;
@@ -347,8 +350,8 @@
         error = {
           field: "slot",
           html:
-            `<strong>Slot ${esc(v.slot)} is taken</strong> by ${esc(holder.name)}. ` +
-            (free.length ? `Free slots: <span class="num">${free.join(", ")}</span>.` : "No slots are free."),
+            `<strong>Slot ${esc(v.slot)} is taken</strong> by ${esc(holder.name)}; ` +
+            (free.length ? `free: <span class="num">${free.join(", ")}</span>.` : "no slots are free."),
         };
         render();
         return;
@@ -515,7 +518,7 @@
       const free = freeSlots(oilKing);
       error = {
         field: "slot",
-        html: `<strong>Slot 7 is taken</strong> by Cherry MX Black Clear-Top (Hyperglide). Free slots: <span class="num">${free.join(", ")}</span>.`,
+        html: `<strong>Slot 7 is taken</strong> by Cherry MX Black Clear-Top (Hyperglide); free: <span class="num">${free.join(", ")}</span>.`,
       };
     }
     if (state === "delete") mode = "delete";
@@ -542,4 +545,6 @@
   const picker = document.querySelector(`input[name="state"][value="${startState}"]`);
   if (picker) picker.checked = true;
   applyState(picker ? startState : "normal");
+  // ?scrollend scrolls a phone capture to the end of the long sheet (review captures only).
+  if (params.has("scrollend")) setTimeout(() => scrollTo(0, document.documentElement.scrollHeight), 400);
 })();
