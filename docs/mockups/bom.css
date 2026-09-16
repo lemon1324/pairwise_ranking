@@ -277,37 +277,22 @@ html.bom-fixed .bom-sheet > .titleblock {
   animation: strip-in 160ms var(--ease-out);
 }
 
-/* Leader: a short line from the selected row's find number to the callout's rule, ending in
-   a dot on the row like a balloon leader. bom.js sets its position and length. */
-.bom-callout::before {
-  content: "";
-  position: absolute;
-  left: var(--leader-x, 1.75rem);
-  bottom: 100%;
-  width: 1px;
-  height: var(--leader-len, 0.625rem);
-  background: var(--ink);
-}
-
+/* Leader dot: sits on the callout's edge under the selected row's find number, like the dot at
+   the end of a balloon leader. bom.js sets its position. */
 .bom-callout::after {
   content: "";
   position: absolute;
-  left: calc(var(--leader-x, 1.75rem) - 2px);
-  bottom: calc(100% + var(--leader-len, 0.625rem) - 2px);
-  width: 5px;
-  height: 5px;
+  left: calc(var(--leader-x, 1.75rem) - 3px);
+  top: -4px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: var(--ink);
 }
 
-.bom-callout.is-above::before {
-  bottom: auto;
-  top: 100%;
-}
-
 .bom-callout.is-above::after {
-  bottom: auto;
-  top: calc(100% + var(--leader-len, 0.625rem) - 2px);
+  top: auto;
+  bottom: -4px;
 }
 
 @keyframes strip-in {
