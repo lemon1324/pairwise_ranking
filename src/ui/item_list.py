@@ -1,5 +1,6 @@
 """Item list management widget."""
 
+from dataclasses import replace
 from typing import Optional
 
 from PyQt6.QtWidgets import (
@@ -24,11 +25,18 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import pyqtSignal, Qt
 from PyQt6.QtGui import QColor, QBrush
 
-from src.models.item import Item, DEFAULT_CATEGORY, STATUS_ACTIVE
+from src.models.item import Item, DEFAULT_CATEGORY
+from src.models.project import active_identifiers, free_slots
 
 
-# Colour used for retired rows and other de-emphasized text
+# Colour used for retired rows and other de-emphasized text. The stylesheet
+# form is derived from it so the module defines one grey, not two.
 GREY = QColor(128, 128, 128)
+GREY_TEXT = f"color: {GREY.name()};"
+
+# Highlight for an active item that still needs an identifier
+NO_IDENTIFIER_BG = QColor(255, 243, 224)  # Light orange
+NO_IDENTIFIER_FG = QColor(0, 0, 0)
 
 
 class ItemDialog(QDialog):
@@ -76,7 +84,10 @@ class ItemDialog(QDialog):
         """
         super().__init__(parent)
         self.item = item
-        self._existing_categories = existing_categories or [DEFAULT_CATEGORY]
+        # The default category is always offered, first and without duplicates.
+        self._categories = list(
+            dict.fromkeys([DEFAULT_CATEGORY] + list(existing_categories or []))
+        )
         self._taken_identifiers = set(taken_identifiers or set())
         self._free_slots = free_slots
         self._reactivate = reactivate
@@ -128,9 +139,7 @@ class ItemDialog(QDialog):
             "Category for this item. Items are compared within their own category by default.\n"
             "Type a new category name or select an existing one."
         )
-        # Populate with existing categories, ensuring the default is always present
-        categories = list(dict.fromkeys([DEFAULT_CATEGORY] + self._existing_categories))
-        self.category_edit.addItems(categories)
+        self.category_edit.addItems(self._categories)
         self.category_edit.setCurrentText(DEFAULT_CATEGORY)
         form.addRow("Category:", self.category_edit)
 
@@ -167,7 +176,9 @@ class ItemDialog(QDialog):
 
         if self._free_slots is None:
             widget = QLineEdit()
-            widget.setPlaceholderText("Enter identifier (optional)...")
+            widget.setPlaceholderText(
+                "Identifier (e.g. a slot or position label; optional)"
+            )
             widget.setToolTip(tooltip)
             return widget
 
@@ -249,25 +260,28 @@ class ItemDialog(QDialog):
             return Item(name=name, identifier=identifier, description=description,
                         category=category)
 
+        # Copy the original, retirement data included, then apply the edits.
+        updated = replace(
+            self.item, name=name, category=category, description=description
+        )
+
         if self._reactivate:
-            status, retired_at, replaced_by = STATUS_ACTIVE, None, None
-        else:
-            status = self.item.status
-            retired_at = self.item.retired_at
-            replaced_by = self.item.replaced_by
+            updated.reactivate(identifier)
+        elif updated.is_active():
+            updated.identifier = identifier
+        # A retired item that is merely edited keeps its empty identifier.
 
-        if status != STATUS_ACTIVE:
-            # Retired items never hold an identifier.
-            identifier = ""
-
-        return Item(name=name, identifier=identifier, description=description,
-                    category=category, status=status, retired_at=retired_at,
-                    replaced_by=replaced_by, id=self.item.id)
+        return updated
 
 
 class ItemListWidget(QWidget):
     """
     Widget for managing the list of items.
+
+    The widget owns no data: every action emits a signal and the main window
+    applies it to the project and pushes the result back through
+    :meth:`set_items`. The table keeps the selected item selected across those
+    refreshes.
 
     Signals:
         item_added: Emitted when a new item is added.
@@ -355,7 +369,7 @@ class ItemListWidget(QWidget):
 
         # Slot usage summary, only shown when the project defines slots
         self.slots_label = QLabel()
-        self.slots_label.setStyleSheet("color: gray;")
+        self.slots_label.setStyleSheet(GREY_TEXT)
         self.slots_label.setVisible(False)
         layout.addWidget(self.slots_label)
 
@@ -407,12 +421,18 @@ class ItemListWidget(QWidget):
         self._refresh_table()
 
     def _refresh_table(self) -> None:
-        """Refresh the table display."""
+        """Refresh the table display, keeping the selected item selected."""
+        selected = self._get_selected_item()
+        selected_id = selected.id if selected else None
+
         self._visible = self._visible_items()
+
+        # Rebuilding the rows churns the selection; announce it once at the end.
+        self.table.blockSignals(True)
         self.table.setRowCount(len(self._visible))
 
-        # Highlight color for active items without identifier
-        no_identifier_brush = QBrush(QColor(255, 243, 224))  # Light orange
+        no_identifier_brush = QBrush(NO_IDENTIFIER_BG)
+        no_identifier_text_brush = QBrush(NO_IDENTIFIER_FG)
         grey_brush = QBrush(GREY)
 
         for row, item in enumerate(self._visible):
@@ -451,16 +471,34 @@ class ItemListWidget(QWidget):
                         f"Retired {item.retired_at.strftime('%Y-%m-%d')}"
                     )
             elif not item.has_identifier():
-                dark_text_brush = QBrush(QColor(0, 0, 0))
                 for cell in row_items:
                     cell.setBackground(no_identifier_brush)
-                    cell.setForeground(dark_text_brush)
+                    cell.setForeground(no_identifier_text_brush)
                 name_item.setToolTip(
                     "This item needs an identifier before it can be compared"
                 )
 
+        self._restore_selection(selected_id)
+        self.table.blockSignals(False)
+
         self._refresh_slots_label()
         self._on_selection_changed()
+
+    def _restore_selection(self, item_id: Optional[str]) -> None:
+        """
+        Re-select a row after the table was rebuilt.
+
+        Args:
+            item_id: Id of the item that was selected, or None. Nothing is
+                selected when the item is no longer visible.
+        """
+        if item_id is None:
+            return
+
+        for row, item in enumerate(self._visible):
+            if item.id == item_id:
+                self.table.selectRow(row)
+                return
 
     def _refresh_slots_label(self) -> None:
         """Update the slot usage summary, hiding it when there are no slots."""
@@ -469,7 +507,7 @@ class ItemListWidget(QWidget):
             self.slots_label.setText("")
             return
 
-        free = self._free_slots()
+        free = free_slots(self._slots, self._items)
         used = len(self._slots) - len(free)
         free_text = ", ".join(free) if free else "none free"
         if free:
@@ -479,37 +517,23 @@ class ItemListWidget(QWidget):
         )
         self.slots_label.setVisible(True)
 
-    def _taken_identifiers(self, exclude_item_id: Optional[str] = None) -> set[str]:
+    def _other_items(self, exclude_item_id: Optional[str] = None) -> list[Item]:
         """
-        Return identifiers held by active items.
+        Return the items other than the one being edited or replaced.
+
+        Excluding an item is how its own slot is made to count as free.
 
         Args:
-            exclude_item_id: Id of an item to ignore, typically the item being
-                edited or the item being replaced.
+            exclude_item_id: Id of an item to leave out, or None for all.
 
         Returns:
-            set[str]: Non-empty identifiers of the other active items.
+            list[Item]: The remaining items.
         """
-        return {
-            item.identifier
-            for item in self._items
-            if item.is_active() and item.identifier and item.id != exclude_item_id
-        }
+        if exclude_item_id is None:
+            return self._items
+        return [item for item in self._items if item.id != exclude_item_id]
 
-    def _free_slots(self, exclude_item_id: Optional[str] = None) -> list[str]:
-        """
-        Return the slots no active item occupies.
-
-        Args:
-            exclude_item_id: Id of an item whose slot should count as free.
-
-        Returns:
-            list[str]: Free slots in the order they are defined.
-        """
-        taken = self._taken_identifiers(exclude_item_id)
-        return [slot for slot in self._slots if slot not in taken]
-
-    def _slots_for_dialog(self, exclude_item_id: Optional[str] = None) -> Optional[list[str]]:
+    def _dialog_slots(self, exclude_item_id: Optional[str] = None) -> Optional[list[str]]:
         """
         Return the free slot list to hand an ItemDialog.
 
@@ -522,7 +546,7 @@ class ItemListWidget(QWidget):
         """
         if not self._slots:
             return None
-        return self._free_slots(exclude_item_id)
+        return free_slots(self._slots, self._other_items(exclude_item_id))
 
     def _get_existing_categories(self) -> list[str]:
         """Return sorted list of unique categories currently in use."""
@@ -563,14 +587,12 @@ class ItemListWidget(QWidget):
         dialog = ItemDialog(
             self,
             existing_categories=self._get_existing_categories(),
-            taken_identifiers=self._taken_identifiers(),
-            free_slots=self._slots_for_dialog(),
+            taken_identifiers=active_identifiers(self._items),
+            free_slots=self._dialog_slots(),
         )
         if dialog.exec() == QDialog.DialogCode.Accepted:
-            item = dialog.get_item()
-            self._items.append(item)
-            self._refresh_table()
-            self.item_added.emit(item)
+            # The window owns the project; it pushes the new list back.
+            self.item_added.emit(dialog.get_item())
 
     def _on_edit_clicked(self) -> None:
         """Handle edit button click."""
@@ -582,8 +604,8 @@ class ItemListWidget(QWidget):
             self,
             item,
             existing_categories=self._get_existing_categories(),
-            taken_identifiers=self._taken_identifiers(item.id),
-            free_slots=self._slots_for_dialog(item.id),
+            taken_identifiers=active_identifiers(self._other_items(item.id)),
+            free_slots=self._dialog_slots(item.id),
         )
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self._apply_update(dialog.get_item())
@@ -598,8 +620,8 @@ class ItemListWidget(QWidget):
             self,
             item,
             existing_categories=self._get_existing_categories(),
-            taken_identifiers=self._taken_identifiers(item.id),
-            free_slots=self._slots_for_dialog(item.id),
+            taken_identifiers=active_identifiers(self._other_items(item.id)),
+            free_slots=self._dialog_slots(item.id),
             reactivate=True,
         )
         if dialog.exec() == QDialog.DialogCode.Accepted:
@@ -607,17 +629,11 @@ class ItemListWidget(QWidget):
 
     def _apply_update(self, updated_item: Item) -> None:
         """
-        Replace an item in the local list and announce the change.
+        Announce an edited item. The window applies it and pushes the result back.
 
         Args:
             updated_item: The item as returned by the dialog.
         """
-        for i, existing in enumerate(self._items):
-            if existing.id == updated_item.id:
-                self._items[i] = updated_item
-                break
-
-        self._refresh_table()
         self.item_updated.emit(updated_item)
 
     def _on_retire_clicked(self) -> None:
@@ -639,7 +655,6 @@ class ItemListWidget(QWidget):
 
         if reply == QMessageBox.StandardButton.Yes:
             self.item_retired.emit(item.id)
-            self._refresh_table()
 
     def _on_replace_clicked(self) -> None:
         """Handle replace button click."""
@@ -652,8 +667,8 @@ class ItemListWidget(QWidget):
             existing_categories=self._get_existing_categories(),
             # The item being replaced hands its identifier to its successor,
             # so its own identifier must not count as taken.
-            taken_identifiers=self._taken_identifiers(item.id),
-            free_slots=self._slots_for_dialog(item.id),
+            taken_identifiers=active_identifiers(self._other_items(item.id)),
+            free_slots=self._dialog_slots(item.id),
             prefill_identifier=item.identifier,
             prefill_category=item.category,
             title=f"Replace {item.name}",
@@ -661,10 +676,7 @@ class ItemListWidget(QWidget):
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
 
-        new_item = dialog.get_item()
-        self.item_replaced.emit(item.id, new_item)
-        self._items.append(new_item)
-        self._refresh_table()
+        self.item_replaced.emit(item.id, dialog.get_item())
 
     def _on_delete_clicked(self) -> None:
         """Handle delete button click."""
@@ -683,6 +695,4 @@ class ItemListWidget(QWidget):
         )
 
         if reply == QMessageBox.StandardButton.Yes:
-            self._items = [i for i in self._items if i.id != item.id]
-            self._refresh_table()
             self.item_deleted.emit(item.id)

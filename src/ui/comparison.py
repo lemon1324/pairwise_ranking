@@ -18,6 +18,10 @@ from src.models.item import Item
 from src.models.vote import Vote, VOTE_WEIGHTS
 
 
+# Stylesheet colour used for every de-emphasized label in this module
+GREY_TEXT = "color: gray;"
+
+
 def _build_preference_buttons() -> list[tuple[str, float, Optional[bool]]]:
     """
     Build the preference button configuration from VOTE_WEIGHTS.
@@ -75,13 +79,13 @@ class ItemCard(QFrame):
         self.description_label = QLabel()
         self.description_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.description_label.setWordWrap(True)
-        self.description_label.setStyleSheet("color: gray;")
+        self.description_label.setStyleSheet(GREY_TEXT)
         layout.addWidget(self.description_label)
 
         # Identifier label (shown in non-blinded mode)
         self.identifier_label = QLabel()
         self.identifier_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.identifier_label.setStyleSheet("color: #888888; font-style: italic;")
+        self.identifier_label.setStyleSheet(f"{GREY_TEXT} font-style: italic;")
         layout.addWidget(self.identifier_label)
 
         layout.addStretch()
@@ -137,6 +141,15 @@ class ComparisonWidget(QWidget):
     # so the model stays the single source of truth for preference strengths.
     # Laid out strongest-for-A ... Equal ... strongest-for-B.
     BUTTONS = _build_preference_buttons()
+
+    # Number keys address BUTTONS[0..NUM_KEY_COUNT-1]; there are only nine of
+    # them, so a longer button list simply leaves the tail unbound.
+    NUM_KEY_COUNT = min(len(BUTTONS), 9)
+
+    # The "Equal" entry, the one that belongs to neither item, is the skip key.
+    SKIP_INDEX = next(
+        (i for i, (_, _, is_for_a) in enumerate(BUTTONS) if is_for_a is None), -1
+    )
 
     def __init__(self, parent: Optional[QWidget] = None):
         """
@@ -209,10 +222,13 @@ class ComparisonWidget(QWidget):
         undo_layout.addStretch()
         layout.addLayout(undo_layout)
 
-        # Keyboard shortcuts hint
-        hint_label = QLabel("Keyboard: 1-7 for buttons, S to skip, Ctrl+Z to undo last vote")
+        # Keyboard shortcuts hint, generated from the button list
+        hint_label = QLabel(
+            f"Keyboard: 1-{self.NUM_KEY_COUNT} for buttons, "
+            "S to skip, Ctrl+Z to undo last vote"
+        )
         hint_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        hint_label.setStyleSheet("color: gray; font-size: 10px;")
+        hint_label.setStyleSheet(f"{GREY_TEXT} font-size: 10px;")
         layout.addWidget(hint_label)
 
     def set_undo_enabled(self, enabled: bool) -> None:
@@ -319,18 +335,31 @@ class ComparisonWidget(QWidget):
         """Handle keyboard shortcuts."""
         key = event.key()
 
-        # Number keys 1-7 for buttons
-        if Qt.Key.Key_1 <= key <= Qt.Key.Key_7:
+        # Number keys address the preference buttons in order
+        if Qt.Key.Key_1 <= key < Qt.Key.Key_1 + self.NUM_KEY_COUNT:
             index = key - Qt.Key.Key_1
-            if index < len(self.preference_buttons) and self.preference_buttons[index].isEnabled():
-                self.preference_buttons[index].click()
+            if self._click_button(index):
                 return
 
-        # S for skip
-        if key == Qt.Key.Key_S:
-            # Click the "Equal" button (index 3)
-            if len(self.preference_buttons) > 3 and self.preference_buttons[3].isEnabled():
-                self.preference_buttons[3].click()
-                return
+        # S clicks the skip ("Equal") button, wherever it sits in the list
+        if key == Qt.Key.Key_S and self._click_button(self.SKIP_INDEX):
+            return
 
         super().keyPressEvent(event)
+
+    def _click_button(self, index: int) -> bool:
+        """
+        Click a preference button if it exists and is enabled.
+
+        Args:
+            index: Index into the button list; negative means "no button".
+
+        Returns:
+            bool: True if a button was clicked.
+        """
+        if not 0 <= index < len(self.preference_buttons):
+            return False
+        if not self.preference_buttons[index].isEnabled():
+            return False
+        self.preference_buttons[index].click()
+        return True
