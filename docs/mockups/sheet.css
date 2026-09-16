@@ -280,7 +280,6 @@ html {
   cursor: pointer;
 }
 
-.sheet-tabs a:hover,
 .sheet-menu {
   margin-left: auto;
 }
@@ -289,6 +288,7 @@ html {
   border-left: 0;
 }
 
+.sheet-tabs a:hover,
 .sheet-menu:hover {
   background: var(--paper-2);
   color: var(--ink);
