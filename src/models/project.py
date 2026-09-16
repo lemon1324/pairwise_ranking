@@ -1,5 +1,6 @@
 """Project model for the pairwise ranking application."""
 
+import copy
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -181,6 +182,41 @@ class Project:
         if not name or not name.strip():
             raise ValueError("Project name cannot be empty")
         self.name = name.strip()
+
+    def copy_without_votes(self, name: str) -> "Project":
+        """
+        Return a new project with this project's setup but no votes.
+
+        The items, settings and slots are carried over as independent copies,
+        so editing either project leaves the other untouched. Item ids are
+        preserved, which lets the same item be matched across the two
+        projects. The copy starts with no votes and is not associated with a
+        file; the storage layer assigns its path when it is saved.
+
+        Args:
+            name: Name for the new project. Surrounding whitespace is
+                stripped.
+
+        Returns:
+            Project: The new project. This project is left unchanged.
+
+        Raises:
+            ValueError: If the new name is empty or only whitespace.
+        """
+        if not name or not name.strip():
+            raise ValueError("Project name cannot be empty")
+
+        now = datetime.now()
+        return Project(
+            name=name.strip(),
+            created=now,
+            modified=now,
+            items=copy.deepcopy(self.items),
+            votes=[],
+            settings=copy.deepcopy(self.settings),
+            slots=list(self.slots),
+            file_path=None,
+        )
 
     def active_items(self) -> list[Item]:
         """

@@ -277,6 +277,126 @@ class TestProjectRename(unittest.TestCase):
         self.assertEqual(project.file_path, Path("/tmp/project.pairrank"))
 
 
+class TestProjectCopyWithoutVotes(unittest.TestCase):
+    """Test cases for Project.copy_without_votes."""
+
+    def setUp(self):
+        """Set up a project with items, a retired item, votes and slots."""
+        self.active = Item(name="Item 1", identifier="A", category="Cats")
+        self.retired = Item(name="Item 2", id="retired-id")
+        self.retired.retire(now=datetime(2024, 3, 1), replaced_by=self.active.id)
+        self.third = Item(name="Item 3", identifier="B")
+        self.project = Project(
+            name="Source",
+            items=[self.active, self.retired, self.third],
+            votes=[
+                Vote(winner_id=self.active.id, loser_id=self.third.id, weight=1.0),
+                Vote(winner_id=self.third.id, loser_id=self.active.id, weight=2.0),
+            ],
+            settings=Settings(weight_uncertainty=2.5, top_tier_count=7),
+            slots=["A", "B"],
+            file_path=Path("/tmp/source.pairrank"),
+        )
+
+    def test_copy_has_no_votes(self):
+        """Test that the copy starts with an empty vote list."""
+        copied = self.project.copy_without_votes("Copy")
+        self.assertEqual(copied.votes, [])
+
+    def test_source_keeps_its_votes(self):
+        """Test that copying leaves the source project's votes in place."""
+        self.project.copy_without_votes("Copy")
+        self.assertEqual(len(self.project.votes), 2)
+
+    def test_copy_uses_the_new_name(self):
+        """Test that the copy carries the requested name."""
+        copied = self.project.copy_without_votes("Copy")
+        self.assertEqual(copied.name, "Copy")
+        self.assertEqual(self.project.name, "Source")
+
+    def test_copy_strips_surrounding_whitespace(self):
+        """Test that a name with surrounding whitespace is stripped."""
+        copied = self.project.copy_without_votes("  Copy  ")
+        self.assertEqual(copied.name, "Copy")
+
+    def test_empty_name_raises_value_error(self):
+        """Test that an empty name is rejected."""
+        with self.assertRaises(ValueError):
+            self.project.copy_without_votes("")
+
+    def test_whitespace_only_name_raises_value_error(self):
+        """Test that a whitespace-only name is rejected."""
+        with self.assertRaises(ValueError):
+            self.project.copy_without_votes("   ")
+
+    def test_items_match_by_count_order_and_id(self):
+        """Test that the copy holds the same items in the same order."""
+        copied = self.project.copy_without_votes("Copy")
+        self.assertEqual(
+            [item.id for item in copied.items],
+            [item.id for item in self.project.items],
+        )
+        self.assertEqual(
+            [item.name for item in copied.items],
+            ["Item 1", "Item 2", "Item 3"],
+        )
+
+    def test_retired_item_survives_intact(self):
+        """Test that a retired item keeps its lifecycle fields."""
+        copied = self.project.copy_without_votes("Copy")
+        retired = copied.items[1]
+        self.assertEqual(retired.id, "retired-id")
+        self.assertFalse(retired.is_active())
+        self.assertEqual(retired.retired_at, datetime(2024, 3, 1))
+        self.assertEqual(retired.replaced_by, self.active.id)
+
+    def test_items_are_distinct_instances(self):
+        """Test that editing a copied item leaves the source item alone."""
+        copied = self.project.copy_without_votes("Copy")
+        self.assertIsNot(copied.items, self.project.items)
+        self.assertIsNot(copied.items[0], self.active)
+
+        copied.items[0].name = "Renamed"
+        copied.items.append(Item(name="Extra"))
+
+        self.assertEqual(self.active.name, "Item 1")
+        self.assertEqual(len(self.project.items), 3)
+
+    def test_settings_values_match_the_source(self):
+        """Test that the copy's settings hold the source's values."""
+        copied = self.project.copy_without_votes("Copy")
+        self.assertEqual(copied.settings.to_dict(), self.project.settings.to_dict())
+
+    def test_settings_are_a_distinct_instance(self):
+        """Test that editing the copy's settings leaves the source alone."""
+        copied = self.project.copy_without_votes("Copy")
+        self.assertIsNot(copied.settings, self.project.settings)
+
+        copied.settings.weight_uncertainty = 9.0
+
+        self.assertEqual(self.project.settings.weight_uncertainty, 2.5)
+
+    def test_slots_match_the_source(self):
+        """Test that the copy defines the same slots."""
+        copied = self.project.copy_without_votes("Copy")
+        self.assertEqual(copied.slots, ["A", "B"])
+
+    def test_slots_are_a_distinct_list(self):
+        """Test that editing the copy's slot list leaves the source alone."""
+        copied = self.project.copy_without_votes("Copy")
+        self.assertIsNot(copied.slots, self.project.slots)
+
+        copied.slots.append("C")
+
+        self.assertEqual(self.project.slots, ["A", "B"])
+
+    def test_copy_has_no_file_path(self):
+        """Test that the copy is not associated with a file."""
+        copied = self.project.copy_without_votes("Copy")
+        self.assertIsNone(copied.file_path)
+        self.assertEqual(self.project.file_path, Path("/tmp/source.pairrank"))
+
+
 class TestProjectSlots(unittest.TestCase):
     """Test cases for the project slot list helpers."""
 
