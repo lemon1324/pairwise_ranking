@@ -164,20 +164,25 @@
       callout.innerHTML = html;
       o.field.append(callout);
 
+      // The callout spans its whole column, so it never half-covers a number, and sits a
+      // leader's length off the row; the leader drops from the row's find-number cell.
       const fieldBox = o.field.getBoundingClientRect();
       const rowBox = tr.getBoundingClientRect();
       const colEl = tr.closest(".bom-col");
       const colBox = colEl.getBoundingClientRect();
-      const inset = 2.25 * rem();
-      callout.style.left = `${colBox.left - fieldBox.left + inset}px`;
-      callout.style.width = `${colBox.width - inset - 0.5 * rem()}px`;
+      const findBox = tr.cells[0].getBoundingClientRect();
+      const gap = 0.625 * rem();
+      callout.style.left = `${colBox.left - fieldBox.left}px`;
+      callout.style.width = `${colBox.width}px`;
+      callout.style.setProperty("--leader-x", `${findBox.left + findBox.width / 2 - colBox.left}px`);
+      callout.style.setProperty("--leader-len", `${gap}px`);
 
-      const below = rowBox.bottom - fieldBox.top;
+      const below = rowBox.bottom - fieldBox.top + gap;
       const bottomLimit = colEl.classList.contains("is-last") ? limits.lastColBottom : limits.bottom;
       const h = callout.offsetHeight;
-      if (below + h > bottomLimit && rowBox.top - fieldBox.top - h >= 0) {
+      if (below + h > bottomLimit && rowBox.top - fieldBox.top - gap - h >= 0) {
         callout.classList.add("is-above");
-        callout.style.top = `${rowBox.top - fieldBox.top - h}px`;
+        callout.style.top = `${rowBox.top - fieldBox.top - gap - h}px`;
       } else {
         callout.style.top = `${below}px`;
       }
