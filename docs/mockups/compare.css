@@ -9,11 +9,10 @@
   min-height: 0;
 }
 
-/* Zone ticks between the outer and inner frame lines. */
+/* Zone band between the outer and inner frame lines, marked on all four sides. */
 .zones {
   position: absolute;
   display: flex;
-  justify-content: space-around;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -25,25 +24,82 @@
   pointer-events: none;
 }
 
-.zones-top {
-  top: 0;
+.zones li {
+  flex: 1;
+  display: grid;
+  place-items: center;
+}
+
+.zones-top,
+.zones-bottom {
   left: 1.375rem;
   right: 1.375rem;
   height: 1.375rem;
-  align-items: center;
 }
 
-.zones-left {
-  left: 0;
+.zones-top {
+  top: 0;
+}
+
+.zones-bottom {
+  bottom: 0;
+}
+
+.zones-left,
+.zones-right {
   top: 1.375rem;
   bottom: 1.375rem;
   width: 1.375rem;
   flex-direction: column;
-  align-items: center;
 }
 
+.zones-left {
+  left: 0;
+}
+
+.zones-right {
+  right: 0;
+}
+
+/* Zone boundary ticks: short marks from each frame line into the band. */
 .zones li {
   position: relative;
+}
+
+.zones li + li::before {
+  content: "";
+  position: absolute;
+  background: var(--line);
+}
+
+.zones-top li + li::before,
+.zones-bottom li + li::before {
+  left: 0;
+  width: 1px;
+  height: 0.5rem;
+}
+
+.zones-top li + li::before {
+  top: 0;
+}
+
+.zones-bottom li + li::before {
+  bottom: 0;
+}
+
+.zones-left li + li::before,
+.zones-right li + li::before {
+  top: 0;
+  height: 1px;
+  width: 0.5rem;
+}
+
+.zones-left li + li::before {
+  left: 0;
+}
+
+.zones-right li + li::before {
+  right: 0;
 }
 
 .frame-inner {
@@ -1033,7 +1089,7 @@
   }
 
   .titleblock {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 7.5rem;
   }
 
   .tb-cell {
