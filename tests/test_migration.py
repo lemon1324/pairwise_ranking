@@ -8,7 +8,6 @@ from datetime import datetime
 from pathlib import Path
 
 from src.data.migration import StorageMigration
-from src.data.project_storage import ProjectStorage
 
 
 class TestStorageMigration(unittest.TestCase):

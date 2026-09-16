@@ -9,11 +9,7 @@ from PyQt6.QtWidgets import (
     QWidget,
     QVBoxLayout,
     QMessageBox,
-    QMenu,
-    QFileDialog,
-    QInputDialog,
 )
-from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QAction
 
 from src.data.project_storage import ProjectStorage
@@ -27,6 +23,11 @@ from src.ui.item_list import ItemListWidget
 from src.ui.comparison import ComparisonWidget
 from src.ui.results import ResultsWidget
 from src.ui.settings import SettingsWidget
+from src.ui.project_dialogs import (
+    ask_new_project,
+    ask_open_project_path,
+    ask_save_as_path,
+)
 
 
 class MainWindow(QMainWindow):
@@ -255,13 +256,17 @@ class MainWindow(QMainWindow):
         """Refresh the settings widget."""
         self.settings_widget.set_settings(self.settings)
 
-    def _on_item_added(self, item: Item) -> None:
-        """Handle item added event."""
-        self.items.append(item)
+    def _on_data_changed(self) -> None:
+        """Persist the project and refresh everything that depends on the data."""
         self._save_project()
         self._compute_rankings()
         self._refresh_comparison()
         self._refresh_results()
+
+    def _on_item_added(self, item: Item) -> None:
+        """Handle item added event."""
+        self.items.append(item)
+        self._on_data_changed()
 
     def _on_item_updated(self, item: Item) -> None:
         """Handle item updated event."""
@@ -269,10 +274,7 @@ class MainWindow(QMainWindow):
             if existing.id == item.id:
                 self.items[i] = item
                 break
-        self._save_project()
-        self._compute_rankings()
-        self._refresh_comparison()
-        self._refresh_results()
+        self._on_data_changed()
 
     def _on_item_deleted(self, item_id: str) -> None:
         """Handle item deleted event."""
@@ -283,18 +285,12 @@ class MainWindow(QMainWindow):
         self.project.votes[:] = [v for v in self.votes if not v.involves_item(item_id)]
         self.votes = self.project.votes
 
-        self._save_project()
-        self._compute_rankings()
-        self._refresh_comparison()
-        self._refresh_results()
+        self._on_data_changed()
 
     def _on_vote_submitted(self, vote: Vote) -> None:
         """Handle vote submitted event."""
         self.votes.append(vote)
-        self._save_project()
-        self._compute_rankings()
-        self._refresh_comparison()
-        self._refresh_results()
+        self._on_data_changed()
 
     def _on_skip_requested(self) -> None:
         """Handle skip requested event - just get next pair."""
@@ -304,10 +300,7 @@ class MainWindow(QMainWindow):
         """Handle settings changed event."""
         self.project.settings = settings
         self.settings = settings
-        self._save_project()
-        self._compute_rankings()
-        self._refresh_comparison()
-        self._refresh_results()
+        self._on_data_changed()
 
     def _on_tab_changed(self, index: int) -> None:
         """Handle tab change event."""
@@ -323,83 +316,23 @@ class MainWindow(QMainWindow):
 
     def _on_new_project(self) -> None:
         """Handle File > New Project."""
-        # Get project name
-        name, ok = QInputDialog.getText(
-            self,
-            "New Project",
-            "Project name:",
-            text="My Rankings",
-        )
-
-        if not ok or not name.strip():
+        new_project = ask_new_project(self, self.user_config)
+        if new_project is None:
             return
 
-        name = name.strip()
-
-        # Get save location
-        default_dir = self.user_config.get_default_projects_dir()
-        default_dir.mkdir(parents=True, exist_ok=True)
-
-        safe_name = "".join(c if c.isalnum() or c in " _-" else "_" for c in name)
-        default_path = default_dir / f"{safe_name}{ProjectStorage.FILE_EXTENSION}"
-
-        file_path, _ = QFileDialog.getSaveFileName(
-            self,
-            "Save New Project",
-            str(default_path),
-            f"Pairrank Files (*{ProjectStorage.FILE_EXTENSION})",
-        )
-
-        if not file_path:
-            return
-
-        file_path = Path(file_path)
-        if file_path.suffix != ProjectStorage.FILE_EXTENSION:
-            file_path = file_path.with_suffix(ProjectStorage.FILE_EXTENSION)
-
-        try:
-            new_project = ProjectStorage.create_new(name, file_path)
-            self._switch_to_project(new_project)
-        except (OSError, ValueError) as e:
-            QMessageBox.critical(self, "Error", f"Failed to create project:\n{e}")
+        self._switch_to_project(new_project)
 
     def _on_open_project(self) -> None:
         """Handle File > Open Project."""
-        default_dir = self.user_config.get_default_projects_dir()
-        if not default_dir.exists():
-            default_dir = Path.home()
-
-        file_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Open Project",
-            str(default_dir),
-            f"Pairrank Files (*{ProjectStorage.FILE_EXTENSION})",
-        )
-
-        if file_path:
-            self._open_project_file(Path(file_path))
+        file_path = ask_open_project_path(self, self.user_config)
+        if file_path is not None:
+            self._open_project_file(file_path)
 
     def _on_save_as(self) -> None:
         """Handle File > Save As."""
-        default_dir = self.user_config.get_default_projects_dir()
-        default_dir.mkdir(parents=True, exist_ok=True)
-
-        safe_name = "".join(c if c.isalnum() or c in " _-" else "_" for c in self.project.name)
-        default_path = default_dir / f"{safe_name}{ProjectStorage.FILE_EXTENSION}"
-
-        file_path, _ = QFileDialog.getSaveFileName(
-            self,
-            "Save Project As",
-            str(default_path),
-            f"Pairrank Files (*{ProjectStorage.FILE_EXTENSION})",
-        )
-
-        if not file_path:
+        file_path = ask_save_as_path(self, self.user_config, self.project.name)
+        if file_path is None:
             return
-
-        file_path = Path(file_path)
-        if file_path.suffix != ProjectStorage.FILE_EXTENSION:
-            file_path = file_path.with_suffix(ProjectStorage.FILE_EXTENSION)
 
         try:
             self.project.file_path = file_path
@@ -437,8 +370,3 @@ class MainWindow(QMainWindow):
         self._update_window_title()
         self._refresh_recent_menu()
         self._refresh_all()
-
-    def closeEvent(self, event) -> None:
-        """Handle window close event."""
-        # Data is saved incrementally via auto-save, so just accept the close
-        event.accept()
