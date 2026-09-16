@@ -267,32 +267,52 @@ html.bom-fixed .bom-sheet > .titleblock {
 
 /* ---------- Callout for the selected row ---------- */
 
-/* Floats over the table, anchored under (or above) the selected row, so selecting never
-   refolds the sheet. Positioned by bom.js. Flat: an ink rule on paper, no shadow. */
+/* A popover on the sheet, beside the find-number column and just off the selected row (or
+   above it when there is no room below), so selecting never refolds the sheet. Positioned by
+   bom.js. It is set off by line weight, not shadow: a 2px frame-weight rule all round. */
 .bom-callout {
+  --w-pop: var(--w-frame);
   position: absolute;
   z-index: 2;
   background: var(--paper);
-  border: var(--w-cell) solid var(--ink);
+  border: var(--w-pop) solid var(--ink);
   animation: strip-in 160ms var(--ease-out);
 }
 
-/* Leader dot: sits on the callout's edge under the selected row's find number, like the dot at
-   the end of a balloon leader. bom.js sets its position. */
+/* Elbow leader: from a dot on the selected row's find number, down (or up) the gap and across
+   into the popover's side, like a balloon leader. bom.js sets --leader-dx and --gap. */
+.bom-callout::before {
+  content: "";
+  position: absolute;
+  left: calc(-1 * var(--leader-dx, 1.5rem) - var(--w-pop));
+  top: calc(-1 * var(--gap, 0.5rem) - var(--w-pop));
+  width: var(--leader-dx, 1.5rem);
+  height: calc(var(--gap, 0.5rem) + var(--w-pop) + 1.125rem);
+  border-left: var(--w-cell) solid var(--ink);
+  border-bottom: var(--w-cell) solid var(--ink);
+}
+
 .bom-callout::after {
   content: "";
   position: absolute;
-  left: calc(var(--leader-x, 1.75rem) - 3px);
-  top: -4px;
+  left: calc(-1 * var(--leader-dx, 1.5rem) - var(--w-pop) - 3px);
+  top: calc(-1 * var(--gap, 0.5rem) - var(--w-pop) - 3px);
   width: 7px;
   height: 7px;
   border-radius: 50%;
   background: var(--ink);
 }
 
+.bom-callout.is-above::before {
+  top: auto;
+  bottom: calc(-1 * var(--gap, 0.5rem) - var(--w-pop));
+  border-bottom: 0;
+  border-top: var(--w-cell) solid var(--ink);
+}
+
 .bom-callout.is-above::after {
   top: auto;
-  bottom: -4px;
+  bottom: calc(-1 * var(--gap, 0.5rem) - var(--w-pop) - 3px);
 }
 
 @keyframes strip-in {
