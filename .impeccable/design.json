@@ -1,0 +1,620 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-16T22:05:52+00:00",
+  "title": "Design System: Pairwise Ranking",
+  "extensions": {
+    "colorMeta": {
+      "paper": {
+        "role": "neutral",
+        "displayName": "Drafting Paper",
+        "canonical": "#f5f4ef",
+        "tonalRamp": [
+          "#0c0b08",
+          "#262521",
+          "#43423e",
+          "#62615d",
+          "#83827e",
+          "#a6a5a0",
+          "#cac9c4",
+          "#efeeea"
+        ]
+      },
+      "paper-2": {
+        "role": "neutral",
+        "displayName": "Paper 2",
+        "canonical": "#ebe9e2",
+        "tonalRamp": [
+          "#0c0b07",
+          "#272520",
+          "#44423c",
+          "#63615b",
+          "#84827c",
+          "#a7a59e",
+          "#cbc9c2",
+          "#f0eee7"
+        ]
+      },
+      "paper-3": {
+        "role": "neutral",
+        "displayName": "Paper 3",
+        "canonical": "#e1dfd6",
+        "tonalRamp": [
+          "#0d0b06",
+          "#27251e",
+          "#44423b",
+          "#63615a",
+          "#84827a",
+          "#a7a59d",
+          "#cbc9c0",
+          "#f1efe5"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#17181a",
+        "tonalRamp": [
+          "#0a0b0d",
+          "#242527",
+          "#414244",
+          "#606164",
+          "#818285",
+          "#a4a5a8",
+          "#c8c9cc",
+          "#edeef1"
+        ]
+      },
+      "ink-2": {
+        "role": "neutral",
+        "displayName": "Ink 2",
+        "canonical": "#414246",
+        "tonalRamp": [
+          "#0a0b0e",
+          "#242528",
+          "#414246",
+          "#606165",
+          "#818287",
+          "#a4a5a9",
+          "#c8c9ce",
+          "#edeef3"
+        ]
+      },
+      "ink-3": {
+        "role": "neutral",
+        "displayName": "Ink 3",
+        "canonical": "#66676b",
+        "tonalRamp": [
+          "#0a0b0e",
+          "#242528",
+          "#414245",
+          "#606165",
+          "#818286",
+          "#a4a5a9",
+          "#c8c9cd",
+          "#edeef3"
+        ]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "Construction Line",
+        "canonical": "#8e8c85",
+        "tonalRamp": [
+          "#0d0b07",
+          "#27251f",
+          "#44423c",
+          "#63615b",
+          "#84827b",
+          "#a7a59e",
+          "#cbc9c2",
+          "#f1eee7"
+        ]
+      },
+      "hair": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "#cbc9c0",
+        "tonalRamp": [
+          "#0d0b06",
+          "#27251e",
+          "#44423b",
+          "#636159",
+          "#84827a",
+          "#a7a59c",
+          "#cbc9c0",
+          "#f1efe5"
+        ]
+      },
+      "markup": {
+        "role": "primary",
+        "displayName": "Markup Blue",
+        "canonical": "#1d5bc2",
+        "tonalRamp": [
+          "#00003c",
+          "#001e5e",
+          "#173e80",
+          "#3760a4",
+          "#5782ca",
+          "#78a5f0",
+          "#9bcaff",
+          "#c0f0ff"
+        ]
+      },
+      "markup-wash": {
+        "role": "primary",
+        "displayName": "Markup Wash",
+        "canonical": "#dde6f4",
+        "tonalRamp": [
+          "#060b14",
+          "#1f2530",
+          "#3b424e",
+          "#5a626e",
+          "#7b838f",
+          "#9da6b3",
+          "#c1cad7",
+          "#e6effd"
+        ]
+      },
+      "warn": {
+        "role": "secondary",
+        "displayName": "Warn",
+        "canonical": "#8f4700",
+        "tonalRamp": [
+          "#2a0000",
+          "#4c0500",
+          "#6f2a00",
+          "#934b07",
+          "#b86d35",
+          "#de9058",
+          "#ffb47c",
+          "#ffd9a0"
+        ]
+      },
+      "warn-mark": {
+        "role": "secondary",
+        "displayName": "Warn Mark",
+        "canonical": "#d9822b",
+        "tonalRamp": [
+          "#290000",
+          "#4b0a00",
+          "#6d2d00",
+          "#914d00",
+          "#b66f2c",
+          "#db9252",
+          "#ffb676",
+          "#ffdc9a"
+        ]
+      },
+      "warn-wash": {
+        "role": "secondary",
+        "displayName": "Warn Wash",
+        "canonical": "#f5e5d1",
+        "tonalRamp": [
+          "#130900",
+          "#2e2313",
+          "#4c402f",
+          "#6c5f4d",
+          "#8e806e",
+          "#b1a290",
+          "#d6c7b3",
+          "#fcecd8"
+        ]
+      },
+      "paper-dark": {
+        "role": "neutral",
+        "displayName": "Drafting Paper (dark theme)",
+        "canonical": "#131518",
+        "tonalRamp": [
+          "#090b0e",
+          "#232528",
+          "#404246",
+          "#5f6165",
+          "#808286",
+          "#a2a5a9",
+          "#c6c9ce",
+          "#eceff3"
+        ]
+      },
+      "paper-2-dark": {
+        "role": "neutral",
+        "displayName": "Paper 2 (dark theme)",
+        "canonical": "#1b1e22",
+        "tonalRamp": [
+          "#090b0f",
+          "#222529",
+          "#3f4247",
+          "#5e6266",
+          "#7f8388",
+          "#a1a5ab",
+          "#c5c9cf",
+          "#ebeff5"
+        ]
+      },
+      "paper-3-dark": {
+        "role": "neutral",
+        "displayName": "Paper 3 (dark theme)",
+        "canonical": "#23272c",
+        "tonalRamp": [
+          "#080b10",
+          "#21252a",
+          "#3e4248",
+          "#5d6267",
+          "#7e8389",
+          "#a0a6ac",
+          "#c4cad0",
+          "#eaeff6"
+        ]
+      },
+      "ink-dark": {
+        "role": "neutral",
+        "displayName": "Ink (dark theme)",
+        "canonical": "#e8e6df",
+        "tonalRamp": [
+          "#0c0b07",
+          "#272520",
+          "#44423c",
+          "#63615b",
+          "#84827c",
+          "#a7a59e",
+          "#cbc9c2",
+          "#f0eee7"
+        ]
+      },
+      "ink-2-dark": {
+        "role": "neutral",
+        "displayName": "Ink 2 (dark theme)",
+        "canonical": "#c0beb7",
+        "tonalRamp": [
+          "#0c0b07",
+          "#272520",
+          "#44423c",
+          "#63615b",
+          "#84827c",
+          "#a7a59e",
+          "#cbc9c2",
+          "#f1eee7"
+        ]
+      },
+      "ink-3-dark": {
+        "role": "neutral",
+        "displayName": "Ink 3 (dark theme)",
+        "canonical": "#97958f",
+        "tonalRamp": [
+          "#0c0b07",
+          "#272520",
+          "#44423d",
+          "#63615c",
+          "#84827c",
+          "#a7a59f",
+          "#cbc9c3",
+          "#f1eee8"
+        ]
+      },
+      "line-dark": {
+        "role": "neutral",
+        "displayName": "Construction Line (dark theme)",
+        "canonical": "#6a6e75",
+        "tonalRamp": [
+          "#080b10",
+          "#22252b",
+          "#3e4249",
+          "#5d6168",
+          "#7e828a",
+          "#a1a5ad",
+          "#c5c9d1",
+          "#eaeff7"
+        ]
+      },
+      "hair-dark": {
+        "role": "neutral",
+        "displayName": "Hairline (dark theme)",
+        "canonical": "#353a41",
+        "tonalRamp": [
+          "#080b11",
+          "#21252c",
+          "#3d424a",
+          "#5c6269",
+          "#7d838b",
+          "#a0a6ae",
+          "#c3cad2",
+          "#e9eff8"
+        ]
+      },
+      "markup-dark": {
+        "role": "primary",
+        "displayName": "Markup Blue (dark theme)",
+        "canonical": "#86aef0",
+        "tonalRamp": [
+          "#000136",
+          "#012057",
+          "#1e4079",
+          "#3c609d",
+          "#5d82c1",
+          "#7ea6e7",
+          "#a1caff",
+          "#c6f0ff"
+        ]
+      },
+      "markup-wash-dark": {
+        "role": "primary",
+        "displayName": "Markup Wash (dark theme)",
+        "canonical": "#1d2a40",
+        "tonalRamp": [
+          "#020a1e",
+          "#18253b",
+          "#34425a",
+          "#53627b",
+          "#73839e",
+          "#95a6c2",
+          "#b9cae7",
+          "#def0ff"
+        ]
+      },
+      "warn-dark": {
+        "role": "secondary",
+        "displayName": "Warn (dark theme)",
+        "canonical": "#f2ab62",
+        "tonalRamp": [
+          "#280000",
+          "#490e00",
+          "#6b2f00",
+          "#8e5000",
+          "#b37126",
+          "#d8944d",
+          "#ffb971",
+          "#ffde96"
+        ]
+      },
+      "warn-wash-dark": {
+        "role": "secondary",
+        "displayName": "Warn Wash (dark theme)",
+        "canonical": "#36271a",
+        "tonalRamp": [
+          "#140801",
+          "#302215",
+          "#4f3e31",
+          "#6f5e4f",
+          "#917e6f",
+          "#b4a191",
+          "#d9c5b5",
+          "#ffead9"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Item Name",
+        "purpose": "Item names in views; the largest words on a sheet."
+      },
+      "title": {
+        "displayName": "Sheet Title",
+        "purpose": "Project name in the title block TITLE cell and phone top bar."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Default text; station names at 600."
+      },
+      "body-secondary": {
+        "displayName": "Secondary Body",
+        "purpose": "Notes, revision rows, warning copy, category values."
+      },
+      "label": {
+        "displayName": "Drafting Label",
+        "purpose": "Condensed caps caption for every cell, view title and notes heading."
+      },
+      "tab": {
+        "displayName": "Tab",
+        "purpose": "Sheet tabs, project menu, cell buttons."
+      },
+      "figure": {
+        "displayName": "Reading Figure",
+        "purpose": "Title-block readings: settled, tolerance, votes."
+      },
+      "number": {
+        "displayName": "Number",
+        "purpose": "Keys, balloons, weights, revision numbers, times, file name."
+      }
+    },
+    "shadows": [
+      {
+        "name": "tab-current-underline",
+        "value": "inset 0 -4px 0 var(--ink)",
+        "purpose": "Drawn underline on the current sheet tab; not elevation."
+      },
+      {
+        "name": "hatch-edge",
+        "value": "inset 0 0 0 1px currentColor",
+        "purpose": "Closes the edge of a hatched B fill; not elevation."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-out",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "The only easing; all transitions and ticks."
+      },
+      {
+        "name": "station-hover",
+        "value": "120ms",
+        "purpose": "Station background change."
+      },
+      {
+        "name": "view-swap",
+        "value": "140ms",
+        "purpose": "Views fade and drop 0.25rem when the pair changes."
+      },
+      {
+        "name": "figure-step",
+        "value": "220ms",
+        "purpose": "Reading figures step in from -0.35em after a vote."
+      },
+      {
+        "name": "revision-in",
+        "value": "260ms",
+        "purpose": "New revision row slides up into the title block."
+      },
+      {
+        "name": "mark-hold",
+        "value": "420ms",
+        "purpose": "Pressed station keeps the markup state for one beat."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "0.01ms",
+        "purpose": "All animation and transition collapsed under prefers-reduced-motion."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "phone",
+        "value": "max-width: 40rem"
+      },
+      {
+        "name": "stacked-title-block",
+        "value": "max-width: 64rem"
+      },
+      {
+        "name": "zones-6",
+        "value": "@container sheet min-width: 44rem"
+      },
+      {
+        "name": "zones-8",
+        "value": "@container sheet min-width: 64rem"
+      },
+      {
+        "name": "zones-10",
+        "value": "@container sheet min-width: 85rem"
+      },
+      {
+        "name": "zones-12",
+        "value": "@container sheet min-width: 106rem"
+      }
+    ],
+    "openIssues": [
+      "Minor alignment inconsistencies inside the title block (user-noted); address when the real app is implemented.",
+      "Stray rule in sheet.css: `.sheet-tabs a:hover` shares `margin-left: auto` with `.sheet-menu`; sheet tabs have no evidenced hover fill. Not canonized; resolve in the real app."
+    ]
+  },
+  "components": [
+    {
+      "name": "Cell Button",
+      "kind": "button",
+      "refersTo": "cell-button",
+      "description": "Ruled square action cell; the only bordered button.",
+      "html": "<button class=\"ds-cell-button\" type=\"button\">Retry save</button> <button class=\"ds-cell-button\" type=\"button\" disabled>Dismiss</button>",
+      "css": ":host{--paper:#f5f4ef;--paper-2:#ebe9e2;--paper-3:#e1dfd6;--ink:#17181a;--ink-2:#414246;--ink-3:#66676b;--line:#8e8c85;--hair:#cbc9c0;--markup:#1d5bc2;--markup-wash:#dde6f4;--warn:#8f4700;--warn-mark:#d9822b;--warn-wash:#f5e5d1;--font-ui:'Barlow',system-ui,sans-serif;--font-label:'Barlow Condensed','Barlow',system-ui,sans-serif;--font-num:'JetBrains Mono',ui-monospace,monospace;} .ds-cell-button{display:inline-flex;align-items:center;gap:.5rem;min-height:2.25rem;padding:0 .75rem;border:1px solid var(--ink);background:transparent;color:var(--ink);font-family:var(--font-label);font-weight:600;font-size:.875rem;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;} .ds-cell-button:hover:not(:disabled){background:var(--paper-3);} .ds-cell-button:focus-visible{outline:2px solid var(--markup);outline-offset:2px;} .ds-cell-button:disabled{color:var(--ink-3);border-color:var(--hair);cursor:not-allowed;}"
+    },
+    {
+      "name": "Sheet Tabs",
+      "kind": "nav",
+      "refersTo": "sheet-tab",
+      "description": "Condensed caps tabs divided by cell rules; current tab has paper-2 fill and a 4px ink underline.",
+      "html": "<nav class=\"ds-tabs\"><a href=\"#\">Items</a><a href=\"#\" aria-current=\"page\">Compare</a><a href=\"#\">Rankings</a><a href=\"#\">Settings</a></nav>",
+      "css": ":host{--paper:#f5f4ef;--paper-2:#ebe9e2;--paper-3:#e1dfd6;--ink:#17181a;--ink-2:#414246;--ink-3:#66676b;--line:#8e8c85;--hair:#cbc9c0;--markup:#1d5bc2;--markup-wash:#dde6f4;--warn:#8f4700;--warn-mark:#d9822b;--warn-wash:#f5e5d1;--font-ui:'Barlow',system-ui,sans-serif;--font-label:'Barlow Condensed','Barlow',system-ui,sans-serif;--font-num:'JetBrains Mono',ui-monospace,monospace;} .ds-tabs{display:flex;min-height:3.25rem;border-bottom:2px solid var(--ink);background:var(--paper);} .ds-tabs a{display:flex;align-items:center;padding:0 1.5rem;border-left:1px solid var(--ink);color:var(--ink-2);text-decoration:none;font-family:var(--font-label);font-weight:600;font-size:.9375rem;letter-spacing:.06em;text-transform:uppercase;} .ds-tabs a:first-child{border-left:0;} .ds-tabs a:focus-visible{outline:2px solid var(--markup);outline-offset:-4px;} .ds-tabs a[aria-current=page]{color:var(--ink);background:var(--paper-2);box-shadow:inset 0 -4px 0 var(--ink);}"
+    },
+    {
+      "name": "Station",
+      "kind": "custom",
+      "refersTo": "station",
+      "description": "Signature vote cell: key legend, strength bars (solid A, hatched B), name, mono weight; marked state is the only coloured state.",
+      "html": "<div class=\"ds-stations\"><button class=\"ds-station\" type=\"button\"><span class=\"ds-key\">2</span><span class=\"ds-strength\"><i class=\"a\"></i><i class=\"a\"></i></span><span class=\"ds-name\">A better</span><span class=\"ds-w\">w 2.0</span></button><button class=\"ds-station is-marked\" type=\"button\"><span class=\"ds-key\">6</span><span class=\"ds-strength\"><i class=\"b\"></i><i class=\"b\"></i></span><span class=\"ds-name\">B better</span><span class=\"ds-w\">w 2.0</span></button></div>",
+      "css": ":host{--paper:#f5f4ef;--paper-2:#ebe9e2;--paper-3:#e1dfd6;--ink:#17181a;--ink-2:#414246;--ink-3:#66676b;--line:#8e8c85;--hair:#cbc9c0;--markup:#1d5bc2;--markup-wash:#dde6f4;--warn:#8f4700;--warn-mark:#d9822b;--warn-wash:#f5e5d1;--font-ui:'Barlow',system-ui,sans-serif;--font-label:'Barlow Condensed','Barlow',system-ui,sans-serif;--font-num:'JetBrains Mono',ui-monospace,monospace;} .ds-key{display:inline-grid;place-items:center;min-width:1.5rem;height:1.5rem;padding:0 .3rem;border:1px solid currentColor;font-family:var(--font-num);font-size:.8125rem;font-weight:500;line-height:1;} .ds-stations{display:grid;grid-template-columns:repeat(2,9rem);background:var(--paper);padding:1rem;} .ds-station{display:grid;grid-template-rows:auto 2.25rem auto auto;justify-items:center;gap:.5rem;min-height:7.5rem;padding:.75rem .5rem;border:1px solid var(--ink);margin-left:-1px;background:transparent;color:var(--ink);font-family:var(--font-ui);cursor:pointer;transition:background-color 120ms cubic-bezier(.16,1,.3,1);} .ds-station:hover{background:var(--paper-2);} .ds-station:active{background:var(--paper-3);} .ds-station:focus-visible{outline:2px solid var(--markup);outline-offset:-4px;} .ds-strength{display:flex;align-items:flex-end;gap:3px;height:2.25rem;color:var(--ink);} .ds-strength i{display:block;width:.625rem;} .ds-strength i:nth-child(1){height:33%;} .ds-strength i:nth-child(2){height:66%;} .ds-strength i.a{background:currentColor;} .ds-strength i.b{background:repeating-linear-gradient(135deg,currentColor 0 1.5px,transparent 1.5px 4px);box-shadow:inset 0 0 0 1px currentColor;} .ds-name{font-weight:600;font-size:1rem;line-height:1.2;} .ds-w{font-family:var(--font-num);font-size:.75rem;color:var(--ink-3);} .ds-station.is-marked{background:var(--markup-wash);border-color:var(--markup);position:relative;z-index:1;} .ds-station.is-marked .ds-strength{color:var(--markup);} .ds-station.is-marked .ds-key{background:var(--markup);color:var(--paper);border-color:var(--markup);}"
+    },
+    {
+      "name": "Title Block",
+      "kind": "card",
+      "refersTo": "title-block-cell",
+      "description": "Closed ruled grid of caption-plus-content cells; 1px ink gaps; mono figures with two-line units.",
+      "html": "<section class=\"ds-tb\"><div class=\"ds-c s4\"><span class=\"ds-label\">Title</span><div class=\"ds-title\">Linear switches, winter shortlist</div></div><div class=\"ds-c s2\"><span class=\"ds-label\">File</span><div class=\"ds-file\">switches-2026.pairrank</div></div><div class=\"ds-c s2\"><span class=\"ds-label\">Tolerance</span><div class=\"ds-fig\"><span class=\"n\">±38</span><span class=\"u\">rating,<br>median</span></div></div><div class=\"ds-c s2\"><span class=\"ds-label\">Votes</span><div class=\"ds-fig\"><span class=\"n\">203</span><span class=\"u\">14 this<br>session</span></div></div><button class=\"ds-c s2 ds-act\" type=\"button\"><span class=\"ds-label\">Undo</span><span class=\"ds-a\">Undo last vote</span></button></section>",
+      "css": ":host{--paper:#f5f4ef;--paper-2:#ebe9e2;--paper-3:#e1dfd6;--ink:#17181a;--ink-2:#414246;--ink-3:#66676b;--line:#8e8c85;--hair:#cbc9c0;--markup:#1d5bc2;--markup-wash:#dde6f4;--warn:#8f4700;--warn-mark:#d9822b;--warn-wash:#f5e5d1;--font-ui:'Barlow',system-ui,sans-serif;--font-label:'Barlow Condensed','Barlow',system-ui,sans-serif;--font-num:'JetBrains Mono',ui-monospace,monospace;} .ds-label{font-family:var(--font-label);font-weight:600;font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);line-height:1.2;} .ds-tb{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:1px;background:var(--ink);border:1px solid var(--ink);max-width:40rem;font-family:var(--font-ui);color:var(--ink);} .ds-c{padding:.5rem .75rem .75rem;background:var(--paper);min-width:0;} .s4{grid-column:span 4;} .s2{grid-column:span 2;} .ds-title{margin-top:.25rem;font-size:1.1875rem;font-weight:600;line-height:1.2;} .ds-file{margin-top:.25rem;font-family:var(--font-num);font-size:.8125rem;color:var(--ink-2);overflow-wrap:anywhere;} .ds-fig{display:flex;align-items:baseline;gap:.5rem;margin-top:.25rem;} .ds-fig .n{font-family:var(--font-num);font-size:1.5rem;font-weight:500;line-height:1.1;} .ds-fig .u{font-size:.8125rem;color:var(--ink-3);line-height:1.25;} .ds-act{display:grid;justify-items:start;gap:.5rem;border:0;text-align:left;font:inherit;color:inherit;cursor:pointer;} .ds-act:hover{background:var(--paper-2);} .ds-act:focus-visible{outline:2px solid var(--markup);outline-offset:-4px;} .ds-a{font-weight:600;}"
+    },
+    {
+      "name": "Item Balloon",
+      "kind": "chip",
+      "refersTo": "balloon",
+      "description": "Circled mono slot identifier; the only rounded form in the system.",
+      "html": "<span class=\"ds-balloon\">12</span> <span class=\"ds-balloon ds-big\">7</span>",
+      "css": ":host{--paper:#f5f4ef;--paper-2:#ebe9e2;--paper-3:#e1dfd6;--ink:#17181a;--ink-2:#414246;--ink-3:#66676b;--line:#8e8c85;--hair:#cbc9c0;--markup:#1d5bc2;--markup-wash:#dde6f4;--warn:#8f4700;--warn-mark:#d9822b;--warn-wash:#f5e5d1;--font-ui:'Barlow',system-ui,sans-serif;--font-label:'Barlow Condensed','Barlow',system-ui,sans-serif;--font-num:'JetBrains Mono',ui-monospace,monospace;} .ds-balloon{display:inline-grid;place-items:center;min-width:2rem;height:2rem;padding:0 .3rem;border:1px solid var(--ink);border-radius:999px;font-family:var(--font-num);font-size:.875rem;font-weight:500;line-height:1;color:var(--ink);background:var(--paper);} .ds-big{min-width:5.5rem;height:5.5rem;font-size:2.25rem;border-width:2px;}"
+    },
+    {
+      "name": "Key Legend",
+      "kind": "chip",
+      "refersTo": "key-legend",
+      "description": "Keyboard shortcut drawn as a ruled mono cell, not a keycap.",
+      "html": "<span class=\"ds-key\">Ctrl</span> <span class=\"ds-key\">Z</span> <span class=\"ds-key\">S</span>",
+      "css": ":host{--paper:#f5f4ef;--paper-2:#ebe9e2;--paper-3:#e1dfd6;--ink:#17181a;--ink-2:#414246;--ink-3:#66676b;--line:#8e8c85;--hair:#cbc9c0;--markup:#1d5bc2;--markup-wash:#dde6f4;--warn:#8f4700;--warn-mark:#d9822b;--warn-wash:#f5e5d1;--font-ui:'Barlow',system-ui,sans-serif;--font-label:'Barlow Condensed','Barlow',system-ui,sans-serif;--font-num:'JetBrains Mono',ui-monospace,monospace;} .ds-key{display:inline-grid;place-items:center;min-width:1.5rem;height:1.5rem;padding:0 .3rem;border:1px solid currentColor;font-family:var(--font-num);font-size:.8125rem;font-weight:500;line-height:1;} "
+    },
+    {
+      "name": "View Title",
+      "kind": "custom",
+      "description": "Centred underlined view title with side swatch: solid for A, hatched for B.",
+      "html": "<div class=\"ds-views\"><div class=\"ds-vl\"><span class=\"ds-sw a\"></span><span class=\"ds-label\">View A</span></div><div class=\"ds-vl\"><span class=\"ds-sw b\"></span><span class=\"ds-label\">View B</span></div></div>",
+      "css": ":host{--paper:#f5f4ef;--paper-2:#ebe9e2;--paper-3:#e1dfd6;--ink:#17181a;--ink-2:#414246;--ink-3:#66676b;--line:#8e8c85;--hair:#cbc9c0;--markup:#1d5bc2;--markup-wash:#dde6f4;--warn:#8f4700;--warn-mark:#d9822b;--warn-wash:#f5e5d1;--font-ui:'Barlow',system-ui,sans-serif;--font-label:'Barlow Condensed','Barlow',system-ui,sans-serif;--font-num:'JetBrains Mono',ui-monospace,monospace;} .ds-label{font-family:var(--font-label);font-weight:600;font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);line-height:1.2;} .ds-views{display:grid;grid-template-columns:1fr 1fr;justify-items:center;padding:1rem;background:var(--paper);} .ds-vl{display:flex;align-items:center;gap:.5rem;padding-bottom:.25rem;border-bottom:1px solid var(--ink);} .ds-sw{width:.875rem;height:.875rem;color:var(--ink);} .ds-sw.a{background:currentColor;} .ds-sw.b{background:repeating-linear-gradient(135deg,currentColor 0 1.5px,transparent 1.5px 4px);box-shadow:inset 0 0 0 1px currentColor;}"
+    },
+    {
+      "name": "Warning Box",
+      "kind": "custom",
+      "refersTo": "warning",
+      "description": "Warning orange only with icon and words; names cause and recovery.",
+      "html": "<div class=\"ds-warn\" role=\"alert\"><svg viewBox=\"0 0 16 16\" aria-hidden=\"true\"><path d=\"M8 2L1.5 13.5h13z\"/><path d=\"M8 6.5v3.2\"/><path d=\"M8 11.6v.1\"/></svg><div><p><strong>Vote not saved.</strong> Couldn’t write switches-2026.pairrank: permission denied. Nothing was recorded.</p><button class=\"ds-cb\" type=\"button\">Retry save</button></div></div>",
+      "css": ":host{--paper:#f5f4ef;--paper-2:#ebe9e2;--paper-3:#e1dfd6;--ink:#17181a;--ink-2:#414246;--ink-3:#66676b;--line:#8e8c85;--hair:#cbc9c0;--markup:#1d5bc2;--markup-wash:#dde6f4;--warn:#8f4700;--warn-mark:#d9822b;--warn-wash:#f5e5d1;--font-ui:'Barlow',system-ui,sans-serif;--font-label:'Barlow Condensed','Barlow',system-ui,sans-serif;--font-num:'JetBrains Mono',ui-monospace,monospace;} .ds-warn{display:grid;grid-template-columns:auto minmax(0,1fr);gap:.5rem .75rem;padding:.5rem .75rem;background:var(--warn-wash);border:1px solid var(--warn-mark);color:var(--ink);font-family:var(--font-ui);max-width:32rem;} .ds-warn svg{width:1.25rem;height:1.25rem;margin-top:.1rem;stroke:var(--warn);stroke-width:1.5;fill:none;stroke-linecap:round;stroke-linejoin:round;} .ds-warn p{margin:0;font-size:.9375rem;} .ds-warn strong{color:var(--warn);} .ds-cb{margin-top:.25rem;min-height:2.25rem;padding:0 .75rem;border:1px solid var(--warn);background:transparent;color:var(--ink);font-family:var(--font-label);font-weight:600;font-size:.875rem;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;} .ds-cb:hover{background:var(--paper-3);} .ds-cb:focus-visible{outline:2px solid var(--markup);outline-offset:2px;}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Drawing Set",
+    "overview": "Every screen of the web app is one sheet from a single engineering drawing set. The ground is drafting paper, structure is drawn in ink at a strict line-weight scale, and a sheet is read the way a drawing is read: a frame with zone markings, views in the drawing area, notes in the lower-left, a closed ruled title block in the lower-right. Compare is the first sheet (two views and a dimensioned seven-station scale). Items and Rankings are meant to be parts-list (BOM) sheets in the same set, and Settings and the project picker are sheets too. A new surface should look like another sheet of the same set, not like a new app.\n\nThe world is dense but calm. Space, alignment and line weight carry the hierarchy. There are no cards, no shadows, no button chrome and no rounded corners except the item balloon, which is round because drawings circle their part identifiers. Drafting notation is what gives the sheets their character: zones per ASME Y14.1, balloons, dimension lines with arrowheads, underlined view titles, revision rows, tolerance given as ±. None of it is decoration. Each piece has the job it has on a real drawing.\n\nColour is almost absent. Ink on paper does the work. One markup blue marks the live thing (the station just pressed, keyboard focus, selection), and one warning orange appears only with an icon and words. The primary user has deuteranopia, so colour never carries meaning alone: side A is a solid fill and side B is hatched, strength is shown by bar count, and every state has a label or a shape.",
+    "keyCharacteristics": [
+      "A drafting-paper ground with ink linework in three weights: frame 2px, cell 1px, construction hairline.",
+      "The sheet anatomy is fixed: a zoned frame, views, notes in the lower-left and the title block in the lower-right.",
+      "Controls are ruled cells. Nothing is raised, rounded or filled with chrome.",
+      "Three families, each with one job: a condensed caps label face, a workhorse sans for names and prose, and tabular mono for every number.",
+      "Solid means A and hatched means B, so sides and states never depend on colour.",
+      "Motion is one short, discrete tick per action, and none under reduced motion."
+    ],
+    "rules": [
+      {
+        "name": "The One Pencil Rule",
+        "body": "Markup blue marks only what is live right now: the pressed station, focus and selection. It is never used for decoration, brand, headings or a resting state.",
+        "section": "colors"
+      },
+      {
+        "name": "The Never Alone Rule",
+        "body": "Every colour signal has a non-colour twin. Warnings carry an icon and words. Sides carry solid versus hatched fills and left versus right position. Strength carries bar count. Red against green never carries meaning.",
+        "section": "colors"
+      },
+      {
+        "name": "The Every Number In Mono Rule",
+        "body": "Any figure the user might compare or scan (a count, rating, weight, slot, time, key or file name) is set in JetBrains Mono with tabular numerals. Words stay in Barlow.",
+        "section": "typography"
+      },
+      {
+        "name": "The Caption Not Kicker Rule",
+        "body": "Condensed caps labels name the cell or view they sit in, the way lettering names a field on a title block. They never float above a heading as a decorative eyebrow.",
+        "section": "typography"
+      },
+      {
+        "name": "The Line Weight Is Depth Rule",
+        "body": "To make something more important, draw its border heavier (1px to 2px) or move it into the title block. Never lift it with a shadow, and never round it into a card.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do draw every new screen as a sheet in the same set: the zoned frame, content in the drawing area, notes in the lower-left, and a closed ruled title block in the lower-right carrying TITLE and FILE.",
+      "Do mark zones per ASME Y14.1: numbers right to left on the top and bottom, letters bottom to top on both sides, and a zone count that follows sheet width.",
+      "Do keep line weights to the scale: 2px frame, 1px cells, `line` or `hair` for construction and row rules.",
+      "Do set every number, key, slot and file name in JetBrains Mono with tabular figures.",
+      "Do pair every colour signal with a shape, pattern, position or words: solid A, hatched B, bar count for strength, and an icon plus text for warnings.",
+      "Do keep markup blue for the live mark, focus and selection only.",
+      "Do keep motion to one discrete tick per action (140–260ms, `cubic-bezier(0.16, 1, 0.3, 1)`), with none under `prefers-reduced-motion`.",
+      "Do self-host Barlow, Barlow Condensed and JetBrains Mono in the real app."
+    ],
+    "donts": [
+      "Don't divide views, scales or notes with rules, and don't draw a centre line. Space and alignment separate them, and the title block is the only closed ruled region in the drawing area.",
+      "Don't use shadows for elevation, rounded cards, pill buttons or raised keycaps. Controls are ruled cells.",
+      "Don't round anything except slot-identifier balloons.",
+      "Don't use markup blue or warning orange decoratively, and don't use orange without an icon and words.",
+      "Don't convey side, state, category or strength by colour alone, and never set red against green.",
+      "Don't put condensed caps labels above headings as eyebrows. A label names the cell or view it belongs to.",
+      "Don't present ratings as absolute. Readings carry units and ± tolerance."
+    ]
+  }
+}
