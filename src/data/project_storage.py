@@ -127,3 +127,35 @@ class ProjectStorage:
 
         ProjectStorage.save(project, file_path)
         return project
+
+
+def safe_project_filename(name: str) -> str:
+    """
+    Build a filesystem-safe file stem from a project name.
+
+    Alphanumeric characters, spaces, underscores and hyphens are kept; every
+    other character becomes an underscore.
+
+    Args:
+        name: The project name.
+
+    Returns:
+        str: A file stem safe to use in a default save path.
+    """
+    return "".join(c if c.isalnum() or c in " _-" else "_" for c in name)
+
+
+def ensure_pairrank_suffix(path: Path) -> Path:
+    """
+    Ensure a path carries the .pairrank extension.
+
+    Args:
+        path: The path chosen by the user.
+
+    Returns:
+        Path: The same path if it already has the extension, otherwise the
+        path with its suffix replaced by .pairrank.
+    """
+    if path.suffix != ProjectStorage.FILE_EXTENSION:
+        return path.with_suffix(ProjectStorage.FILE_EXTENSION)
+    return path
