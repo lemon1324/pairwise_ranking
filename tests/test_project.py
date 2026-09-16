@@ -323,5 +323,78 @@ class TestProjectItemLifecycle(unittest.TestCase):
         self.assertIsNone(selector.select_pair())
 
 
+class TestProjectPopLastVote(unittest.TestCase):
+    """Test cases for undoing the most recent vote."""
+
+    def setUp(self):
+        """Build a project with two items and no votes yet."""
+        self.a = Item(name="A", id="a")
+        self.b = Item(name="B", id="b")
+        self.project = Project(name="P", items=[self.a, self.b])
+
+    def _vote(self, weight: float) -> Vote:
+        """Append a vote of the given weight and return it."""
+        vote = Vote(winner_id="a", loser_id="b", weight=weight)
+        self.project.votes.append(vote)
+        return vote
+
+    def test_pop_from_empty_returns_none(self):
+        """Test that popping with no votes returns None."""
+        self.assertIsNone(self.project.pop_last_vote())
+        self.assertEqual(self.project.votes, [])
+
+    def test_pop_returns_most_recent_vote(self):
+        """Test that the last appended vote is the one returned."""
+        self._vote(1.0)
+        last = self._vote(3.0)
+
+        popped = self.project.pop_last_vote()
+
+        self.assertIs(popped, last)
+
+    def test_pop_removes_the_vote(self):
+        """Test that the popped vote is gone from the project."""
+        first = self._vote(1.0)
+        self._vote(3.0)
+
+        self.project.pop_last_vote()
+
+        self.assertEqual(self.project.votes, [first])
+
+    def test_repeated_pop_empties_the_project(self):
+        """Test that popping repeatedly removes votes newest-first."""
+        first = self._vote(1.0)
+        second = self._vote(2.0)
+        third = self._vote(3.0)
+
+        popped = [
+            self.project.pop_last_vote(),
+            self.project.pop_last_vote(),
+            self.project.pop_last_vote(),
+        ]
+
+        self.assertEqual(popped, [third, second, first])
+        self.assertEqual(self.project.votes, [])
+        self.assertIsNone(self.project.pop_last_vote())
+
+    def test_pop_mutates_the_shared_list(self):
+        """Test that a caller holding the votes list sees the removal."""
+        votes = self.project.votes
+        self._vote(2.0)
+
+        self.project.pop_last_vote()
+
+        self.assertEqual(votes, [])
+        self.assertIs(self.project.votes, votes)
+
+    def test_pop_leaves_items_untouched(self):
+        """Test that undoing a vote does not touch the items."""
+        self._vote(2.0)
+
+        self.project.pop_last_vote()
+
+        self.assertEqual(self.project.items, [self.a, self.b])
+
+
 if __name__ == "__main__":
     unittest.main()
