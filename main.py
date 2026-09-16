@@ -34,8 +34,9 @@ def main():
     # Load user configuration
     user_config = UserConfig()
 
-    # Check for legacy data and migrate if present
-    data_dir = Path("./data")
+    # Check for legacy data and migrate if present (relative to this file,
+    # not the current working directory)
+    data_dir = Path(__file__).resolve().parent / "data"
     if StorageMigration.needs_migration(data_dir):
         project = StorageMigration.migrate(data_dir)
         user_config.add_recent_project(

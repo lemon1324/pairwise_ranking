@@ -22,7 +22,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import pyqtSignal, Qt
 from PyQt6.QtGui import QColor, QBrush
 
-from src.models.item import Item
+from src.models.item import Item, DEFAULT_CATEGORY
 
 
 class ItemDialog(QDialog):
@@ -51,7 +51,7 @@ class ItemDialog(QDialog):
         """
         super().__init__(parent)
         self.item = item
-        self._existing_categories = existing_categories or ["Default"]
+        self._existing_categories = existing_categories or [DEFAULT_CATEGORY]
         self._setup_ui()
 
         if item:
@@ -83,10 +83,10 @@ class ItemDialog(QDialog):
             "Category for this item. Items are compared within their own category by default.\n"
             "Type a new category name or select an existing one."
         )
-        # Populate with existing categories, ensuring "Default" is always present
-        categories = list(dict.fromkeys(["Default"] + self._existing_categories))
+        # Populate with existing categories, ensuring the default is always present
+        categories = list(dict.fromkeys([DEFAULT_CATEGORY] + self._existing_categories))
         self.category_edit.addItems(categories)
-        self.category_edit.setCurrentText("Default")
+        self.category_edit.setCurrentText(DEFAULT_CATEGORY)
         form.addRow("Category:", self.category_edit)
 
         self.identifier_edit = QLineEdit()
@@ -129,7 +129,7 @@ class ItemDialog(QDialog):
             Item: New or updated Item instance.
         """
         name = self.name_edit.text().strip()
-        category = self.category_edit.currentText().strip() or "Default"
+        category = self.category_edit.currentText().strip() or DEFAULT_CATEGORY
         identifier = self.identifier_edit.text().strip()
         description = self.description_edit.toPlainText().strip()
 
@@ -231,7 +231,7 @@ class ItemListWidget(QWidget):
             name_item.setData(Qt.ItemDataRole.UserRole, item.id)
             self.table.setItem(row, 0, name_item)
 
-            category_item = QTableWidgetItem(item.category or "Default")
+            category_item = QTableWidgetItem(item.category)
             self.table.setItem(row, 1, category_item)
 
             # Identifier column
@@ -265,7 +265,7 @@ class ItemListWidget(QWidget):
         seen = set()
         result = []
         for item in self._items:
-            cat = item.category or "Default"
+            cat = item.category
             if cat not in seen:
                 seen.add(cat)
                 result.append(cat)

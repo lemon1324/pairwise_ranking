@@ -71,8 +71,17 @@ class Project:
             Project: A new Project instance.
 
         Raises:
-            KeyError: If required keys are missing from data.
+            ValueError: If data is not a dictionary or the required 'name'
+                key is missing.
+            KeyError: If nested item or vote entries are missing required keys.
         """
+        if not isinstance(data, dict):
+            raise ValueError(
+                f"Project data must be a JSON object, got {type(data).__name__}"
+            )
+        if "name" not in data:
+            raise ValueError("Project data is missing required 'name' field")
+
         created = data.get("created")
         if isinstance(created, str):
             created = datetime.fromisoformat(created)

@@ -418,6 +418,21 @@ class PairSelector:
         self._item_comparison_count = [0] * n
 
         for vote in self.votes:
+            winner_idx = self._id_to_idx.get(vote.winner_id)
+            loser_idx = self._id_to_idx.get(vote.loser_id)
+
+            # Increment item counts
+            if winner_idx is not None:
+                self._item_comparison_count[winner_idx] += 1
+            if loser_idx is not None:
+                self._item_comparison_count[loser_idx] += 1
+
+            # Pair statistics only make sense when both items belong to this
+            # selector (e.g. votes against items outside the current category
+            # must not count as compared pairs).
+            if winner_idx is None or loser_idx is None:
+                continue
+
             pair = vote.get_pair_unordered()
 
             # Increment pair count
@@ -427,14 +442,6 @@ class PairSelector:
             existing = self._pair_last_vote.get(pair)
             if existing is None or vote.timestamp > existing:
                 self._pair_last_vote[pair] = vote.timestamp
-
-            # Increment item counts
-            winner_idx = self._id_to_idx.get(vote.winner_id)
-            loser_idx = self._id_to_idx.get(vote.loser_id)
-            if winner_idx is not None:
-                self._item_comparison_count[winner_idx] += 1
-            if loser_idx is not None:
-                self._item_comparison_count[loser_idx] += 1
 
     def _find_connected_components(self) -> list[set[int]]:
         """
