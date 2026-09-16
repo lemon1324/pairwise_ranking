@@ -22,7 +22,8 @@ class RankingResult:
         strength: The raw Bradley-Terry strength parameter (pi).
         log_strength: The log of the strength parameter (s_i = log(pi)).
         elo_rating: The ELO-converted rating (centered at 1500).
-        rank: The item's position in the ranking (1 = best).
+        rank: The item's position in the ranking (1 = best), or None when the
+            item is excluded from the numbering (see :func:`assign_active_ranks`).
         comparison_count: Total number of comparisons involving this item.
         log_strength_se: Standard error of log-strength from Fisher Information.
     """
@@ -31,9 +32,38 @@ class RankingResult:
     strength: float
     log_strength: float
     elo_rating: float
-    rank: int
+    rank: Optional[int]
     comparison_count: int
     log_strength_se: float = 0.0
+
+
+def assign_active_ranks(results: list[RankingResult]) -> list[RankingResult]:
+    """
+    Number the active items 1..N and leave retired items unranked.
+
+    The Bradley-Terry model knows nothing about an item's lifecycle status, so
+    it numbers every item it was given. Ranks shown to the user should count
+    active items only; retired items keep their strength and rating but have no
+    rank.
+
+    Args:
+        results: Ranking results to renumber. The results are modified in place.
+
+    Returns:
+        list[RankingResult]: The same results sorted by strength descending,
+        with active items numbered from 1 and retired items given rank None.
+    """
+    ordered = sorted(results, key=lambda r: r.strength, reverse=True)
+
+    rank = 0
+    for result in ordered:
+        if result.item.is_active():
+            rank += 1
+            result.rank = rank
+        else:
+            result.rank = None
+
+    return ordered
 
 
 class BradleyTerryModel:
@@ -621,7 +651,10 @@ class PairSelector:
         rank_by_id: dict[str, int] = {}
         if rankings:
             se_by_id = {r.item.id: r.log_strength_se for r in rankings}
-            rank_by_id = {r.item.id: r.rank for r in rankings}
+            # Retired items carry rank None; they fall back to n_ranked below.
+            rank_by_id = {
+                r.item.id: r.rank for r in rankings if r.rank is not None
+            }
         n_ranked = len(rankings) if rankings else 0
 
         # Determine whether to do a cross-category or within-category comparison.
