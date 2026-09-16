@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
     QFormLayout,
     QLineEdit,
     QTextEdit,
+    QComboBox,
     QDialogButtonBox,
     QMessageBox,
     QAbstractItemView,
@@ -34,16 +35,23 @@ class ItemDialog(QDialog):
         description_edit: Text input for item description.
     """
 
-    def __init__(self, parent: Optional[QWidget] = None, item: Optional[Item] = None):
+    def __init__(
+        self,
+        parent: Optional[QWidget] = None,
+        item: Optional[Item] = None,
+        existing_categories: Optional[list[str]] = None,
+    ):
         """
         Initialize the dialog.
 
         Args:
             parent: Parent widget.
             item: Existing item to edit, or None for new item.
+            existing_categories: List of existing category names for the dropdown.
         """
         super().__init__(parent)
         self.item = item
+        self._existing_categories = existing_categories or ["Default"]
         self._setup_ui()
 
         if item:
@@ -51,6 +59,7 @@ class ItemDialog(QDialog):
             self.name_edit.setText(item.name)
             self.identifier_edit.setText(item.identifier)
             self.description_edit.setPlainText(item.description)
+            self.category_edit.setCurrentText(item.category)
         else:
             self.setWindowTitle("Add Item")
 
@@ -66,6 +75,19 @@ class ItemDialog(QDialog):
         self.name_edit = QLineEdit()
         self.name_edit.setPlaceholderText("Enter item name...")
         form.addRow("Name:", self.name_edit)
+
+        self.category_edit = QComboBox()
+        self.category_edit.setEditable(True)
+        self.category_edit.setPlaceholderText("Enter or select category...")
+        self.category_edit.setToolTip(
+            "Category for this item. Items are compared within their own category by default.\n"
+            "Type a new category name or select an existing one."
+        )
+        # Populate with existing categories, ensuring "Default" is always present
+        categories = list(dict.fromkeys(["Default"] + self._existing_categories))
+        self.category_edit.addItems(categories)
+        self.category_edit.setCurrentText("Default")
+        form.addRow("Category:", self.category_edit)
 
         self.identifier_edit = QLineEdit()
         self.identifier_edit.setPlaceholderText("Enter storage location (optional)...")
@@ -107,15 +129,18 @@ class ItemDialog(QDialog):
             Item: New or updated Item instance.
         """
         name = self.name_edit.text().strip()
+        category = self.category_edit.currentText().strip() or "Default"
         identifier = self.identifier_edit.text().strip()
         description = self.description_edit.toPlainText().strip()
 
         if self.item:
             # Update existing item
-            return Item(name=name, identifier=identifier, description=description, id=self.item.id)
+            return Item(name=name, identifier=identifier, description=description,
+                        category=category, id=self.item.id)
         else:
             # Create new item
-            return Item(name=name, identifier=identifier, description=description)
+            return Item(name=name, identifier=identifier, description=description,
+                        category=category)
 
 
 class ItemListWidget(QWidget):
@@ -170,11 +195,12 @@ class ItemListWidget(QWidget):
 
         # Table
         self.table = QTableWidget()
-        self.table.setColumnCount(3)
-        self.table.setHorizontalHeaderLabels(["Name", "Identifier", "Description"])
+        self.table.setColumnCount(4)
+        self.table.setHorizontalHeaderLabels(["Name", "Category", "Identifier", "Description"])
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -205,22 +231,27 @@ class ItemListWidget(QWidget):
             name_item.setData(Qt.ItemDataRole.UserRole, item.id)
             self.table.setItem(row, 0, name_item)
 
+            category_item = QTableWidgetItem(item.category or "Default")
+            self.table.setItem(row, 1, category_item)
+
             # Identifier column
             if item.has_identifier():
                 identifier_item = QTableWidgetItem(item.identifier)
             else:
                 identifier_item = QTableWidgetItem("(Not assigned)")
                 identifier_item.setForeground(QBrush(QColor(128, 128, 128)))
-            self.table.setItem(row, 1, identifier_item)
+            self.table.setItem(row, 2, identifier_item)
 
             desc_item = QTableWidgetItem(item.description or "")
-            self.table.setItem(row, 2, desc_item)
+            self.table.setItem(row, 3, desc_item)
 
             # Highlight row if no identifier
             if not item.has_identifier():
                 dark_text_brush = QBrush(QColor(0, 0, 0))
                 name_item.setBackground(no_identifier_brush)
                 name_item.setForeground(dark_text_brush)
+                category_item.setBackground(no_identifier_brush)
+                category_item.setForeground(dark_text_brush)
                 identifier_item.setBackground(no_identifier_brush)
                 identifier_item.setForeground(dark_text_brush)
                 desc_item.setBackground(no_identifier_brush)
@@ -228,6 +259,17 @@ class ItemListWidget(QWidget):
                 name_item.setToolTip("This item needs a location identifier before it can be compared")
 
         self._on_selection_changed()
+
+    def _get_existing_categories(self) -> list[str]:
+        """Return sorted list of unique categories currently in use."""
+        seen = set()
+        result = []
+        for item in self._items:
+            cat = item.category or "Default"
+            if cat not in seen:
+                seen.add(cat)
+                result.append(cat)
+        return sorted(result)
 
     def _get_selected_item(self) -> Optional[Item]:
         """Get the currently selected item."""
@@ -248,7 +290,7 @@ class ItemListWidget(QWidget):
 
     def _on_add_clicked(self) -> None:
         """Handle add button click."""
-        dialog = ItemDialog(self)
+        dialog = ItemDialog(self, existing_categories=self._get_existing_categories())
         if dialog.exec() == QDialog.DialogCode.Accepted:
             item = dialog.get_item()
             self._items.append(item)
@@ -261,7 +303,7 @@ class ItemListWidget(QWidget):
         if not item:
             return
 
-        dialog = ItemDialog(self, item)
+        dialog = ItemDialog(self, item, existing_categories=self._get_existing_categories())
         if dialog.exec() == QDialog.DialogCode.Accepted:
             updated_item = dialog.get_item()
 

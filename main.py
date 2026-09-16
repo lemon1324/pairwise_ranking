@@ -7,7 +7,13 @@ model with regularization.
 """
 
 import sys
-from PyQt6.QtWidgets import QApplication
+from pathlib import Path
+
+from PyQt6.QtWidgets import QApplication, QDialog
+
+from src.data.user_config import UserConfig
+from src.data.migration import StorageMigration
+from src.ui.project_picker import ProjectPickerDialog
 from src.ui.main_window import MainWindow
 
 
@@ -15,7 +21,8 @@ def main():
     """
     Application entry point.
 
-    Creates the QApplication instance and main window, then starts the event loop.
+    Creates the QApplication instance, handles migration from old storage format,
+    shows the project picker dialog, and starts the main window.
 
     Returns:
         int: Exit code from the application.
@@ -24,7 +31,31 @@ def main():
     app.setApplicationName("Pairwise Ranking")
     app.setApplicationVersion("0.1.0")
 
-    window = MainWindow()
+    # Load user configuration
+    user_config = UserConfig()
+
+    # Check for legacy data and migrate if present
+    data_dir = Path("./data")
+    if StorageMigration.needs_migration(data_dir):
+        project = StorageMigration.migrate(data_dir)
+        user_config.add_recent_project(
+            project.name,
+            project.file_path,
+            project.modified,
+        )
+
+    # Show project picker dialog
+    picker = ProjectPickerDialog(user_config)
+    if picker.exec() != QDialog.DialogCode.Accepted:
+        # User cancelled - exit application
+        return 0
+
+    project = picker.get_selected_project()
+    if project is None:
+        return 0
+
+    # Create and show main window
+    window = MainWindow(project, user_config)
     window.show()
 
     return app.exec()

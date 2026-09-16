@@ -1,5 +1,5 @@
-# User data
-data/
+# User data (top-level only, not src/data/)
+/data/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
