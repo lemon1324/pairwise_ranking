@@ -1,7 +1,7 @@
 """Unit tests for the Item model."""
 
 import unittest
-from src.models.item import Item
+from src.models.item import Item, DEFAULT_CATEGORY
 
 
 class TestItem(unittest.TestCase):
@@ -200,6 +200,31 @@ class TestItem(unittest.TestCase):
             "identifier": "A-1",
         }
         item = Item.from_dict(data)
+        self.assertEqual(item.category, "Default")
+
+    def test_default_category_constant(self):
+        """Test that the module constant matches the default field value."""
+        self.assertEqual(DEFAULT_CATEGORY, "Default")
+        self.assertEqual(Item(name="x").category, DEFAULT_CATEGORY)
+
+    def test_whitespace_category_becomes_default(self):
+        """Test that a whitespace-only category is normalized to the default."""
+        item = Item(name="x", category="  ")
+        self.assertEqual(item.category, "Default")
+
+    def test_empty_category_becomes_default(self):
+        """Test that an empty category is normalized to the default."""
+        item = Item(name="x", category="")
+        self.assertEqual(item.category, "Default")
+
+    def test_category_is_stripped(self):
+        """Test that surrounding whitespace is stripped from the category."""
+        item = Item(name="x", category=" Linear ")
+        self.assertEqual(item.category, "Linear")
+
+    def test_from_dict_blank_category_becomes_default(self):
+        """Test that from_dict normalizes a blank category to the default."""
+        item = Item.from_dict({"name": "x", "category": "   "})
         self.assertEqual(item.category, "Default")
 
 

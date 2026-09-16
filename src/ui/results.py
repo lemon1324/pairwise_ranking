@@ -1,5 +1,6 @@
 """Rankings display widget."""
 
+import csv
 from typing import Optional
 
 from PyQt6.QtWidgets import (
@@ -109,7 +110,7 @@ class ResultsWidget(QWidget):
 
     def _refresh_category_filter(self) -> None:
         """Rebuild the category filter dropdown from current rankings."""
-        categories = sorted({r.item.category for r in self._rankings if r.item.category})
+        categories = sorted({r.item.category for r in self._rankings})
         current = self._selected_category
 
         self.category_filter.blockSignals(True)
@@ -155,7 +156,7 @@ class ResultsWidget(QWidget):
             item = QTreeWidgetItem([
                 str(result.rank),
                 result.item.name,
-                result.item.category or "Default",
+                result.item.category,
                 f"{result.elo_rating:.0f}",
                 str(result.comparison_count),
             ])
@@ -265,14 +266,20 @@ class ResultsWidget(QWidget):
             return
 
         try:
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write("Rank,Name,Category,ELO Rating,Comparisons,Description\n")
+            with open(file_path, "w", encoding="utf-8", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(
+                    ["Rank", "Name", "Category", "ELO Rating", "Comparisons", "Description"]
+                )
                 for result in self._rankings:
-                    # Escape fields for CSV
-                    desc = result.item.description.replace('"', '""')
-                    category = (result.item.category or "Default").replace('"', '""')
-                    f.write(f'{result.rank},"{result.item.name}","{category}",'
-                            f'{result.elo_rating:.0f},{result.comparison_count},"{desc}"\n')
+                    writer.writerow([
+                        result.rank,
+                        result.item.name,
+                        result.item.category,
+                        f"{result.elo_rating:.0f}",
+                        result.comparison_count,
+                        result.item.description,
+                    ])
 
             QMessageBox.information(
                 self,

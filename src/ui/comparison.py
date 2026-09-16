@@ -18,6 +18,23 @@ from src.models.item import Item
 from src.models.vote import Vote, VOTE_WEIGHTS
 
 
+def _build_preference_buttons() -> list[tuple[str, float, Optional[bool]]]:
+    """
+    Build the preference button configuration from VOTE_WEIGHTS.
+
+    Returns:
+        list[tuple[str, float, Optional[bool]]]: (label, weight, is_for_a)
+            tuples ordered strongest-for-A, ..., Equal, ..., strongest-for-B.
+            is_for_a is True for A, False for B, and None for Equal.
+    """
+    strengths = [
+        (key.replace("_", " ").title(), weight) for key, weight in VOTE_WEIGHTS.items()
+    ]
+    a_buttons = [(f"A {label}", weight, True) for label, weight in strengths]
+    b_buttons = [(f"B {label}", weight, False) for label, weight in reversed(strengths)]
+    return a_buttons + [("Equal", 0.0, None)] + b_buttons
+
+
 class ItemCard(QFrame):
     """
     Card widget displaying an item's name and description.
@@ -114,17 +131,10 @@ class ComparisonWidget(QWidget):
     vote_submitted = pyqtSignal(Vote)
     skip_requested = pyqtSignal()
 
-    # Button configurations: (label, weight for A, is_for_a)
-    # Positive weight means A wins, negative means B wins
-    BUTTONS = [
-        ("A Much Better", 3.0, True),
-        ("A Better", 2.0, True),
-        ("A Slightly Better", 1.0, True),
-        ("Equal", 0.0, None),
-        ("B Slightly Better", 1.0, False),
-        ("B Better", 2.0, False),
-        ("B Much Better", 3.0, False),
-    ]
+    # Button configurations: (label, weight, is_for_a), derived from VOTE_WEIGHTS
+    # so the model stays the single source of truth for preference strengths.
+    # Laid out strongest-for-A ... Equal ... strongest-for-B.
+    BUTTONS = _build_preference_buttons()
 
     def __init__(self, parent: Optional[QWidget] = None):
         """
