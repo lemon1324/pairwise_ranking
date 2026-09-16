@@ -63,13 +63,12 @@ class MainWindow(QMainWindow):
         self.project = project
         self.user_config = user_config
 
-        # Convenience references
-        self.items = self.project.items
-        self.votes = self.project.votes
-        self.settings = self.project.settings
-
         # Current rankings (computed on demand)
         self._rankings: Optional[list[RankingResult]] = None
+
+        # Stats from the selector that chose the pair on show, reused when a
+        # specific pair has to be put back on screen after an undo.
+        self._comparison_stats: Optional[dict] = None
 
         # Set up UI
         self._setup_menu()
@@ -190,7 +189,6 @@ class MainWindow(QMainWindow):
 
         # Settings signals
         self.settings_widget.settings_changed.connect(self._on_settings_changed)
-        self.settings_widget.slots_changed.connect(self._on_slots_changed)
 
         # Tab change
         self.tabs.currentChanged.connect(self._on_tab_changed)
@@ -218,14 +216,14 @@ class MainWindow(QMainWindow):
         """Compute rankings from current items and votes."""
         # Rankings are always computed for all items (not filtered by blinded mode)
         # This ensures the Rankings tab shows all items regardless of mode
-        if len(self.items) < 2:
+        if len(self.project.items) < 2:
             self._rankings = None
             return
 
-        model = BradleyTerryModel(self.items)
+        model = BradleyTerryModel(self.project.items)
         model.add_votes(
-            self.votes,
-            decay_timescale_days=self.settings.decay_timescale_days,
+            self.project.votes,
+            decay_timescale_days=self.project.settings.decay_timescale_days,
         )
         # The model numbers every item it was given; ranks shown to the user
         # count active items only.
@@ -233,7 +231,7 @@ class MainWindow(QMainWindow):
 
     def _refresh_item_list(self) -> None:
         """Refresh the items list widget."""
-        self.item_list_widget.set_items(self.items, self.project.slots)
+        self.item_list_widget.set_items(self.project.items, self.project.slots)
 
     def _eligible_comparison_items(self, active_items: list[Item]) -> list[Item]:
         """
@@ -246,13 +244,14 @@ class MainWindow(QMainWindow):
             list[Item]: The active items, further restricted to those with an
             identifier when blinded comparison mode is on.
         """
-        if self.settings.blinded_comparison_mode:
+        if self.project.settings.blinded_comparison_mode:
             return [item for item in active_items if item.has_identifier()]
         return active_items
 
     def _refresh_comparison(self) -> None:
         """Refresh the comparison widget with next pair."""
-        blinded_mode = self.settings.blinded_comparison_mode
+        blinded_mode = self.project.settings.blinded_comparison_mode
+        self._comparison_stats = None
 
         # Retired items keep their history but are never offered for comparison
         active_items = self.project.active_items()
@@ -264,32 +263,36 @@ class MainWindow(QMainWindow):
             if blinded_mode and len(active_items) >= 2:
                 # Have items but they lack identifiers
                 self.comparison_widget.set_no_items(
-                    "Assign location identifiers to at least 2 items to compare in blinded mode"
+                    "Assign identifiers to at least 2 items to compare in blinded mode"
                 )
             else:
                 self.comparison_widget.set_no_items()
             return
 
-        selector = PairSelector(eligible_items, self.votes, self.settings)
+        selector = PairSelector(
+            eligible_items, self.project.votes, self.project.settings
+        )
         pair = selector.select_pair(self._rankings)
 
         if pair is None:
             self.comparison_widget.set_no_items()
             return
 
-        stats = selector.get_comparison_stats()
-        self.comparison_widget.set_pair(pair[0], pair[1], stats, blinded_mode=blinded_mode)
+        self._comparison_stats = selector.get_comparison_stats()
+        self.comparison_widget.set_pair(
+            pair[0], pair[1], self._comparison_stats, blinded_mode=blinded_mode
+        )
 
     def _refresh_results(self) -> None:
         """Refresh the results widget."""
         if self._rankings:
-            self.results_widget.set_rankings(self._rankings, self.votes)
+            self.results_widget.set_rankings(self._rankings, self.project.votes)
         else:
             self.results_widget.set_no_rankings()
 
     def _refresh_settings(self) -> None:
         """Refresh the settings widget."""
-        self.settings_widget.set_settings(self.settings)
+        self.settings_widget.set_settings(self.project.settings)
         self.settings_widget.set_slots(self.project.slots)
 
     def _refresh_undo_state(self) -> None:
@@ -302,54 +305,70 @@ class MainWindow(QMainWindow):
         """Persist the project and refresh everything that depends on the data."""
         self._save_project()
         self._compute_rankings()
+        self._refresh_item_list()
         self._refresh_comparison()
         self._refresh_results()
         self._refresh_undo_state()
 
+    def _find_item(self, item_id: str) -> Optional[Item]:
+        """
+        Look an item up in the project by id.
+
+        Args:
+            item_id: The id to find.
+
+        Returns:
+            Optional[Item]: The item, or None if the project has no such item.
+        """
+        for item in self.project.items:
+            if item.id == item_id:
+                return item
+        return None
+
     def _on_item_added(self, item: Item) -> None:
         """Handle item added event."""
-        self.items.append(item)
+        self.project.items.append(item)
         self._on_data_changed()
 
     def _on_item_updated(self, item: Item) -> None:
         """Handle item updated event."""
-        for i, existing in enumerate(self.items):
+        for i, existing in enumerate(self.project.items):
             if existing.id == item.id:
-                self.items[i] = item
+                self.project.items[i] = item
                 break
         self._on_data_changed()
 
     def _on_item_deleted(self, item_id: str) -> None:
         """Handle item deleted event."""
-        self.project.items[:] = [item for item in self.items if item.id != item_id]
-        self.items = self.project.items
+        self.project.items[:] = [
+            item for item in self.project.items if item.id != item_id
+        ]
 
         # Also delete votes involving this item
-        self.project.votes[:] = [v for v in self.votes if not v.involves_item(item_id)]
-        self.votes = self.project.votes
+        self.project.votes[:] = [
+            v for v in self.project.votes if not v.involves_item(item_id)
+        ]
 
         self._on_data_changed()
 
     def _on_item_retired(self, item_id: str) -> None:
         """Handle item retired event."""
-        for item in self.items:
-            if item.id == item_id:
-                item.retire()
-                break
+        item = self._find_item(item_id)
+        if item is not None:
+            item.retire()
         self._on_data_changed()
 
     def _on_item_replaced(self, old_item_id: str, new_item: Item) -> None:
         """Handle item replaced event: retire the old item, add its successor."""
-        for item in self.items:
-            if item.id == old_item_id:
-                item.retire(replaced_by=new_item.id)
-                break
-        self.items.append(new_item)
+        old_item = self._find_item(old_item_id)
+        if old_item is not None:
+            old_item.retire(replaced_by=new_item.id)
+        self.project.items.append(new_item)
         self._on_data_changed()
 
     def _on_vote_submitted(self, vote: Vote) -> None:
         """Handle vote submitted event."""
-        self.votes.append(vote)
+        self.project.votes.append(vote)
         self._on_data_changed()
 
     def _on_skip_requested(self) -> None:
@@ -371,7 +390,8 @@ class MainWindow(QMainWindow):
 
         An item may have been retired, deleted or stripped of its identifier
         since the vote was cast; in that case the pair cannot be offered and
-        whatever _refresh_comparison already chose stands.
+        whatever _refresh_comparison already chose stands. The statistics it
+        computed for that refresh are reused rather than recomputed.
 
         Args:
             vote: The vote that was undone.
@@ -384,37 +404,40 @@ class MainWindow(QMainWindow):
         if winner is None or loser is None:
             return
 
-        selector = PairSelector(eligible, self.votes, self.settings)
         self.comparison_widget.set_pair(
             winner,
             loser,
-            selector.get_comparison_stats(),
-            blinded_mode=self.settings.blinded_comparison_mode,
+            self._comparison_stats,
+            blinded_mode=self.project.settings.blinded_comparison_mode,
         )
 
     def _on_settings_changed(self, settings: Settings) -> None:
-        """Handle settings changed event."""
-        self.project.settings = settings
-        self.settings = settings
-        self._on_data_changed()
+        """
+        Apply the settings and slot list from a single Save Settings click.
 
-    def _on_slots_changed(self, slots: list) -> None:
-        """Handle the project's slot list being edited."""
-        self.project.set_slots(list(slots))
+        The slot list is read back from the widget rather than arriving on a
+        second signal, so one click means exactly one save.
+
+        Args:
+            settings: The settings as entered.
+        """
+        self.project.settings = settings
+        self.project.set_slots(self.settings_widget.get_slots())
         self._on_data_changed()
-        self._refresh_item_list()
+        # Show the slot list as it was normalized.
+        self._refresh_settings()
 
     def _on_tab_changed(self, index: int) -> None:
         """Handle tab change event."""
-        # Refresh the new tab's content
+        # Refresh the new tab's content. The Settings tab is deliberately not
+        # refreshed here: it holds edits the user has not saved yet, and is
+        # pushed only on startup, on a project switch and after a save.
         if index == 0:  # Items
             self._refresh_item_list()
         elif index == 1:  # Compare
             self._refresh_comparison()
         elif index == 2:  # Rankings
             self._refresh_results()
-        elif index == 3:  # Settings
-            self._refresh_settings()
 
     def _on_new_project(self) -> None:
         """Handle File > New Project."""
@@ -459,9 +482,6 @@ class MainWindow(QMainWindow):
     def _switch_to_project(self, project: Project) -> None:
         """Switch to a different project."""
         self.project = project
-        self.items = self.project.items
-        self.votes = self.project.votes
-        self.settings = self.project.settings
 
         self.user_config.add_recent_project(
             project.name,

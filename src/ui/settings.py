@@ -34,13 +34,15 @@ class SettingsWidget(QWidget):
 
     Allows adjustment of pair selection algorithm weights and other parameters.
 
+    The slot list is not a signal of its own: Save Settings emits
+    settings_changed and the main window reads the slots back with
+    :meth:`get_slots`, so one click means one save.
+
     Signals:
         settings_changed: Emitted when settings are saved (passes Settings object).
-        slots_changed: Emitted alongside settings_changed (passes the slot list).
     """
 
     settings_changed = pyqtSignal(Settings)
-    slots_changed = pyqtSignal(list)
 
     def __init__(self, parent: Optional[QWidget] = None):
         """
@@ -134,7 +136,7 @@ class SettingsWidget(QWidget):
         self.cross_category_rate_spin.setToolTip(
             "Fraction of comparisons that cross category boundaries.\n"
             "Cross-category votes calibrate ELO so ratings are comparable across categories\n"
-            "(e.g. a 1700 in 'Tactile' feels similar to a 1700 in 'Linear').\n"
+            "(e.g. a 1700 in one category means about the same as a 1700 in another).\n"
             "0.0 = always compare within the same category.\n"
             "1.0 = ignore categories entirely."
         )
@@ -148,8 +150,8 @@ class SettingsWidget(QWidget):
 
         self.blinded_mode_check = QCheckBox("Blinded comparison mode")
         self.blinded_mode_check.setToolTip(
-            "When enabled, the comparison panel shows only the storage\n"
-            "location identifier instead of the item name and description.\n"
+            "When enabled, the comparison panel shows only the item's\n"
+            "identifier instead of its name and description.\n"
             "This helps reduce bias during comparisons.\n\n"
             "Note: Items without an identifier cannot be compared\n"
             "when blinded mode is enabled."
@@ -221,19 +223,19 @@ class SettingsWidget(QWidget):
         """
         Read the slot list from the editor.
 
-        Entries may be separated by newlines or commas; blanks are dropped.
-        Duplicates are removed by :meth:`src.models.project.Project.set_slots`.
+        Entries may be separated by newlines or commas. Stripping, dropping
+        blanks and removing duplicates is left to
+        :func:`src.models.project.normalize_slots`, which
+        :meth:`src.models.project.Project.set_slots` applies.
 
         Returns:
-            list[str]: The slot labels as entered.
+            list[str]: The slot labels exactly as entered, split up.
         """
-        slots = []
-        for line in self.slots_edit.toPlainText().splitlines():
-            for part in line.split(","):
-                slot = part.strip()
-                if slot:
-                    slots.append(slot)
-        return slots
+        return [
+            part
+            for line in self.slots_edit.toPlainText().splitlines()
+            for part in line.split(",")
+        ]
 
     def set_settings(self, settings: Settings) -> None:
         """
@@ -282,7 +284,6 @@ class SettingsWidget(QWidget):
 
         self._settings = new_settings
         self.settings_changed.emit(new_settings)
-        self.slots_changed.emit(self.get_slots())
 
         QMessageBox.information(self, "Settings Saved", "Settings have been saved.")
 

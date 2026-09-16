@@ -25,6 +25,13 @@ from src.models.export import build_export_rows
 from src.models.ranking import RankingResult
 
 
+# Category filter entry meaning "do not filter"
+ALL_CATEGORIES = "All"
+
+# Colour used for retired rows and other de-emphasized text in this module
+GREY = Qt.GlobalColor.gray
+
+
 class ResultsWidget(QWidget):
     """
     Widget for displaying ranking results.
@@ -42,7 +49,7 @@ class ResultsWidget(QWidget):
         super().__init__(parent)
         self._rankings: list[RankingResult] = []
         self._votes: list[Vote] = []
-        self._selected_category: str = "All"
+        self._selected_category: str = ALL_CATEGORIES
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -62,7 +69,7 @@ class ResultsWidget(QWidget):
         header_layout.addStretch()
 
         self.category_filter = QComboBox()
-        self.category_filter.addItem("All")
+        self.category_filter.addItem(ALL_CATEGORIES)
         self.category_filter.setToolTip("Filter rankings by category")
         self.category_filter.currentTextChanged.connect(self._on_category_filter_changed)
         header_layout.addWidget(QLabel("Category:"))
@@ -141,7 +148,7 @@ class ResultsWidget(QWidget):
 
         self.category_filter.blockSignals(True)
         self.category_filter.clear()
-        self.category_filter.addItem("All")
+        self.category_filter.addItem(ALL_CATEGORIES)
         for cat in categories:
             self.category_filter.addItem(cat)
 
@@ -160,11 +167,8 @@ class ResultsWidget(QWidget):
         """Display message when there are no rankings."""
         self._rankings = []
         self._votes = []
-        self._selected_category = "All"
-        self.category_filter.blockSignals(True)
-        self.category_filter.clear()
-        self.category_filter.addItem("All")
-        self.category_filter.blockSignals(False)
+        self._selected_category = ALL_CATEGORIES
+        self._refresh_category_filter()
         self.tree.clear()
         self.summary_label.setText("Add items and perform comparisons to see rankings.")
 
@@ -175,7 +179,9 @@ class ResultsWidget(QWidget):
         in_scope = self._in_scope()
 
         # Apply category filter
-        filtering_category = bool(self._selected_category) and self._selected_category != "All"
+        filtering_category = (
+            bool(self._selected_category) and self._selected_category != ALL_CATEGORIES
+        )
         if filtering_category:
             visible = [r for r in in_scope if r.item.category == self._selected_category]
         else:
@@ -196,14 +202,14 @@ class ResultsWidget(QWidget):
 
             if not is_active:
                 for col in range(5):
-                    item.setForeground(col, Qt.GlobalColor.gray)
+                    item.setForeground(col, GREY)
 
             # Add details as child items
             details = self._get_item_details(result)
             for detail_key, detail_value in details.items():
                 detail_item = QTreeWidgetItem(["", detail_key, "", detail_value, ""])
                 for col in range(5):
-                    detail_item.setForeground(col, Qt.GlobalColor.gray)
+                    detail_item.setForeground(col, GREY)
                 item.addChild(detail_item)
 
             self.tree.addTopLevelItem(item)
@@ -332,7 +338,7 @@ class ResultsWidget(QWidget):
         # The export mirrors what the Rankings tab currently shows.
         category = (
             self._selected_category
-            if self._selected_category and self._selected_category != "All"
+            if self._selected_category and self._selected_category != ALL_CATEGORIES
             else None
         )
         rows = build_export_rows(
