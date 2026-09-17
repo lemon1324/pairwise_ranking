@@ -28,4 +28,15 @@ Errors: field error with icon and words; Save disabled with the reason in the st
 
 States: normal, changed (unsaved), invalid value, saved, slots with duplicates.
 
+Owner direction during the build (binding):
+- Parameters and slots are two separately ruled tables, anchored top-left and top-right, not
+  sharing a centre line or the title block's lines.
+- Slot board: in use is a filled balloon, free is an open ring.
+- Real app: normalize the saved slot list to one comma-separated line (the desktop app currently
+  saves newline-separated), so the Settings view reads well.
+- Slots can be names (a keyboard tester has "Apostrophe"). Lists, tables and the slot board show a
+  short label of at most 2 characters; full names show in edit forms, Compare views and on hover.
+  Mocked syntax for an explicit short label: `Apostrophe = '`; without one, the first two
+  characters. Collisions between auto labels are an open decision for the real app.
+
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
