@@ -17,7 +17,11 @@ from typing import Callable, Optional
 
 from src.data.project_storage import ProjectStorage
 from src.models.item import Item
-from src.models.project import Project
+from src.models.project import (
+    Project,
+    active_identifiers as active_identifiers_of,
+    free_slots as free_slots_of,
+)
 from src.models.ranking import (
     BradleyTerryModel,
     PairSelector,
@@ -79,6 +83,22 @@ class PairOffer:
             should show the message for :attr:`reason` instead.
         """
         return self.pair is not None
+
+
+@dataclass(frozen=True)
+class SlotSummary:
+    """
+    How much of a project's slot list is occupied.
+
+    Attributes:
+        total: How many slots the project defines.
+        used: How many of them an active item occupies.
+        free: The slots no active item occupies, in the order they are defined.
+    """
+
+    total: int
+    used: int
+    free: list[str]
 
 
 @dataclass(frozen=True)
@@ -181,6 +201,11 @@ class ProjectSession:
         ProjectStorage.save(self._project, self._project.file_path)
         if self._on_saved is not None:
             self._on_saved(self._project)
+
+    def _changed(self) -> None:
+        """Drop the derived state and save, after any edit to the project."""
+        self._invalidate()
+        self._persist()
 
     def save(self) -> None:
         """
@@ -333,8 +358,7 @@ class ProjectSession:
         vote = self._project.add_vote(
             Vote(winner_id=winner_id, loser_id=loser_id, weight=weight)
         )
-        self._invalidate()
-        self._persist()
+        self._changed()
         return vote
 
     def undo(self) -> Optional[UndoResult]:
@@ -356,8 +380,7 @@ class ProjectSession:
         if vote is None:
             return None
 
-        self._invalidate()
-        self._persist()
+        self._changed()
 
         offer = self.next_pair()
 
@@ -368,3 +391,182 @@ class ProjectSession:
 
         pair = None if winner is None or loser is None else (winner, loser)
         return UndoResult(vote=vote, offer=offer, pair=pair)
+
+    def add_item(self, item: Item) -> Item:
+        """
+        Add an item to the project.
+
+        The item is taken as it is. Form input should be checked with
+        :func:`~src.app.items.validate_item_form` before it gets here, which is
+        where the frontend can still put the complaint next to the field it
+        belongs to.
+
+        Args:
+            item: The item to add.
+
+        Returns:
+            Item: The item that was added.
+        """
+        self._project.add_item(item)
+        self._changed()
+        return item
+
+    def update_item(self, item: Item) -> Optional[Item]:
+        """
+        Replace an item with an edited version of itself.
+
+        An id the project does not hold is tolerated: nothing is changed, but
+        the project is still saved, because that is what the desktop has always
+        done and a caller cannot tell the two cases apart anyway.
+
+        Args:
+            item: The edited item, carrying the id of the item it replaces.
+
+        Returns:
+            Optional[Item]: The stored item, or None when the project holds no
+            item with that id.
+        """
+        stored: Optional[Item] = None
+        for index, existing in enumerate(self._project.items):
+            if existing.id == item.id:
+                self._project.items[index] = item
+                stored = item
+                break
+
+        self._changed()
+        return stored
+
+    def retire(self, item_id: str) -> Optional[Item]:
+        """
+        Retire an item, keeping its history but freeing its identifier.
+
+        A missing item is tolerated, as for :meth:`update_item`.
+
+        Args:
+            item_id: Id of the item to retire.
+
+        Returns:
+            Optional[Item]: The retired item, or None when there is no such
+            item.
+        """
+        item = self._project.find_item(item_id)
+        if item is not None:
+            item.retire()
+
+        self._changed()
+        return item
+
+    def replace(self, old_item_id: str, new_item: Item) -> Item:
+        """
+        Retire an item and add the item that takes its place.
+
+        The old item is retired **before** the successor is added, because
+        retiring clears the old item's identifier and the successor usually
+        arrives holding it; the other order would have two active items in one
+        slot. A missing predecessor is tolerated: the successor is still added.
+
+        Args:
+            old_item_id: Id of the item being replaced.
+            new_item: The item taking its place.
+
+        Returns:
+            Item: The item that was added.
+        """
+        old_item = self._project.find_item(old_item_id)
+        if old_item is not None:
+            old_item.retire(replaced_by=new_item.id)
+        self._project.add_item(new_item)
+
+        self._changed()
+        return new_item
+
+    def reactivate(self, item_id: str, identifier: str = "") -> Optional[Item]:
+        """
+        Return a retired item to the active pool.
+
+        Args:
+            item_id: Id of the item to reactivate.
+            identifier: Identifier to give it, or empty for none.
+
+        Returns:
+            Optional[Item]: The reactivated item, or None when there is no such
+            item.
+        """
+        item = self._project.find_item(item_id)
+        if item is not None:
+            item.reactivate(identifier)
+
+        self._changed()
+        return item
+
+    def delete_item(self, item_id: str) -> Optional[Item]:
+        """
+        Delete an item and every vote it took part in.
+
+        Deleting discards history; retiring is the way to keep it. A missing
+        item is tolerated.
+
+        Args:
+            item_id: Id of the item to delete.
+
+        Returns:
+            Optional[Item]: The deleted item, or None when there is no such
+            item.
+        """
+        removed = self._project.remove_item(item_id)
+        self._changed()
+        return removed
+
+    def _items_except(self, exclude_item_id: Optional[str]) -> list[Item]:
+        """
+        Return the project's items with one of them left out.
+
+        Args:
+            exclude_item_id: Id of the item to leave out, or None to keep all.
+
+        Returns:
+            list[Item]: The remaining items, active and retired.
+        """
+        if exclude_item_id is None:
+            return list(self._project.items)
+        return [item for item in self._project.items if item.id != exclude_item_id]
+
+    def taken_identifiers(self, exclude_item_id: Optional[str] = None) -> set[str]:
+        """
+        Return the identifiers active items already hold.
+
+        Args:
+            exclude_item_id: Id of an item to ignore, typically the item being
+                edited or the item being replaced, so that its own identifier
+                does not count as taken.
+
+        Returns:
+            set[str]: The non-empty identifiers in use.
+        """
+        return active_identifiers_of(self._items_except(exclude_item_id))
+
+    def free_slots(self, exclude_item_id: Optional[str] = None) -> list[str]:
+        """
+        Return the project's slots that no active item occupies.
+
+        Args:
+            exclude_item_id: Id of an item whose slot should count as free.
+
+        Returns:
+            list[str]: Free slots in the order they are defined. Empty when the
+            project defines no slots at all - a frontend that has to tell those
+            two cases apart reads :meth:`slot_summary` instead.
+        """
+        return free_slots_of(self._project.slots, self._items_except(exclude_item_id))
+
+    def slot_summary(self) -> SlotSummary:
+        """
+        Summarize how much of the slot list is occupied.
+
+        Returns:
+            SlotSummary: The slot counts and the free slots. A total of zero
+            means the project defines no slots and identifiers are free text.
+        """
+        free = self._project.free_slots()
+        total = len(self._project.slots)
+        return SlotSummary(total=total, used=total - len(free), free=free)
