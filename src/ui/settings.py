@@ -19,12 +19,13 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtGui import QFont
 
+from src.app.slots import format_slot_list, parse_slot_list
 from src.models.settings import Settings
 
 
 SLOTS_HINT = (
-    "one slot per line or comma separated; "
-    "e.g. positions on a board, shelf labels, or bin numbers"
+    "one comma-separated line, e.g. A1, A2, B1; "
+    "positions on a board, shelf labels, or bin numbers"
 )
 
 
@@ -175,7 +176,9 @@ class SettingsWidget(QWidget):
         self.slots_edit = QPlainTextEdit()
         self.slots_edit.setPlaceholderText(SLOTS_HINT)
         self.slots_edit.setToolTip(SLOTS_HINT)
-        self.slots_edit.setMaximumHeight(120)
+        # One comma-separated line, so the box only has to hold a couple of
+        # wrapped lines rather than a column of names.
+        self.slots_edit.setMaximumHeight(72)
         slots_layout.addWidget(self.slots_edit)
 
         layout.addWidget(slots_group)
@@ -215,27 +218,24 @@ class SettingsWidget(QWidget):
         Display a project's slot list.
 
         Args:
-            slots: The slot labels, shown one per line.
+            slots: The slot labels, shown as one comma-separated line.
         """
-        self.slots_edit.setPlainText("\n".join(slots))
+        self.slots_edit.setPlainText(format_slot_list(slots))
 
     def get_slots(self) -> list[str]:
         """
         Read the slot list from the editor.
 
-        Entries may be separated by newlines or commas. Stripping, dropping
-        blanks and removing duplicates is left to
+        Entries are separated by commas; newlines are accepted too, so a
+        pasted column of names still works. Stripping, dropping blanks and
+        removing duplicates is left to
         :func:`src.models.project.normalize_slots`, which
         :meth:`src.models.project.Project.set_slots` applies.
 
         Returns:
             list[str]: The slot labels exactly as entered, split up.
         """
-        return [
-            part
-            for line in self.slots_edit.toPlainText().splitlines()
-            for part in line.split(",")
-        ]
+        return parse_slot_list(self.slots_edit.toPlainText())
 
     def set_settings(self, settings: Settings) -> None:
         """
