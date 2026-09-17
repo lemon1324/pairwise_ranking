@@ -15,10 +15,16 @@ So the register reads files with :func:`probe_project_file`, which parses the
 JSON and pulls out the handful of keys a row needs without ever constructing a
 :class:`~src.models.project.Project` and without writing anything at all.
 
-The probe is deliberately shallow but not credulous: it accepts exactly the
-shapes :meth:`~src.models.project.Project.from_dict` accepts, so a file the
-register calls readable is a file that will actually open. What it does not do
-is build the items and votes, because a row only needs to count them.
+The probe is deliberately shallow. It checks the **top level** of the file -
+the name, the two entry lists, the settings, the slots and the slot labels -
+the same way :meth:`~src.models.project.Project.from_dict` checks it, and
+stops there. It does not build the items and votes, because a row only needs
+to count them, and so it cannot see the faults that only a full construction
+would find: an item entry missing a required key, or a timestamp that is not a
+date. An OK row therefore means "shaped like a project", which is a little
+short of "will open". Chasing the rest would mean building the project the
+probe exists not to build, and the cases it misses are rare enough that a
+failed Open is the better place to meet them.
 
 Projects are addressed by **file name within the data directory**, never by
 arbitrary path. :func:`import_file` refuses a name carrying a path separator or
@@ -49,8 +55,13 @@ DEFAULT_FILE_STEM = "Project"
 # Longest file stem the register will build. ``safe_project_filename`` caps
 # nothing, and a project name is free text, so the cap belongs here - a name
 # long enough to blow past the filesystem's limit would otherwise fail at the
-# write rather than at the naming. Counted in characters, not bytes, which is
-# far enough under the usual 255-byte limit for any realistic name.
+# write rather than at the naming.
+#
+# The cap counts **characters, not bytes**, which is far enough under the usual
+# 255-byte NAME_MAX for any realistic name. The exception is a name of 64
+# astral-plane characters, which encodes to 256 UTF-8 bytes and would raise at
+# the write instead of being capped here. Byte-aware truncation is not worth
+# the complication for a project name.
 MAX_FILE_STEM_LENGTH = 64
 
 # Separator between the two parts of a collision-suffixed file stem, as in
@@ -98,13 +109,23 @@ class ProjectFileInfo:
             read.
         vote_count: How many votes the file holds. Zero when it could not be
             read.
-        modified: The file's own modification time, or None when it could not
-            be read. This is when the file was last *written*, which differs
-            from the project's stored ``modified`` after a format migration:
-            the migration re-save deliberately keeps the stored timestamp, so
-            the file looks touched while the project does not. The register
-            reports the file, because it is listing files and because an
-            unreadable file has no stored timestamp to report.
+        modified: When the project was last edited: the ``modified`` timestamp
+            stored inside the file, falling back to the file's own modification
+            time when there is no usable stored one, and None when even that
+            cannot be read.
+
+            The stored timestamp is what "Modified" means to someone reading
+            the register. The file's own time is not: opening an old-format
+            project migrates it, which rewrites the file and bumps its mtime,
+            so a register reporting mtime would show every migrated project as
+            edited at the moment its owner merely looked at it. The migration
+            re-save deliberately preserves the stored timestamp for exactly
+            this reason.
+
+            The fallback exists because an unreadable file has no stored
+            timestamp to report, and because a readable file whose ``modified``
+            is missing or is not a date is one of the deep faults the probe
+            does not chase - reporting the file's time beats reporting nothing.
         condition: Which of the four states the file is in.
         reason: Why the condition is not OK, phrased for a person. Empty when
             the condition is OK.
@@ -164,6 +185,36 @@ def _modified_time(path: Path) -> Optional[datetime]:
         return None
 
 
+def _stored_modified(
+    data: dict, fallback: Optional[datetime]
+) -> Optional[datetime]:
+    """
+    Read the project's own modified timestamp out of the file.
+
+    Parsed the way :meth:`~src.models.project.Project.from_dict` parses it, so
+    the register and an opened project agree on when the project was last
+    edited.
+
+    Args:
+        data: The parsed project dictionary.
+        fallback: What to report when the file carries no usable timestamp,
+            normally the file's own modification time.
+
+    Returns:
+        Optional[datetime]: The stored timestamp, or the fallback. A missing or
+        unparseable value is not an error here: the probe checks the top-level
+        shape and leaves the deep faults to whatever opens the file.
+    """
+    raw = data.get("modified")
+    if not isinstance(raw, str):
+        return fallback
+
+    try:
+        return datetime.fromisoformat(raw)
+    except ValueError:
+        return fallback
+
+
 def _entry_count(value) -> int:
     """
     Count the entries of an "items" or "votes" value.
@@ -194,6 +245,56 @@ def _valid_entry_list(value) -> bool:
     if value is None:
         return True
     return isinstance(value, list) and all(isinstance(entry, dict) for entry in value)
+
+
+def _top_level_shape_error(data: dict) -> Optional[str]:
+    """
+    Find the first top-level key of a project file that is the wrong shape.
+
+    These are the checks :meth:`~src.models.project.Project.from_dict` makes on
+    the top level of the file, in the same order, and no more. Anything nested
+    is deliberately left alone: a probe that checked an item entry's keys or
+    parsed a timestamp would be constructing the project it exists not to
+    construct. So passing this is not a promise that the file opens, only that
+    it is shaped like a project.
+
+    Args:
+        data: The parsed project dictionary, already known to be a dict.
+
+    Returns:
+        Optional[str]: Why the file is not shaped like a project, phrased for a
+        person, or None when the top level is right.
+    """
+    name = data.get("name")
+    if not isinstance(name, str) or not name.strip():
+        return "The file carries no project name"
+
+    for key in ("items", "votes"):
+        if not _valid_entry_list(data.get(key)):
+            return f"The file's '{key}' is not a list of objects"
+
+    settings = data.get("settings")
+    if settings is not None and not isinstance(settings, dict):
+        return "The file's 'settings' is not an object"
+
+    slots = data.get("slots")
+    if slots is not None and (
+        not isinstance(slots, list)
+        or not all(isinstance(slot, str) for slot in slots)
+    ):
+        return "The file's 'slots' is not a list of names"
+
+    labels = data.get("slot_labels")
+    if labels is not None and (
+        not isinstance(labels, dict)
+        or not all(
+            isinstance(slot, str) and isinstance(label, str)
+            for slot, label in labels.items()
+        )
+    ):
+        return "The file's 'slot_labels' is not an object of short labels"
+
+    return None
 
 
 def _unreadable(
@@ -228,10 +329,15 @@ def probe_project_file(path: Path) -> ProjectFileInfo:
 
     This is the non-mutating counterpart of
     :meth:`~src.data.project_storage.ProjectStorage.load`: it parses the JSON
-    and reads the name, the two counts and the format version straight out of
-    the dictionary. No :class:`~src.models.project.Project` is constructed, no
-    upgrade is applied and nothing is written, so probing a directory full of
-    old files leaves every one of them byte-identical.
+    and reads the name, the two counts, the stored timestamp and the format
+    version straight out of the dictionary. No
+    :class:`~src.models.project.Project` is constructed, no upgrade is applied
+    and nothing is written, so probing a directory full of old files leaves
+    every one of them byte-identical.
+
+    The top-level shape is checked, the nested shapes are not, so an OK row
+    means the file is shaped like a project rather than that it is certain to
+    open. See the module docstring for where that line is drawn.
 
     Args:
         path: The .pairrank file to probe.
@@ -241,18 +347,20 @@ def probe_project_file(path: Path) -> ProjectFileInfo:
         raises: an unreadable file is a row with a cause on it, because the
         register has to draw a row for every file it finds.
     """
-    modified = _modified_time(path)
+    file_modified = _modified_time(path)
 
     try:
         raw = path.read_bytes()
     except OSError as e:
-        return _unreadable(path, modified, f"The file could not be read: {e}")
+        return _unreadable(
+            path, file_modified, f"The file could not be read: {e}"
+        )
 
-    return _info_from_bytes(path, modified, raw)
+    return _info_from_bytes(path, file_modified, raw)
 
 
 def _info_from_bytes(
-    path: Path, modified: Optional[datetime], raw: bytes
+    path: Path, file_modified: Optional[datetime], raw: bytes
 ) -> ProjectFileInfo:
     """
     Work out a register row from a project file's bytes.
@@ -262,7 +370,8 @@ def _info_from_bytes(
 
     Args:
         path: The path the bytes belong to, or will belong to.
-        modified: The modification time to report.
+        file_modified: The file's own modification time, reported when the file
+            carries no usable timestamp of its own.
         raw: The file's contents.
 
     Returns:
@@ -271,24 +380,27 @@ def _info_from_bytes(
     try:
         data = json.loads(raw.decode("utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError) as e:
-        return _unreadable(path, modified, f"The file is not valid JSON: {e}")
+        return _unreadable(
+            path, file_modified, f"The file is not valid JSON: {e}"
+        )
 
     if not isinstance(data, dict):
         return _unreadable(
             path,
-            modified,
+            file_modified,
             f"The file holds {type(data).__name__} rather than a project object",
         )
 
     try:
         version = detect_version(data)
     except ValueError as e:
-        return _unreadable(path, modified, str(e))
+        return _unreadable(path, file_modified, str(e))
 
     raw_name = data.get("name")
     name = raw_name.strip() if isinstance(raw_name, str) else ""
     items = data.get("items")
     votes = data.get("votes")
+    modified = _stored_modified(data, file_modified)
 
     if version > CURRENT_FORMAT_VERSION:
         # The shape is not checked: a newer format may well have moved the
@@ -308,18 +420,9 @@ def _info_from_bytes(
             ),
         )
 
-    if not name:
-        return _unreadable(
-            path, modified, "The file carries no project name"
-        )
-    if not _valid_entry_list(items):
-        return _unreadable(
-            path, modified, "The file's 'items' is not a list of objects"
-        )
-    if not _valid_entry_list(votes):
-        return _unreadable(
-            path, modified, "The file's 'votes' is not a list of objects"
-        )
+    shape_error = _top_level_shape_error(data)
+    if shape_error is not None:
+        return _unreadable(path, file_modified, shape_error)
 
     old = version < CURRENT_FORMAT_VERSION
     return ProjectFileInfo(
@@ -424,13 +527,40 @@ def unique_file_name(data_dir: Path, name: str) -> str:
             return candidate
 
 
+def resolve_project_path(data_dir: Path, file_name: str) -> Path:
+    """
+    Turn a project's file name into the path it is allowed to name.
+
+    **This is the traversal boundary.** The web addresses projects by file name
+    alone, so a name arriving from a browser must not be able to reach a path
+    of its own choosing. Everything that takes a file name from outside - a
+    route opening one project, renaming one, deleting one - goes through here
+    rather than joining the name onto the directory itself. It is public for
+    that reason: the check is easy to forget and expensive to get wrong, and
+    three routes each writing their own version is how one of them ends up
+    subtly different.
+
+    :func:`probe_project_file` and :func:`scan_directory` deliberately take
+    paths instead, because they are handed paths the register itself produced.
+
+    Args:
+        data_dir: The directory projects live in.
+        file_name: The name as given, with no directory part.
+
+    Returns:
+        Path: ``data_dir`` joined with the name. The file need not exist.
+
+    Raises:
+        ValueError: If the name is empty, holds a path separator or a drive
+            marker, refers to a directory rather than a file in it, or does not
+            name a .pairrank file.
+    """
+    return data_dir / _checked_file_name(file_name)
+
+
 def _checked_file_name(file_name: str) -> str:
     """
     Check that a file name addresses a file in the data directory and no other.
-
-    The web addresses projects by file name alone, so this is the boundary
-    that keeps a name arriving from outside from reaching a path of its own
-    choosing.
 
     Args:
         file_name: The name as given.
@@ -493,31 +623,34 @@ def import_file(data_dir: Path, file_name: str, raw_bytes: bytes) -> ProjectFile
             that a newer application can open; it simply arrives tagged.
         OSError: If the file cannot be written.
     """
-    name = _checked_file_name(file_name)
+    target = resolve_project_path(data_dir, file_name)
 
-    verdict = _info_from_bytes(data_dir / name, None, raw_bytes)
+    verdict = _info_from_bytes(target, None, raw_bytes)
     if verdict.condition is ProjectCondition.UNREADABLE:
         raise ValueError(f"Not a readable project file: {verdict.reason}")
 
     data_dir.mkdir(parents=True, exist_ok=True)
-    path = data_dir / unique_file_name(data_dir, Path(name).stem)
+    path = data_dir / unique_file_name(data_dir, target.stem)
     path.write_bytes(raw_bytes)
 
     return probe_project_file(path)
 
 
-def duplicate_without_votes(
+def duplicate_project_file(
     data_dir: Path, file_name: str, new_name: str
 ) -> ProjectFileInfo:
     """
     Copy a project in the register, keeping its items and dropping its votes.
 
-    This is the register's copy, taking a file it has listed and putting the
-    result back in the same directory;
+    This is the register's copy, taking a file it has listed by name and
+    putting the result back in the same directory;
     :meth:`~src.app.session.ProjectSession.duplicate_without_votes` is the open
-    project's copy, taking a destination the user has chosen. They share
+    project's copy, taking a live project and a destination the user has
+    chosen. They share
     :meth:`~src.data.project_storage.ProjectStorage.create_copy` and differ in
-    everything around it, so neither is the other one in disguise.
+    everything around it, so neither is the other one in disguise. They are
+    named apart because two different signatures behind one name in one
+    namespace is how a caller ends up reading the wrong docstring.
 
     The source is *loaded*, not probed, because the copy has to be written in
     the current format. That means an old-format source is migrated here, with
@@ -538,11 +671,11 @@ def duplicate_without_votes(
             directory, if the source cannot be read, or if new_name is empty.
         OSError: If the copy cannot be written.
     """
-    name = _checked_file_name(file_name)
+    source_path = resolve_project_path(data_dir, file_name)
     if not (new_name or "").strip():
         raise ValueError("A name for the copy is required")
 
-    source: Project = ProjectStorage.load(data_dir / name)
+    source: Project = ProjectStorage.load(source_path)
     target = data_dir / unique_file_name(data_dir, new_name)
 
     ProjectStorage.create_copy(source, new_name, target)

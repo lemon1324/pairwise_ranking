@@ -17,9 +17,10 @@ from src.app.register import (
     DEFAULT_FILE_STEM,
     MAX_FILE_STEM_LENGTH,
     ProjectCondition,
-    duplicate_without_votes,
+    duplicate_project_file,
     import_file,
     probe_project_file,
+    resolve_project_path,
     scan_directory,
     unique_file_name,
 )
@@ -189,18 +190,6 @@ class TestProbeProjectFile(RegisterTestCase):
         self.assertEqual(info.file_name, "on-disk.pairrank")
         self.assertEqual(info.path, path)
 
-    def test_modified_is_the_file_time(self):
-        """Test that the row reports when the file was last written."""
-        path = self.temp_dir / "timed.pairrank"
-        write_project(path)
-
-        info = probe_project_file(path)
-
-        self.assertIsInstance(info.modified, datetime)
-        self.assertEqual(
-            info.modified, datetime.fromtimestamp(path.stat().st_mtime)
-        )
-
     def test_invalid_json_is_unreadable(self):
         """Test that a file that is not JSON reports a cause instead of raising."""
         path = self.temp_dir / "broken.pairrank"
@@ -231,14 +220,13 @@ class TestProbeProjectFile(RegisterTestCase):
         self.assertEqual(info.condition, ProjectCondition.UNREADABLE)
         self.assertIn("name", info.reason)
 
-    def test_misshapen_entry_lists_are_unreadable(self):
-        """Test that items and votes of the wrong shape are rejected."""
-        cases = [("items", "not a list"), ("votes", [1, 2, 3])]
-        for key, value in cases:
+    def test_the_reason_names_the_key_that_is_wrong(self):
+        """Test that an unreadable row says which key it stumbled on."""
+        for key in ["items", "votes", "settings", "slots", "slot_labels"]:
             with self.subTest(key=key):
                 path = self.temp_dir / f"bad-{key}.pairrank"
                 data = project_data()
-                data[key] = value
+                data[key] = 5
                 path.write_text(json.dumps(data), encoding="utf-8")
 
                 info = probe_project_file(path)
@@ -310,6 +298,198 @@ class TestProbeProjectFile(RegisterTestCase):
         path.write_text("nonsense", encoding="utf-8")
 
         self.assertEqual(probe_project_file(path).display_name, "nameless.pairrank")
+
+
+class TestProbeEncoding(RegisterTestCase):
+    """Test cases for the ways a file can fail before it is even JSON."""
+
+    def _assert_unreadable_like_loading(self, raw: bytes) -> None:
+        """
+        Assert that bytes are unreadable to both the probe and the loader.
+
+        Args:
+            raw: The file's contents.
+        """
+        path = self.temp_dir / "encoded.pairrank"
+        path.write_bytes(raw)
+
+        self.assertEqual(
+            probe_project_file(path).condition, ProjectCondition.UNREADABLE
+        )
+        with self.assertRaises(ValueError):
+            ProjectStorage.load(path)
+
+    def test_byte_order_mark_is_unreadable(self):
+        """Test that a UTF-8 BOM is rejected, exactly as loading rejects it."""
+        self._assert_unreadable_like_loading(
+            b"\xef\xbb\xbf" + json.dumps(project_data()).encode("utf-8")
+        )
+
+    def test_empty_file_is_unreadable(self):
+        """Test that a zero-byte file is a cause on a row, not a crash."""
+        self._assert_unreadable_like_loading(b"")
+
+    def test_non_utf8_bytes_are_unreadable(self):
+        """Test that bytes that are not UTF-8 at all are rejected."""
+        self._assert_unreadable_like_loading(
+            '{"name": "Café"}'.encode("latin-1")
+        )
+
+
+class TestProbeShapeChecks(RegisterTestCase):
+    """
+    Test cases for the top-level shapes the probe does and does not check.
+
+    The probe checks the top level of the file the way Project.from_dict checks
+    it, and stops there. These tests pin both halves of that line: what it
+    catches, and what it knowingly lets through.
+    """
+
+    def _probe_with(self, **overrides):
+        """
+        Probe a project file with some of its keys replaced.
+
+        Args:
+            **overrides: Keys to set on the project dictionary.
+
+        Returns:
+            ProjectFileInfo: The row.
+        """
+        path = self.temp_dir / "shaped.pairrank"
+        data = project_data()
+        data.update(overrides)
+        path.write_text(json.dumps(data), encoding="utf-8")
+        return probe_project_file(path)
+
+    def test_wrong_top_level_shapes_are_unreadable(self):
+        """Test that a misshapen top-level key is caught before Open is offered."""
+        cases = [
+            ("slots", 5),
+            ("settings", [1]),
+            ("slot_labels", [1]),
+            ("items", "not a list"),
+            ("votes", [1, 2, 3]),
+            ("name", ""),
+        ]
+        for key, value in cases:
+            with self.subTest(key=key, value=value):
+                info = self._probe_with(**{key: value})
+
+                self.assertEqual(info.condition, ProjectCondition.UNREADABLE)
+                self.assertFalse(info.openable)
+
+    def test_top_level_faults_are_the_ones_loading_rejects(self):
+        """Test that every shape the probe refuses is one that would not open."""
+        cases = [("slots", 5), ("settings", [1]), ("slot_labels", [1])]
+        for key, value in cases:
+            with self.subTest(key=key):
+                path = self.temp_dir / f"bad-{key}.pairrank"
+                data = project_data()
+                data[key] = value
+                path.write_text(json.dumps(data), encoding="utf-8")
+
+                with self.assertRaises(ValueError):
+                    ProjectStorage.load(path)
+
+    def test_deep_faults_are_deliberately_not_chased(self):
+        """Test that a fault only a full construction would find still reads OK."""
+        cases = [("items", [{"nope": 1}]), ("created", "not-a-date")]
+        for key, value in cases:
+            with self.subTest(key=key):
+                self.assertEqual(
+                    self._probe_with(**{key: value}).condition,
+                    ProjectCondition.OK,
+                )
+
+    def test_deep_faults_are_what_an_ok_row_does_not_promise(self):
+        """Test that an OK row means the shape is right, not that Open will work."""
+        path = self.temp_dir / "deep.pairrank"
+        data = project_data()
+        data["items"] = [{"nope": 1}]
+        path.write_text(json.dumps(data), encoding="utf-8")
+
+        self.assertEqual(
+            probe_project_file(path).condition, ProjectCondition.OK
+        )
+        with self.assertRaises(ValueError):
+            ProjectStorage.load(path)
+
+
+class TestReportedModified(RegisterTestCase):
+    """Test cases for which timestamp a register row reports."""
+
+    def test_the_stored_timestamp_is_reported(self):
+        """Test that the row shows when the project was edited, not the file."""
+        path = self.temp_dir / "timed.pairrank"
+        write_project(path)
+
+        info = probe_project_file(path)
+
+        self.assertEqual(info.modified, datetime(2024, 2, 1, 12, 0, 0))
+        self.assertNotEqual(
+            info.modified, datetime.fromtimestamp(path.stat().st_mtime)
+        )
+
+    def test_missing_timestamp_falls_back_to_the_file(self):
+        """Test that a project with no stored time reports the file's."""
+        path = self.temp_dir / "untimed.pairrank"
+        data = project_data()
+        del data["modified"]
+        path.write_text(json.dumps(data), encoding="utf-8")
+
+        info = probe_project_file(path)
+
+        self.assertEqual(
+            info.modified, datetime.fromtimestamp(path.stat().st_mtime)
+        )
+
+    def test_malformed_timestamp_falls_back_to_the_file(self):
+        """Test that an unparseable stored time is not an unreadable file."""
+        path = self.temp_dir / "wrongly-timed.pairrank"
+        data = project_data()
+        data["modified"] = "the third of never"
+        path.write_text(json.dumps(data), encoding="utf-8")
+
+        info = probe_project_file(path)
+
+        self.assertEqual(info.condition, ProjectCondition.OK)
+        self.assertEqual(
+            info.modified, datetime.fromtimestamp(path.stat().st_mtime)
+        )
+
+    def test_unreadable_file_reports_the_file_time(self):
+        """Test that a file with no project in it still reports a time."""
+        path = self.temp_dir / "broken.pairrank"
+        path.write_text("{", encoding="utf-8")
+
+        info = probe_project_file(path)
+
+        self.assertEqual(info.condition, ProjectCondition.UNREADABLE)
+        self.assertEqual(
+            info.modified, datetime.fromtimestamp(path.stat().st_mtime)
+        )
+
+    def test_newer_format_file_reports_its_stored_time(self):
+        """Test that a file from the future still dates itself."""
+        path = self.temp_dir / "future.pairrank"
+        write_project(path, version=FUTURE_VERSION)
+
+        self.assertEqual(
+            probe_project_file(path).modified, datetime(2024, 2, 1, 12, 0, 0)
+        )
+
+    def test_migrating_on_open_does_not_change_the_reported_time(self):
+        """Test that opening an old project does not look like editing it."""
+        path = self.temp_dir / "legacy.pairrank"
+        write_project(path, version=1)
+        before = probe_project_file(path).modified
+
+        ProjectStorage.load(path)
+
+        self.assertNotEqual(
+            datetime.fromtimestamp(path.stat().st_mtime), before
+        )
+        self.assertEqual(probe_project_file(path).modified, before)
 
 
 class TestScanDirectory(RegisterTestCase):
@@ -485,6 +665,55 @@ class TestUniqueFileName(RegisterTestCase):
         )
 
 
+class TestResolveProjectPath(RegisterTestCase):
+    """Test cases for the boundary a file name from outside has to cross."""
+
+    def test_a_plain_name_resolves_inside_the_directory(self):
+        """Test that an ordinary name becomes the path beside its neighbours."""
+        self.assertEqual(
+            resolve_project_path(self.temp_dir, "project.pairrank"),
+            self.temp_dir / "project.pairrank",
+        )
+
+    def test_the_file_need_not_exist(self):
+        """Test that resolving a name is not the same as finding a file."""
+        path = resolve_project_path(self.temp_dir, "absent.pairrank")
+
+        self.assertFalse(path.exists())
+
+    def test_surrounding_whitespace_is_stripped(self):
+        """Test that a name arriving with whitespace still resolves."""
+        self.assertEqual(
+            resolve_project_path(self.temp_dir, "  project.pairrank  "),
+            self.temp_dir / "project.pairrank",
+        )
+
+    def test_names_that_escape_the_directory_are_refused(self):
+        """Test that no name can address anything outside the directory."""
+        cases = [
+            "../escape.pairrank",
+            "..\\escape.pairrank",
+            "/etc/escape.pairrank",
+            "sub/dir.pairrank",
+            "C:escape.pairrank",
+            "..",
+            ".",
+            "",
+            "   ",
+        ]
+        for file_name in cases:
+            with self.subTest(file_name=file_name):
+                with self.assertRaises(ValueError):
+                    resolve_project_path(self.temp_dir, file_name)
+
+    def test_only_project_files_are_addressable(self):
+        """Test that the boundary also pins the extension."""
+        for file_name in ["project.json", "project", "project.pairrank.bak"]:
+            with self.subTest(file_name=file_name):
+                with self.assertRaises(ValueError):
+                    resolve_project_path(self.temp_dir, file_name)
+
+
 class TestImportFile(RegisterTestCase):
     """Test cases for taking an uploaded project into the directory."""
 
@@ -566,10 +795,33 @@ class TestImportFile(RegisterTestCase):
 
     def test_unreadable_content_is_refused(self):
         """Test that bytes that are not a project are not written at all."""
-        for raw in [b"{not json", b'["a", "list"]', b'{"unrelated": true}']:
+        for raw in [b"{not json", b'["a", "list"]', b'{"unrelated": true}', b""]:
             with self.subTest(raw=raw):
                 with self.assertRaises(ValueError):
                     import_file(self.temp_dir, "incoming.pairrank", raw)
+
+        self.assertEqual(list(self.temp_dir.iterdir()), [])
+
+    def test_misshapen_projects_are_refused(self):
+        """Test that a file that would not open is never taken into the register."""
+        cases = [
+            ("slots", 5),
+            ("settings", [1]),
+            ("slot_labels", [1]),
+            ("items", "not a list"),
+            ("votes", [1, 2, 3]),
+        ]
+        for key, value in cases:
+            with self.subTest(key=key):
+                data = project_data()
+                data[key] = value
+
+                with self.assertRaises(ValueError):
+                    import_file(
+                        self.temp_dir,
+                        "incoming.pairrank",
+                        json.dumps(data).encode("utf-8"),
+                    )
 
         self.assertEqual(list(self.temp_dir.iterdir()), [])
 
@@ -581,7 +833,7 @@ class TestDuplicateWithoutVotes(RegisterTestCase):
         """Test that the copy carries the items with no history."""
         write_project(self.temp_dir / "source.pairrank", items=3, votes=2)
 
-        info = duplicate_without_votes(self.temp_dir, "source.pairrank", "Copy")
+        info = duplicate_project_file(self.temp_dir, "source.pairrank", "Copy")
 
         self.assertEqual(info.item_count, 3)
         self.assertEqual(info.vote_count, 0)
@@ -591,7 +843,7 @@ class TestDuplicateWithoutVotes(RegisterTestCase):
         """Test that the copy needs no upgrade of its own."""
         write_project(self.temp_dir / "source.pairrank", version=1)
 
-        info = duplicate_without_votes(self.temp_dir, "source.pairrank", "Copy")
+        info = duplicate_project_file(self.temp_dir, "source.pairrank", "Copy")
 
         self.assertEqual(info.condition, ProjectCondition.OK)
 
@@ -600,7 +852,7 @@ class TestDuplicateWithoutVotes(RegisterTestCase):
         source = self.temp_dir / "source.pairrank"
         write_project(source, items=3, votes=2)
 
-        duplicate_without_votes(self.temp_dir, "source.pairrank", "Copy")
+        duplicate_project_file(self.temp_dir, "source.pairrank", "Copy")
 
         self.assertEqual(probe_project_file(source).vote_count, 2)
 
@@ -609,39 +861,39 @@ class TestDuplicateWithoutVotes(RegisterTestCase):
         write_project(self.temp_dir / "source.pairrank")
         write_project(self.temp_dir / "Copy.pairrank")
 
-        info = duplicate_without_votes(self.temp_dir, "source.pairrank", "Copy")
+        info = duplicate_project_file(self.temp_dir, "source.pairrank", "Copy")
 
         self.assertEqual(info.file_name, "Copy (2).pairrank")
 
     def test_missing_source_raises(self):
         """Test that copying a file that is not there is an error."""
         with self.assertRaises(FileNotFoundError):
-            duplicate_without_votes(self.temp_dir, "absent.pairrank", "Copy")
+            duplicate_project_file(self.temp_dir, "absent.pairrank", "Copy")
 
     def test_escaping_source_name_is_refused(self):
         """Test that the source is addressed by file name alone."""
         with self.assertRaises(ValueError):
-            duplicate_without_votes(self.temp_dir, "../source.pairrank", "Copy")
+            duplicate_project_file(self.temp_dir, "../source.pairrank", "Copy")
 
     def test_empty_new_name_is_refused(self):
         """Test that a copy needs a name of its own."""
         write_project(self.temp_dir / "source.pairrank")
 
         with self.assertRaises(ValueError):
-            duplicate_without_votes(self.temp_dir, "source.pairrank", "   ")
+            duplicate_project_file(self.temp_dir, "source.pairrank", "   ")
 
     def test_unreadable_source_is_refused(self):
         """Test that a file the register cannot read cannot be copied."""
         (self.temp_dir / "broken.pairrank").write_text("{", encoding="utf-8")
 
         with self.assertRaises(ValueError):
-            duplicate_without_votes(self.temp_dir, "broken.pairrank", "Copy")
+            duplicate_project_file(self.temp_dir, "broken.pairrank", "Copy")
 
     def test_copy_uses_the_storage_extension(self):
         """Test that the copy is a project file like any other."""
         write_project(self.temp_dir / "source.pairrank")
 
-        info = duplicate_without_votes(self.temp_dir, "source.pairrank", "Copy")
+        info = duplicate_project_file(self.temp_dir, "source.pairrank", "Copy")
 
         self.assertEqual(info.path.suffix, ProjectStorage.FILE_EXTENSION)
 

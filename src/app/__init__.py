@@ -21,9 +21,10 @@ from .record import OpponentRecord, WeightedRecord, weighted_record
 from .register import (
     ProjectCondition,
     ProjectFileInfo,
-    duplicate_without_votes,
+    duplicate_project_file,
     import_file,
     probe_project_file,
+    resolve_project_path,
     scan_directory,
     unique_file_name,
 )
@@ -60,9 +61,10 @@ __all__ = [
     "weighted_record",
     "ProjectCondition",
     "ProjectFileInfo",
-    "duplicate_without_votes",
+    "duplicate_project_file",
     "import_file",
     "probe_project_file",
+    "resolve_project_path",
     "scan_directory",
     "unique_file_name",
     "SlotLabelError",
