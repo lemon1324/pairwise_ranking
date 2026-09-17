@@ -17,6 +17,7 @@
     let pages = 1;
     let limits = { bottom: Infinity, lastColBottom: Infinity };
     let lastCalloutKey = "";
+    let followSelection = true;
     const rowPage = new Map();
 
     const rem = () => parseFloat(getComputedStyle(document.documentElement).fontSize);
@@ -143,7 +144,8 @@
     // ---------- Selection and the floating callout ----------
 
     function finish() {
-      if (selectedId != null && rowPage.has(selectedId)) page = rowPage.get(selectedId);
+      // The sheet follows the selection unless the user paged away with PgUp/PgDn.
+      if (followSelection && selectedId != null && rowPage.has(selectedId)) page = rowPage.get(selectedId);
       page = Math.max(0, Math.min(page, pages - 1));
       o.field.querySelectorAll(".bom-page").forEach((el, i) => (el.hidden = i !== page));
       o.field.querySelectorAll("tr[data-id]").forEach((tr) => {
@@ -216,6 +218,7 @@
 
     function select(id, { focus = true } = {}) {
       selectedId = id;
+      followSelection = true;
       if (o.onSelect) o.onSelect(id);
       if (id != null && rowPage.has(id)) finish();
       else render();
@@ -225,17 +228,26 @@
     function move(delta) {
       const rows = o.rows();
       if (!rows.length) return;
+      const onScreen = rows.filter((r) => rowPage.get(r.id) === page);
       let i = rows.findIndex((r) => r.id === selectedId);
-      if (i < 0) i = delta > 0 ? 0 : rows.length - 1;
-      else i = Math.max(0, Math.min(rows.length - 1, i + delta));
+      if (i < 0 || rowPage.get(selectedId) !== page) {
+        // Nothing selected on this sheet: start at its first row (down) or last row (up).
+        const start = delta > 0 ? onScreen[0] : onScreen[onScreen.length - 1];
+        i = rows.indexOf(start ?? rows[0]);
+      } else {
+        i = Math.max(0, Math.min(rows.length - 1, i + delta));
+      }
       select(rows[i].id);
     }
 
+    // Paging only shows another sheet; it never selects. The next arrow key starts from the
+    // sheet on screen.
     function setPage(next) {
       const target = Math.max(0, Math.min(pages - 1, next));
       if (target === page) return;
-      const first = [...rowPage].find(([, p]) => p === target);
-      if (first) select(first[0]);
+      page = target;
+      followSelection = false;
+      finish();
     }
 
     function clear() {

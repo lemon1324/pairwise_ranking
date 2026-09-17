@@ -582,6 +582,53 @@ html {
   color: var(--warn);
 }
 
+/* Keys block: a full-height column at the title block's left edge, like a drawing's
+   standard-tolerance block. The rest of the title block is the usual 6-column cell grid. */
+.titleblock.tb-with-keys {
+  grid-template-columns: 8.25rem repeat(6, minmax(0, 1fr));
+  grid-template-rows: repeat(var(--tb-rows), auto);
+}
+
+.tb-keyblock {
+  grid-column: 1;
+  grid-row: 1 / span var(--tb-rows);
+}
+
+.tb-keylist {
+  display: grid;
+  gap: 0.125rem;
+  margin: var(--s-1) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8125rem;
+  line-height: 1.25;
+  color: var(--ink-2);
+}
+
+.tb-keylist li {
+  display: grid;
+  grid-template-columns: 3rem minmax(0, 1fr);
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.tb-keylist li > .key,
+.tb-keylist li > span:first-child {
+  justify-self: start;
+}
+
+.tb-keylist li > span:first-child {
+  display: flex;
+  gap: 2px;
+}
+
+.tb-keylist .key {
+  min-width: 1.25rem;
+  height: 1.25rem;
+  font-size: 0.6875rem;
+  padding: 0 0.2rem;
+}
+
 /* ---------- Mockup controls (not part of the product) ---------- */
 
 .mockup-controls {
