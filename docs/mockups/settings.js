@@ -268,4 +268,6 @@
   const picker = document.querySelector(`input[name="state"][value="${startState}"]`);
   if (picker) picker.checked = true;
   applyState(picker ? startState : "normal");
+  // ?scrollend scrolls a phone capture to the end of the long sheet (review captures only).
+  if (params.has("scrollend")) setTimeout(() => scrollTo(0, document.documentElement.scrollHeight), 400);
 })();
