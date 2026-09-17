@@ -94,9 +94,29 @@ def _v1_to_v2(data: dict) -> dict:
     return data
 
 
+def _v2_to_v3(data: dict) -> dict:
+    """
+    Upgrade a version 2 project dictionary to version 3.
+
+    Version 3 adds the optional ``slot_labels`` map holding an explicit short
+    label for a slot. Nothing else changes, so every version 2 file is already
+    a valid version 3 file once the key is there.
+
+    Args:
+        data: A version 2 project dictionary. Modified in place.
+
+    Returns:
+        dict: The same dictionary, now in version 3 shape.
+    """
+    data[FORMAT_VERSION_KEY] = 3
+    data.setdefault("slot_labels", {})
+    return data
+
+
 # Upgrade steps keyed by the version they upgrade from
 _UPGRADE_STEPS: dict[int, Callable[[dict], dict]] = {
     1: _v1_to_v2,
+    2: _v2_to_v3,
 }
 
 

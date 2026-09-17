@@ -439,6 +439,7 @@ class TestProjectStorageMigration(unittest.TestCase):
 
         self.assertEqual(data[FORMAT_VERSION_KEY], CURRENT_FORMAT_VERSION)
         self.assertEqual(data["slots"], [])
+        self.assertEqual(data["slot_labels"], {})
         for item in data["items"]:
             self.assertEqual(item["status"], "active")
             self.assertIsNone(item["retired_at"])
@@ -562,6 +563,162 @@ class TestProjectStorageMigration(unittest.TestCase):
 
         self.assertEqual(project.to_dict()[FORMAT_VERSION_KEY], CURRENT_FORMAT_VERSION)
         self.assertFalse(self.v1_backup.exists())
+
+
+class TestProjectStorageMigrationFromV2(unittest.TestCase):
+    """Test cases for migrating a version 2 file to the current format."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.temp_dir = tempfile.mkdtemp()
+        self.test_file = Path(self.temp_dir) / "test.pairrank"
+        self.v1_backup = Path(self.temp_dir) / "test.pairrank.v1.bak"
+        self.v2_backup = Path(self.temp_dir) / "test.pairrank.v2.bak"
+
+    def tearDown(self):
+        """Clean up test files."""
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def _write_v2_file(self, slot_labels=None) -> bytes:
+        """Write a version 2 project file and return its exact bytes."""
+        data = {
+            FORMAT_VERSION_KEY: 2,
+            "name": "Slotted Project",
+            "created": "2024-01-01T12:00:00",
+            "modified": "2024-02-01T12:00:00",
+            "items": [
+                {
+                    "id": "item-1",
+                    "name": "TTC Venus",
+                    "description": "Linear",
+                    "identifier": "Apostrophe",
+                    "category": "Linear",
+                    "status": "active",
+                    "retired_at": None,
+                    "replaced_by": None,
+                },
+                {
+                    "id": "item-2",
+                    "name": "Boba U4T",
+                    "description": "Tactile",
+                    "identifier": "Apex",
+                    "category": "Tactile",
+                    "status": "active",
+                    "retired_at": None,
+                    "replaced_by": None,
+                },
+            ],
+            "votes": [
+                {
+                    "id": "vote-1",
+                    "winner_id": "item-1",
+                    "loser_id": "item-2",
+                    "weight": 2.0,
+                    "timestamp": "2024-01-10T10:00:00",
+                }
+            ],
+            "settings": {"weight_uncertainty": 1.5},
+            "slots": ["Apostrophe", "Apex"],
+        }
+        if slot_labels is not None:
+            data["slot_labels"] = slot_labels
+        self.test_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        return self.test_file.read_bytes()
+
+    def test_load_v2_creates_v2_backup_with_original_bytes(self):
+        """Test that loading a v2 file backs the original bytes up as .v2.bak."""
+        original = self._write_v2_file()
+
+        ProjectStorage.load(self.test_file)
+
+        self.assertTrue(self.v2_backup.exists())
+        self.assertEqual(self.v2_backup.read_bytes(), original)
+
+    def test_load_v2_writes_exactly_one_backup(self):
+        """Test that migrating a v2 file leaves only the .v2.bak beside it."""
+        self._write_v2_file()
+
+        ProjectStorage.load(self.test_file)
+
+        self.assertEqual(
+            sorted(p.name for p in Path(self.temp_dir).iterdir()),
+            ["test.pairrank", "test.pairrank.v2.bak"],
+        )
+        self.assertFalse(self.v1_backup.exists())
+
+    def test_load_v2_rewrites_file_as_current_version(self):
+        """Test that loading a v2 file saves it back in the current format."""
+        self._write_v2_file()
+
+        ProjectStorage.load(self.test_file)
+
+        with open(self.test_file, encoding="utf-8") as f:
+            data = json.load(f)
+
+        self.assertEqual(data[FORMAT_VERSION_KEY], CURRENT_FORMAT_VERSION)
+        self.assertEqual(data["slots"], ["Apostrophe", "Apex"])
+        self.assertEqual(data["slot_labels"], {})
+
+    def test_load_v2_keeps_items_votes_and_settings(self):
+        """Test that the v2 to v3 migration carries the project across intact."""
+        self._write_v2_file()
+
+        project = ProjectStorage.load(self.test_file)
+
+        self.assertEqual(project.name, "Slotted Project")
+        self.assertEqual(len(project.items), 2)
+        self.assertEqual(len(project.votes), 1)
+        self.assertEqual(project.settings.weight_uncertainty, 1.5)
+        self.assertEqual(project.slots, ["Apostrophe", "Apex"])
+
+    def test_load_v2_preserves_modified_timestamp(self):
+        """Test that migrating a v2 file does not look like a user edit."""
+        self._write_v2_file()
+
+        project = ProjectStorage.load(self.test_file)
+
+        self.assertEqual(project.modified, datetime(2024, 2, 1, 12, 0, 0))
+
+    def test_second_load_creates_no_second_backup(self):
+        """Test that reloading a migrated v2 file does not back it up again."""
+        self._write_v2_file()
+        ProjectStorage.load(self.test_file)
+        migrated_bytes = self.test_file.read_bytes()
+
+        ProjectStorage.load(self.test_file)
+
+        self.assertEqual(self.test_file.read_bytes(), migrated_bytes)
+        self.assertEqual(
+            sorted(p.name for p in Path(self.temp_dir).iterdir()),
+            ["test.pairrank", "test.pairrank.v2.bak"],
+        )
+
+    def test_load_v2_with_labels_keeps_them(self):
+        """Test that slot labels written into a v2 file survive the upgrade."""
+        self._write_v2_file(slot_labels={"Apostrophe": "'", "Apex": "Ax"})
+
+        project = ProjectStorage.load(self.test_file)
+
+        self.assertEqual(
+            project.slot_labels, {"Apostrophe": "'", "Apex": "Ax"}
+        )
+
+    def test_load_v1_writes_only_the_v1_backup(self):
+        """Test that a v1 file crossing two steps still writes one backup."""
+        data = {
+            "name": "Legacy",
+            "items": [{"id": "item-1", "name": "Only"}],
+            "votes": [],
+            "settings": {},
+        }
+        self.test_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+        ProjectStorage.load(self.test_file)
+
+        self.assertEqual(
+            sorted(p.name for p in Path(self.temp_dir).iterdir()),
+            ["test.pairrank", "test.pairrank.v1.bak"],
+        )
 
 
 if __name__ == "__main__":
