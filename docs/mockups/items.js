@@ -46,8 +46,8 @@
       slots = null;
     }
     if (state === "full") {
-      slots = active().filter((it) => it.slot).map((it) => it.slot);
-      slots.sort((a, b) => Number(a) - Number(b));
+      const used = new Set(active().map((it) => it.slot));
+      slots = slots.filter((s) => used.has(s));
     }
     if (state === "retired") showRetired = true;
     $("filter").value = "";
@@ -61,7 +61,9 @@
       .sort((a, b) => {
         const rank = (it) => (it.status === "retired" ? 2 : it.slot ? 0 : 1);
         if (rank(a) !== rank(b)) return rank(a) - rank(b);
-        if (a.slot && b.slot) return Number(a.slot) - Number(b.slot) || a.slot.localeCompare(b.slot);
+        // Slotted rows follow the slot list's order (numbers and named keys alike).
+        const order = window.SAMPLE.slots;
+        if (a.slot && b.slot) return order.indexOf(a.slot) - order.indexOf(b.slot) || a.slot.localeCompare(b.slot);
         return a.name.localeCompare(b.name);
       });
     if (mode === "new") list.unshift({ id: "__new", name: "New item", cat: "", desc: "", slot: "", status: "new" });
@@ -81,8 +83,9 @@
     if (selected) cls.push("is-selected");
     if (it.status === "retired") cls.push("is-retired");
     if (it.status === "new") cls.push("is-new");
+    // Lists show the slot's short label (at most 2 characters); the full name is on hover.
     const balloon = it.slot
-      ? `<span class="balloon">${esc(it.slot)}</span>`
+      ? `<span class="balloon" title="Slot ${esc(it.slot)}" aria-label="Slot ${esc(it.slot)}">${esc(window.slotShort(it.slot))}</span>`
       : `<span class="balloon is-empty" aria-hidden="true">–</span>`;
     let status = `<span class="status">Active</span>`;
     if (it.status === "retired") status = `<span class="tag">Retired</span>`;

@@ -331,6 +331,10 @@ html.bom-fixed .bom-sheet > .titleblock {
   animation-name: strip-in-above;
 }
 
+.bom-callout.is-settled {
+  animation: none;
+}
+
 @keyframes strip-in-above {
   from {
     opacity: 0;
@@ -653,7 +657,7 @@ textarea.input {
   align-content: start;
   justify-items: start;
   gap: var(--s-1);
-  padding: var(--s-2) var(--s-3) var(--s-3);
+  padding: 0.375rem var(--s-3) var(--s-2);
   border: 0;
   background: transparent;
   color: var(--ink);
@@ -684,27 +688,6 @@ textarea.input {
   min-width: 1.25rem;
   height: 1.25rem;
   font-size: 0.6875rem;
-}
-
-/* Parts-list title blocks carry more cells than Compare's, so cells run a step tighter. */
-.bom-sheet .tb-cell {
-  padding: 0.375rem var(--s-3) var(--s-2);
-}
-
-.bom-sheet .tb-press {
-  padding: 0;
-}
-
-.bom-sheet .tb-press > button {
-  padding: 0.375rem var(--s-3) var(--s-2);
-}
-
-.bom-sheet .tb-title-text {
-  font-size: 1.0625rem;
-}
-
-.bom-sheet .tb-file-text {
-  word-break: break-all;
 }
 
 .tb-text {
