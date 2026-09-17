@@ -690,5 +690,107 @@ class TestProjectPopLastVote(unittest.TestCase):
         self.assertEqual(self.project.items, [self.a, self.b])
 
 
+class TestProjectMutators(unittest.TestCase):
+    """Test cases for the item and vote mutators."""
+
+    def setUp(self):
+        """Build a project with three items and three votes."""
+        self.a = Item(name="A", id="a")
+        self.b = Item(name="B", id="b")
+        self.c = Item(name="C", id="c")
+        self.ab = Vote(winner_id="a", loser_id="b", weight=1.0, id="ab")
+        self.bc = Vote(winner_id="b", loser_id="c", weight=2.0, id="bc")
+        self.ca = Vote(winner_id="c", loser_id="a", weight=3.0, id="ca")
+        self.project = Project(
+            name="P",
+            items=[self.a, self.b, self.c],
+            votes=[self.ab, self.bc, self.ca],
+        )
+
+    def test_find_item_returns_the_item(self):
+        """Test that find_item returns the item holding the id."""
+        self.assertIs(self.project.find_item("b"), self.b)
+
+    def test_find_item_returns_none_for_unknown_id(self):
+        """Test that find_item tolerates an id the project does not hold."""
+        self.assertIsNone(self.project.find_item("missing"))
+
+    def test_find_item_sees_retired_items(self):
+        """Test that find_item does not filter by lifecycle status."""
+        self.b.retire()
+        self.assertIs(self.project.find_item("b"), self.b)
+
+    def test_add_item_appends(self):
+        """Test that a new item goes to the end of the list."""
+        d = Item(name="D", id="d")
+
+        returned = self.project.add_item(d)
+
+        self.assertIs(returned, d)
+        self.assertEqual([item.id for item in self.project.items], ["a", "b", "c", "d"])
+
+    def test_add_vote_appends(self):
+        """Test that a new vote goes to the end of the list."""
+        vote = Vote(winner_id="a", loser_id="c", weight=1.0, id="ac")
+
+        returned = self.project.add_vote(vote)
+
+        self.assertIs(returned, vote)
+        self.assertEqual([v.id for v in self.project.votes], ["ab", "bc", "ca", "ac"])
+
+    def test_add_vote_is_undone_by_pop_last_vote(self):
+        """Test that the added vote is the one pop_last_vote returns."""
+        vote = Vote(winner_id="a", loser_id="c", weight=1.0, id="ac")
+        self.project.add_vote(vote)
+
+        self.assertIs(self.project.pop_last_vote(), vote)
+
+    def test_remove_item_returns_the_removed_item(self):
+        """Test that remove_item hands back what it removed."""
+        self.assertIs(self.project.remove_item("b"), self.b)
+
+    def test_remove_item_drops_the_item(self):
+        """Test that the item is gone from the project."""
+        self.project.remove_item("b")
+
+        self.assertEqual([item.id for item in self.project.items], ["a", "c"])
+
+    def test_remove_item_cascades_votes(self):
+        """Test that every vote involving the item goes with it."""
+        self.project.remove_item("b")
+
+        self.assertEqual([v.id for v in self.project.votes], ["ca"])
+
+    def test_remove_unknown_item_is_a_no_op(self):
+        """Test that removing an id the project does not hold changes nothing."""
+        returned = self.project.remove_item("missing")
+
+        self.assertIsNone(returned)
+        self.assertEqual(len(self.project.items), 3)
+        self.assertEqual(len(self.project.votes), 3)
+
+    def test_remove_item_mutates_the_shared_lists(self):
+        """Test that a caller holding the lists sees the removal."""
+        items = self.project.items
+        votes = self.project.votes
+
+        self.project.remove_item("a")
+
+        self.assertIs(self.project.items, items)
+        self.assertIs(self.project.votes, votes)
+        self.assertEqual([item.id for item in items], ["b", "c"])
+        self.assertEqual([v.id for v in votes], ["bc"])
+
+    def test_mutators_survive_a_round_trip(self):
+        """Test that mutated projects still serialize and deserialize."""
+        self.project.add_item(Item(name="D", id="d"))
+        self.project.remove_item("a")
+
+        restored = Project.from_dict(self.project.to_dict())
+
+        self.assertEqual([item.id for item in restored.items], ["b", "c", "d"])
+        self.assertEqual([v.id for v in restored.votes], ["bc"])
+
+
 if __name__ == "__main__":
     unittest.main()
