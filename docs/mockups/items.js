@@ -242,10 +242,13 @@
     } else {
       const used = usedSlots().size;
       const free = freeSlots();
+      // A list, so named slots show their short label, with the full name on hover.
+      const shortList = (list) =>
+        list.map((s) => (window.slotShort(s) === s ? esc(s) : `<span title="Slot ${esc(s)}" aria-label="Slot ${esc(s)}">${esc(window.slotShort(s))}</span>`)).join(", ");
       const listed =
         free.length > 8
-          ? `<span class="num">${free.slice(0, 6).join(", ")}</span> and ${free.length - 6} more`
-          : `<span class="num">${free.join(", ")}</span>`;
+          ? `<span class="num">${shortList(free.slice(0, 6))}</span> and ${free.length - 6} more`
+          : `<span class="num">${shortList(free)}</span>`;
       $("tb-slots").innerHTML =
         `<span class="num">${used}/${slots.length}</span> used · ` +
         (free.length ? `free: ${listed}` : `<strong>none free</strong>`);
