@@ -123,6 +123,46 @@ class TestWeightedRecordIdKeying(unittest.TestCase):
         self.assertEqual(record.wins[0].opponent_id, "gone")
         self.assertEqual(record.wins[0].name, UNKNOWN_OPPONENT_NAME)
 
+    def test_retired_opponent_keeps_its_name(self):
+        """Test that retiring an opponent does not hide it from the record."""
+        self.items[1].retire()
+        votes = [vote("a", "b", 2.0)]
+
+        record = weighted_record("a", votes, self.items, reference_time=NOW)
+
+        self.assertEqual(record.wins[0].opponent_id, "b")
+        self.assertEqual(record.wins[0].name, "Bravo")
+
+    def test_a_retired_item_still_has_a_record(self):
+        """Test that a retired item's own history is still reported."""
+        self.items[0].retire()
+        votes = [vote("a", "b", 2.0), vote("c", "a", 1.0)]
+
+        record = weighted_record("a", votes, self.items, reference_time=NOW)
+
+        self.assertEqual([r.opponent_id for r in record.wins], ["b"])
+        self.assertEqual([r.opponent_id for r in record.losses], ["c"])
+
+    def test_an_item_the_project_does_not_hold_has_an_empty_record(self):
+        """Test that asking about an unknown id is an empty record, not an error."""
+        votes = [vote("a", "b", 2.0)]
+
+        record = weighted_record("nope", votes, self.items, reference_time=NOW)
+
+        self.assertEqual(record.wins, [])
+        self.assertEqual(record.losses, [])
+
+    def test_one_opponent_can_appear_on_both_sides(self):
+        """Test that an opponent beaten once and lost to once is in both lists."""
+        votes = [vote("a", "b", 2.0), vote("b", "a", 3.0)]
+
+        record = weighted_record("a", votes, self.items, reference_time=NOW)
+
+        self.assertEqual([r.opponent_id for r in record.wins], ["b"])
+        self.assertEqual([r.opponent_id for r in record.losses], ["b"])
+        self.assertEqual(record.wins[0].weight_raw, 2.0)
+        self.assertEqual(record.losses[0].weight_raw, 3.0)
+
 
 class TestWeightedRecordDecay(unittest.TestCase):
     """Test cases for the raw and decayed weightings."""
@@ -174,6 +214,39 @@ class TestWeightedRecordDecay(unittest.TestCase):
 
         self.assertEqual(record.wins[0].weight_raw, 4.0)
         self.assertAlmostEqual(record.wins[0].weight_decayed, 3.0)
+
+    def test_a_negative_half_life_means_no_decay(self):
+        """Test that a nonsense half-life leaves the weights alone."""
+        votes = [vote("a", "b", 2.0, days_ago=30.0)]
+
+        record = weighted_record(
+            "a", votes, self.items, decay_timescale_days=-5.0, reference_time=NOW
+        )
+
+        self.assertEqual(record.wins[0].weight_decayed, 2.0)
+
+    def test_the_reference_time_defaults_to_now(self):
+        """Test that the clock can be left to the caller's own."""
+        votes = [vote("a", "b", 2.0)]
+
+        record = weighted_record("a", votes, self.items)
+
+        self.assertEqual(record.wins[0].weight_raw, 2.0)
+        self.assertEqual(record.wins[0].weight_decayed, 2.0)
+
+    def test_the_reference_time_is_what_decay_is_measured_from(self):
+        """Test that moving the reference time changes the decayed weight."""
+        votes = [vote("a", "b", 2.0, days_ago=30.0)]
+
+        at_vote_time = weighted_record(
+            "a",
+            votes,
+            self.items,
+            decay_timescale_days=30.0,
+            reference_time=NOW - timedelta(days=30.0),
+        )
+
+        self.assertAlmostEqual(at_vote_time.wins[0].weight_decayed, 2.0)
 
 
 if __name__ == "__main__":
