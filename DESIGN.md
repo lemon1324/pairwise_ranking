@@ -36,7 +36,7 @@ typography:
     letterSpacing: "-0.015em"
   title:
     fontFamily: "Barlow, system-ui, sans-serif"
-    fontSize: "1.1875rem"
+    fontSize: "1.0625rem"
     fontWeight: 600
     lineHeight: 1.2
     letterSpacing: "-0.005em"
@@ -44,12 +44,6 @@ typography:
     fontFamily: "Barlow, system-ui, sans-serif"
     fontSize: "1.125rem"
     fontWeight: 600
-  title-compact:
-    fontFamily: "Barlow, system-ui, sans-serif"
-    fontSize: "1.0625rem"
-    fontWeight: 600
-    lineHeight: 1.2
-    letterSpacing: "-0.005em"
   body:
     fontFamily: "Barlow, system-ui, sans-serif"
     fontSize: "1rem"
@@ -110,6 +104,7 @@ spacing:
   zone-band: "1.375rem"
   bom-column-min: "36rem"
   keys-block: "8.25rem"
+  tb-width: "40rem"
 components:
   cell-button:
     backgroundColor: "transparent"
@@ -143,11 +138,10 @@ components:
   station-marked:
     backgroundColor: "{colors.markup-wash}"
     textColor: "{colors.markup}"
+  title-block:
+    backgroundColor: "{colors.ink}"
+    width: "40rem"
   title-block-cell:
-    backgroundColor: "{colors.paper}"
-    textColor: "{colors.ink}"
-    padding: "0.5rem 0.75rem 0.75rem"
-  title-block-cell-compact:
     backgroundColor: "{colors.paper}"
     textColor: "{colors.ink}"
     padding: "0.375rem 0.75rem 0.5rem"
@@ -179,6 +173,36 @@ components:
     textColor: "{colors.ink-3}"
     rounded: "{rounded.balloon}"
     height: "1.75rem"
+  slot-board-free:
+    backgroundColor: "{colors.paper}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.balloon}"
+    padding: "0 0.25rem"
+    height: "1.75rem"
+  slot-board-used:
+    backgroundColor: "{colors.ink}"
+    textColor: "{colors.paper}"
+    rounded: "{rounded.balloon}"
+    padding: "0 0.25rem"
+    height: "1.75rem"
+  spec-cell:
+    textColor: "{colors.ink}"
+    padding: "0.5rem 0.75rem"
+  spec-group-row:
+    textColor: "{colors.ink}"
+    padding: "0.75rem 0.75rem 0.25rem"
+  spec-default-cell:
+    textColor: "{colors.ink-3}"
+    typography: "{typography.number}"
+  revision-triangle:
+    textColor: "{colors.ink}"
+    size: "0.875rem"
+  switch:
+    backgroundColor: "{colors.paper}"
+    rounded: "{rounded.none}"
+    size: "1.25rem"
+  switch-on:
+    backgroundColor: "{colors.ink}"
   bom-header-cell:
     textColor: "{colors.ink-2}"
     typography: "{typography.label}"
@@ -232,7 +256,7 @@ components:
 
 **Creative North Star: "The Drawing Set"**
 
-Every screen of the web app is one sheet from a single engineering drawing set. The ground is drafting paper, structure is drawn in ink at a strict line-weight scale, and a sheet is read the way a drawing is read: a frame with zone markings, the drawing area, and a closed ruled title block in the lower-right. Compare is a view sheet (two views, a dimensioned seven-station scale and notes in the lower-left). Items and Rankings are parts-list (BOM) sheets: a ruled table snapped to the frame, folding into columns and continuation sheets, with a keys block inside the title block. Settings and the project picker are sheets too. A new surface should look like another sheet of the same set, not like a new app.
+Every screen of the web app is one sheet from a single engineering drawing set. The ground is drafting paper, structure is drawn in ink at a strict line-weight scale, and a sheet is read the way a drawing is read: a frame with zone markings, the drawing area, and a closed ruled title block in the lower-right. Compare is a view sheet (two views, a dimensioned seven-station scale and notes in the lower-left). Items and Rankings are parts-list (BOM) sheets: a ruled table snapped to the frame, folding into columns and continuation sheets, and the project picker is their drawing register, the index sheet of the set. Settings is a specification sheet: a parameter table and a slot table, each ruled on its own. Every sheet closes with the same standard title block, keys block included. A new surface should look like another sheet of the same set, not like a new app.
 
 The world is dense but calm. Space, alignment and line weight carry the hierarchy. There are no cards, no shadows, no button chrome and no rounded corners except the item balloon, which is round because drawings circle their part identifiers, and the leader dot that ties a callout to its row. Drafting notation is what gives the sheets their character: zones per ASME Y14.1, balloons and find numbers, dimension lines with arrowheads, underlined view titles, revision rows, parts lists, sheet n of N, and tolerance given as ±. None of it is decoration. Each piece has the job it has on a real drawing.
 
@@ -244,6 +268,7 @@ Colour is almost absent. Ink on paper does the work. One markup blue marks the l
 - Controls are ruled cells. Nothing is raised, rounded or filled with chrome.
 - Three families, each with one job: a condensed caps label face, a workhorse sans for names and prose, and tabular mono for every number.
 - Solid means A and hatched means B, so sides and states never depend on colour.
+- One standard title block on every sheet: 40rem wide, a full-height KEYS block at its left edge, TITLE and FILE across the top, SHEET n OF N in the bottom-right cell.
 - Lists are parts lists: ruled tables that fold into columns and sheets rather than scroll, with the selected row's work in a popover callout tied to its row by a leader.
 - Motion is one short, discrete tick per action, and none under reduced motion.
 
@@ -252,10 +277,10 @@ Colour is almost absent. Ink on paper does the work. One markup blue marks the l
 The palette is warm paper and near-black ink, with one blue for markup and one orange for problems. Both themes are first-class. Dark mode is ink-on-blueprint-dark, not an inversion afterthought, and each light token has a `-dark` twin with the same role.
 
 ### Primary
-- **Markup Blue** (`markup`; dark `markup-dark`): the checker's pencil. It is used only for the station just pressed (its border, key and bars), the `:focus-visible` outline (2px, 2px offset; -4px inset inside cells, -2px on table rows, -1px plus a markup border on inputs), text selection and native accent controls. **Markup Wash** (`markup-wash`) fills the marked station and the selected parts-list row.
+- **Markup Blue** (`markup`; dark `markup-dark`): the checker's pencil. It is used only for the station just pressed (its border, key and bars), the `:focus-visible` outline (2px, 2px offset; -4px inset inside cells, -2px on table rows, -1px plus a markup border on inputs), text selection and native accent controls. Settings marks a changed value with ink (a triangle and bold), never with markup blue, because a changed value is a resting state until saved. **Markup Wash** (`markup-wash`) fills the marked station and the selected parts-list row.
 
 ### Secondary
-- **Warning Orange**: a set of three. **Warn** (`warn`) is for warning text, the icon and the button border. **Warn Mark** (`warn-mark`) is the warning box rule and the doubled border of a field in error. **Warn Wash** (`warn-wash`) fills the warning box and the delete confirmation. It is used for save failures, file-name problems, invalid field values and destructive confirmation, and never for anything positive or neutral.
+- **Warning Orange**: a set of three. **Warn** (`warn`) is for warning text, the icon and the button border. **Warn Mark** (`warn-mark`) is the warning box rule and the doubled border of a field in error. **Warn Wash** (`warn-wash`) fills the warning box and the delete confirmation. It is used for save failures, file-name problems, invalid field values, duplicate slots, unopenable project files and destructive confirmation, and never for anything positive or neutral.
 
 ### Neutral
 - **Drafting Paper** (`paper`): the sheet ground, title-block cells, callouts and inputs.
@@ -282,21 +307,22 @@ The palette is warm paper and near-black ink, with one blue for markup and one o
 
 ### Hierarchy
 - **Display** (600, clamp(1.625rem, 1rem + 1.6vw, 2.625rem), 1.08, -0.015em, balanced wrap): item names in a view, the largest words on a sheet. 1.5rem on phones.
-- **Title** (600, 1.1875rem, 1.2): the project name in a view sheet's TITLE cell. The phone top bar sets the project name at 1rem.
+- **Title** (600, 1.0625rem, 1.2): the project name (or "Drawing register") in the TITLE cell of every sheet's standard title block. Compare also uses this size for item descriptions (400, ink 2, max 42ch) and for phone title-block figures. The phone top bar sets the project name at 1rem.
 - **Lead** (600, 1.125rem): the lead sentence of an empty state, on Compare's empty scale and on an empty parts list.
-- **Title compact** (600, 1.0625rem, 1.2): the project name in a parts-list sheet's TITLE cell, one step down because those title blocks carry more cells. Compare uses the same size for item descriptions (400, ink 2, max 42ch) and for phone title-block figures.
 - **Body** (400, 1rem, 1.45, tabular figures on): default text. Station names and the sheet number use 1rem.
-- **Body secondary** (400, 0.9375rem): notes (max 60ch), revision rows, warning and confirmation copy, category values, inputs, callout actions and titles. Parts-list item names use this size at 500 (600 when selected).
+- **Body secondary** (400, 0.9375rem): parameter names on Settings (500), switch state words, notes (max 60ch), revision rows, warning and confirmation copy, category values, inputs, callout actions and titles. Parts-list item names use this size at 500 (600 when selected).
 - **Body compact** (400, 0.875rem, 1.3): the parts-list data size. Categories and status in table rows, title-block text cells (slots, counts, last change, summary), and the description in the Rankings detail. Mono figures in table cells and the detail list use it too.
-- **Label** (Barlow Condensed 600, 0.75rem, 0.08em, uppercase): the caption for every cell, view title, note heading and table header (ink 3 on cells, ink 2 on table headers). Tabs and cell buttons use the same face at 0.875–0.9375rem with 0.06em tracking.
+- **Label** (Barlow Condensed 600, 0.75rem, 0.08em, uppercase): the caption for every cell, view title, note heading and table header (ink 3 on cells, ink 2 on table headers). A group row inside a specification table sets it at 0.8125rem in ink, because it names the rows below it. Tabs and cell buttons use the same face at 0.875–0.9375rem with 0.06em tracking.
 - **Label small** (Barlow Condensed 500–600, 0.6875rem, 0.06em, uppercase): tags (RETIRED, NO SLOT, NEW), the headers of the weighted-record sub-table, and zone labels (500, no tracking). The same size sets the mono glyph inside every small 1.25rem key legend: title-block and keys-block legends, legends inside cell buttons, and phone station keys.
 - **Figure** (JetBrains Mono 500, 1.5rem, 1.1): title-block readings (settled, tolerance, votes), each followed by a two-line unit in 0.8125rem ink 3.
-- **Number** (JetBrains Mono 400–500, 0.75–0.9375rem): keys, balloons, weights, revision numbers and times, list markers, the file name, and the Rankings rank (500, 0.9375rem). Parts-list descriptions and hints sit at the same 0.8125rem in Barlow.
+- **Number** (JetBrains Mono 400–500, 0.75–0.9375rem): keys, balloons, weights, revision numbers and times, list markers, the file name, the slot list text (0.875rem), Settings Default and Range cells (0.8125rem ink 3), register numbers, project file lines and modified times, and the Rankings rank (500, 0.9375rem). Parts-list descriptions, parameter help and hints sit at the same 0.8125rem in Barlow.
 
 ### Named Rules
 **The Every Number In Mono Rule.** Any figure the user might compare or scan (a count, rating, rank, weight, slot, time, key or file name) is set in JetBrains Mono with tabular numerals. Words stay in Barlow.
 
 **The Caption Not Kicker Rule.** Condensed caps labels name the cell, column or view they sit in, the way lettering names a field on a title block. They never float above a heading as a decorative eyebrow.
+
+**The Short Label Rule.** A named slot (a keyboard tester's "Apostrophe", "Enter") shows a short label of at most 2 characters wherever slots are listed: parts-list balloons, the Items slot summary, the slot board and other tables or summaries. The label is the explicit one from the slot list (`Apostrophe = '`), otherwise the first two characters. The full name is always available on hover and to assistive technology, and forms and Compare views show the full name. Numbered slots of 1–2 digits are their own short label.
 
 ## Layout
 
@@ -304,28 +330,34 @@ The palette is warm paper and near-black ink, with one blue for markup and one o
 
 **Frame and zones.** The outer frame is a 2px ink border with a 1.375rem zone band inside it, then a 1px inner border. Zone markings follow ASME Y14.1. Numbers run right to left along the top and bottom borders, and letters run bottom to top on both sides, so zone A1 is the lower-right corner. Labels are Barlow Condensed 500 at 0.6875rem in ink 3. Boundary ticks are 1px × 0.5rem in `line`, drawn inward from the outer frame line. The zone count follows the frame's width through container queries, about one zone per 240px and always even: 4 zones below 60rem, 6 from 60rem, and 8 from 90rem, which is the cap. The lists run 8..1, so narrower sheets hide the high numbers at the left end first. Letters stay A–D. Phones (≤40rem) drop the outer frame and zones and give the inner frame the 2px weight.
 
-**View sheets (Compare).** The inner frame is a grid. The drawing area spans the full width. Below it, notes and the title block share the bottom row: notes take `1fr` and the title block takes `minmax(34rem, 46rem)`. Both are bottom-aligned, so notes sit in the lower-left corner and the title block closes the lower-right corner, flush against the frame's right and bottom edges. At 64rem and below, the title block goes full width and notes are hidden.
+**Standard title block width.** Every sheet's title block is `--tb-width` (40rem), capped at 100% of its container, so the lower-right corner reads identically across the set.
 
-**Parts-list sheets (Items, Rankings).** On desktop the sheet is exactly the viewport and never scrolls. The table fills the inner frame and snaps to its lines: it drops its own top rule, the first column drops its left rule, and a full rightmost column drops its right rule. Rows fold into as many columns as fit at 36rem or wider each, then onto continuation sheets. Every column repeats the header row. Adjacent columns overlap by 1px so they share one continuous vertical rule. The title block is pinned to the lower-right corner at exactly the rightmost column's width, and that column stops 0.75rem above it. Parts-list sheets carry no notes; their keys live in the title block. On phones (and without JavaScript) the sheet is one long scrolling table with the title block full width after it.
+**View sheets (Compare).** The inner frame is a grid. The drawing area spans the full width. Below it, notes and the title block share the bottom row: notes take `1fr` and the title block takes the standard width. Both are bottom-aligned, so notes sit in the lower-left corner and the title block closes the lower-right corner, flush against the frame's right and bottom edges. At 64rem and below, the title block goes full width and notes are hidden.
+
+**Parts-list sheets (Items, Rankings).** On desktop the sheet is exactly the viewport and never scrolls. The table fills the inner frame and snaps to its lines: it drops its own top rule, the first column drops its left rule, and a full rightmost column drops its right rule. The rightmost column is exactly the standard title-block width (40rem); the other columns share the remaining width, as many as fit at 36rem or wider each. Rows fold through those columns, then onto continuation sheets. Every column repeats the header row. Adjacent columns overlap by 1px so they share one continuous vertical rule. The title block is pinned to the lower-right corner under the rightmost column, and that column stops 0.75rem above it. Parts-list sheets carry no notes; their keys live in the title block. On phones (and without JavaScript) the sheet is one long scrolling table with the title block full width after it. The project picker (drawing register) is a parts-list sheet with the same engine.
+
+**Specification sheets (Settings).** The inner frame is a two-column grid: `1fr` and the standard title-block width, with a 2rem gap. The parameter table is anchored top-left and runs down the first column, ruled on its own right and bottom edges. The slot table is anchored top-right in the second column, ruled on its own left and bottom edges. The title block closes the lower-right corner under the slot table. Open sheet separates the tables; they share no centre line and do not share the title block's rules, though the slot table and title block align on the same left edge because they share the standard width. At 64rem and below the three stack in one column, each gaining a top rule. On phones the Default and Range columns collapse and their values move under each parameter name in mono ink 3.
 
 **No dividing rules in a view.** On view sheets, views, the vote scale and notes are separated by space and alignment, not by lines, and the title block is the only closed ruled region in the drawing area. Content inside a view is centred on the view's axis. There is no centre line between views. A parts list is itself a ruled table, so this rule does not apply inside it.
 
-**Spacing rhythm.** The spacing scale runs 0.25 / 0.5 / 0.75 / 1 / 1.5 / 2 / 3rem (`s-1`–`s-7`). Views pad `s-4 s-6 s-5`, title-block cells pad `s-2 s-3 s-3` (0.375rem `s-3` `s-2` on parts-list sheets), table cells pad 0.375rem `s-3` (headers `s-2 s-3`), callout bodies pad `s-3`, and the frame sits `s-4 s-5 s-5` from the viewport. Phones tighten to `s-2`–`s-4`.
+**Spacing rhythm.** The spacing scale runs 0.25 / 0.5 / 0.75 / 1 / 1.5 / 2 / 3rem (`s-1`–`s-7`). Views pad `s-4 s-6 s-5`, title-block cells pad 0.375rem `s-3` `s-2` on every sheet, parts-list cells pad 0.375rem `s-3` (headers `s-2 s-3`), specification cells pad `s-2 s-3` (group rows `s-3 s-3 s-1`), callout bodies pad `s-3`, and the frame sits `s-4 s-5 s-5` from the viewport. Phones tighten to `s-2`–`s-4`.
 
-**Breakpoints.** At 40rem the layout switches to phone: bottom tabs, stacked views, 2-column stations, a compressed title block, and single-table parts lists that hide the category and Compared columns. At 64rem the Compare title block goes full width and notes are hidden. The zone thresholds at 60 and 90rem are measured on the frame container, not the viewport. Parts-list column count is measured on the drawing area (width ÷ 36rem, rounded down).
+**Breakpoints.** At 40rem the layout switches to phone: bottom tabs, stacked views, 2-column stations, a compressed title block, and single-table parts lists that hide the category and Compared columns. At 64rem the Compare title block goes full width and notes are hidden, and a specification sheet stacks. The zone thresholds at 60 and 90rem are measured on the frame container, not the viewport. Parts-list column count is measured on the drawing area (width ÷ 36rem, rounded down).
 
-**Navigation.** Desktop sheet tabs sit in the top bar. On phones they move to a sticky 4-column bottom bar with a 2px top rule, and the project name moves into the top bar, because the title block's TITLE and FILE cells are hidden on phones.
+**Navigation.** Desktop sheet tabs sit in the top bar. On phones they move to a sticky 4-column bottom bar with a 2px top rule, and the project name moves into the top bar, because the title block's TITLE and FILE cells are hidden on phones. The project picker has no project open, so its top bar carries the app name ("Pairwise Ranking") at every width and no sheet tabs or Project menu.
 
 ## Elevation & Depth
 
-The system is flat, and depth is conveyed only by line weight. Frame rules are 2px, cell rules 1px, and construction marks are 1px in the lighter `line` or `hair` colours. There are no box-shadows for elevation. The only `box-shadow` values in the build are drawing devices: a 4px inset ink underline on the current tab, a 1px inset outline that closes the edge of a hatched fill, and a 1px inset `warn-mark` line that doubles the border of a field in error. The row callout is the one popover, the one thing drawn over other content, and it is set off by line weight alone: a 2px frame-weight ink rule all round on opaque `paper`, tied to its row by a 1px leader. The empty-scale message on Compare sits on an 88% paper wash over the dimmed stations.
+The system is flat, and depth is conveyed only by line weight. Frame rules are 2px, cell rules 1px, and construction marks are 1px in the lighter `line` or `hair` colours. There are no box-shadows for elevation. The only `box-shadow` values in the build are drawing devices: a 4px inset ink underline on the current tab, a 1px inset outline that closes the edge of a hatched fill, a 1px inset `warn-mark` line that doubles the border of a field in error, and a 3px inset `paper` ring that insets the ink fill of a switch that is on. The row callout is the one popover, the one thing drawn over other content, and it is set off by line weight alone: a 2px frame-weight ink rule all round on opaque `paper`, tied to its row by a 1px leader. The empty-scale message on Compare sits on an 88% paper wash over the dimmed stations.
 
 ### Named Rules
 **The Line Weight Is Depth Rule.** To make something more important, draw its border heavier (1px to 2px) or move it into the title block. Never lift it with a shadow, and never round it into a card.
 
 ## Shapes
 
-The form language is rectilinear. Every cell, button, key legend, station, table, callout, input, tag, warning box and tab has square corners (radius 0). The round forms are drafting marks: the **item balloon**, a full circle (999px) around a slot identifier, as on a parts list, and the **leader dot**, a 7px filled ink circle at the selected row's edge where the callout's leader starts, as at the end of a balloon leader. Leaders are 1px ink elbows (one vertical run, one horizontal run), never diagonal. Keep balloons exclusive to slot identifiers so they stay readable as "this is a physical slot"; an item with no slot gets a dashed empty balloon in `line`. Adjacent ruled cells share borders. Stations and folded table columns overlap by -1px, and the title block uses a 1px ink gap over an ink background, so rules never double. The dimension line uses filled triangular arrowheads (9px) and a mono `0` at the centre. Ghost placeholders use a 1px dashed `line` border. Side swatches are 14px squares, solid for A and 45° hatched (1.5px ink every 4px) for B.
+The form language is rectilinear. Every cell, button, key legend, station, table, callout, input, tag, warning box and tab has square corners (radius 0). The round forms are drafting marks: the **item balloon**, a full circle (999px) around a slot identifier, as on a parts list, and the **leader dot**, a 7px filled ink circle at the selected row's edge where the callout's leader starts, as at the end of a balloon leader. Leaders are 1px ink elbows (one vertical run, one horizontal run), never diagonal. Keep balloons exclusive to slot identifiers so they stay readable as "this is a physical slot"; an item with no slot gets a dashed empty balloon in `line`. A balloon grows horizontally (min-width plus padding) to fit a full slot name where one is shown. Adjacent ruled cells share borders. Stations and folded table columns overlap by -1px, and the title block uses a 1px ink gap over an ink background, so rules never double. The dimension line uses filled triangular arrowheads (9px) and a mono `0` at the centre. Ghost placeholders use a 1px dashed `line` border. Side swatches are 14px squares, solid for A and 45° hatched (1.5px ink every 4px) for B. The revision triangle is an outlined equilateral triangle (1.25 stroke, 0.875rem), the drawing's mark for a changed value.
+
+**The Board Fill Rule.** A balloon's ring always means "this is a slot identifier". Fill carries state only on the slot board, the one place that lists slots rather than items: filled ink with paper numerals is in use, an open ring is free, and the board always shows its legend. In a parts list, Compare or a summary, the balloon sits beside its item, so it is always an open ring meaning "this item's slot", and no slot is the dashed empty balloon. Never fill a balloon in an item list, and never let an open ring mean "free" outside the slot board.
 
 ## Components
 
@@ -343,7 +375,10 @@ Ruled and quiet, like a field on a form you can press.
 A keyboard shortcut is drawn as a ruled mono cell (1px currentColor border, 1.5rem, JetBrains Mono 500 at 0.8125rem), never as a raised keycap. Small legends (1.25rem, 0.6875rem) sit inline in notes, cell buttons and title-block cells; callout actions use 1.375rem at 0.75rem. Phones hide title-block key legends.
 
 ### Item balloon
-A circled mono identifier (2rem, 1px ink). In a parts list it is 1.75rem at 0.8125rem, and an item with no slot shows a dashed `line` balloon with a dash in ink 3. In a blinded view the balloon is the whole content: 5.5rem, 2px border, 2.25rem numerals (4rem on phones).
+A circled mono identifier (2rem, 1px ink). In a parts list it is 1.75rem at 0.8125rem and shows the slot's short label, and an item with no slot shows a dashed `line` balloon with a dash in ink 3. In a blinded view the balloon is the whole content: 5.5rem, 2px border, 2.25rem numerals (4rem on phones).
+
+### Slot board
+The parsed slot list on Settings, drawn as a wrapping row of balloons (1.75rem, 0.75rem mono, 0.25rem gap) under the slot textarea, with a legend of 1.125rem sample balloons. **In use** is a filled ink balloon with paper numerals. **Free** is an open ink ring on paper. **Listed twice** thickens the ring to 2px `warn-mark` and is never shown by that alone: the warning box below names the duplicate slots in words, and each balloon's accessible name states its slot, in use or free, and "listed twice". Each balloon shows the short label with the full name on hover. See the Board Fill Rule for how this differs from the Items find number.
 
 ### Tag
 A ruled condensed label (1px `line` border, label small, ink 2): RETIRED, NO SLOT and NEW. It is the non-colour twin of a row state and sits in the Status column on Items and after the name on Rankings.
@@ -365,23 +400,37 @@ The table on Items and Rankings sheets, drawn as a drawing's parts list.
 - **Row:** name (500, 0.9375rem) with an optional description line (0.8125rem ink 2), then category and status in body compact.
 - **States:** hover fills `paper-2`. Selected fills `markup-wash` and bolds the name to 600. Retired sets the row in ink 3 and adds a RETIRED tag. No slot shows the dashed empty balloon and a NO SLOT tag. The row being added appears as a NEW ghost row with its name in ink 3. Row focus draws the markup outline at -2px.
 - **Folding:** rows fill a column to its limit, then the next column, then a continuation sheet; the rightmost column's limit is the top of the title block. Selecting a row never refolds the sheet; moving the selection onto another sheet turns to that sheet.
-- **Interaction:** click selects; clicking the selected row again does exactly what Esc does (closes an open form or detail, otherwise clears the selection). Arrows or J/K move, Home/End jump, PgUp/PgDn turn sheets.
+- **Interaction:** click selects; clicking the selected row again does exactly what Esc does (closes an open form or detail, otherwise clears the selection). Arrows or J/K move, Home/End jump. PgUp/PgDn only change the sheet shown and never select; while paged away the sheet stops following the selection, and the next arrow starts from the sheet on screen (its first row going down, its last going up).
 - **Empty:** a dashed `line` ghost box (max 36rem) with a lead sentence, a detail line in ink 2, and a cell button when there is somewhere to go.
 
 ### Row callout (signature)
-The selected row's work, drawn as a popover on the sheet. Its left edge starts 0.375rem right of the find-number column, so every row's number stays visible and clickable, and its right edge sits 0.375rem inside the column's right rule. It sits 0.5rem off the selected row, below it, or above it when there is no room below (the rightmost column's limit is the top of the title block), and it is exactly as tall as its content. It is set off by line weight, not shadow: a 2px frame-weight ink rule all round on opaque `paper`. A leader ties it to the row: a 7px ink dot on the selected row's edge, placed in the space between the number and the column rule (never through a number), with a 1px ink elbow that runs across the gap and enters the popover's side 1.125rem from its near edge. It steps in over 160ms from 0.25rem toward the row.
+The selected row's work, drawn as a popover on the sheet. Its left edge starts 0.375rem right of the find-number column, so every row's number stays visible and clickable, and its right edge sits 0.375rem inside the column's right rule. It sits 0.5rem off the selected row, below it, or above it when there is no room below (the rightmost column's limit is the top of the title block), and it is exactly as tall as its content. It is set off by line weight, not shadow: a 2px frame-weight ink rule all round on opaque `paper`. A leader ties it to the row: a 7px ink dot on the selected row's edge, placed in the space between the number and the column rule (never through a number), with a 1px ink elbow that runs across the gap and enters the popover's side 1.125rem from its near edge. It steps in over 160ms from 0.25rem toward the row, once: when the sheet refolds and redraws the same callout, it appears in place without replaying the entrance.
 - **Actions:** a strip of equal cells sharing 1px ink gaps (Edit, Retire, Replace, Delete; or Reactivate, Delete), each with a 600 label and a key legend at the far end. Hover `paper-2`, press `paper-3`, focus inset -4px. On phones the actions form 2 columns at 2.75rem.
 - **Forms:** a title line (600, 0.9375rem), a 2-column grid of inputs (1 column on phones), then cell buttons with key legends (Save as primary, Cancel with Esc).
 - **Delete confirmation:** the warning box in place of the actions: `warn-wash` fill, `warn` icon, bold `warn` question, the consequence and the alternative in words, then a destructive Delete and a Cancel.
 - **Rankings detail:** a title with rank and name, then two columns: a label/mono definition list (rating ±, strength, log-strength, SE, times compared) with the description, and a weighted-record sub-table (Opponent, Won, Lost) with label-small headers, an ink header rule, `hair` row rules, 0.8125rem text and an "and n more" line.
 
 ### Title block (signature)
-A closed ruled grid of 6 columns in the lower-right corner, drawn as 1px ink gaps over an ink background with `paper` cells. Every cell has a caption label followed by content. Rows on Compare: TITLE (span 4) and FILE (span 2, mono), then readings of two columns each (a mono figure plus a two-line unit), then REVISIONS (span 5) with UNDO (span 1), then state, SKIP and MODE (two columns each). Revision rows use a mono number, text and a mono time, separated by `hair` rules. The previous row is ink 3, and an undone row is struck through with an uppercase tag. A new row slides up in 260ms, and figures step in 220ms. Blinded mode swaps the readings for a single explanatory cell. On phones TITLE and FILE are hidden and the grid becomes 2 flexible columns plus a 7.5rem action column. Future sheets should reuse this cell grammar (caption plus content, spans on a 6-column grid) and not invent a new status panel.
+One standard on every sheet: a closed ruled grid in the lower-right corner, 40rem wide, drawn as 1px ink gaps over an ink background with `paper` cells padded 0.375rem `s-3` `s-2`. Every cell has a caption label followed by content. A **KEYS** block runs the full height at the left edge (8.25rem), the way a standard-tolerance block sits in a drawing's title block: a list of small key legends beside their verbs in 0.8125rem ink 2. To its right is a 6-column grid placed by spans only. The first row is always TITLE (span 3, title type) and FILE (span 3, mono; the register shows DATA DIRECTORY here). **SHEET n OF N** is always the bottom-right cell (span 2): a mono 1rem count, followed on paged sheets by previous and next square cell buttons (1.625rem). Future sheets reuse this grammar and do not invent a new status panel.
 
-**Parts-list variant.** A KEYS block runs the full height of the title block at its left edge (8.25rem), the way a standard-tolerance block sits in a drawing's title block: a list of small key legends beside their verbs in 0.8125rem ink 2. To its right is the usual 6-column grid with tighter cells (0.375rem `s-3` `s-2`) and the compact title: TITLE and FILE (span 3 each), text cells (Slots, Items or a summary), a Filter or Category control cell with its key, and action cells. **SHEET n OF N** is always the bottom-right cell (span 2): a mono 1rem count followed by previous and next square cell buttons (1.625rem). On phones the keys block, TITLE, FILE and SHEET cells are hidden and the grid becomes 2 columns.
+- **Compare:** keys (1–7 vote, S skip, Ctrl Z undo; no longer in notes), then readings of two columns each (a mono figure plus a two-line unit), REVISIONS (span 5) with UNDO (span 1), then state, SKIP and MODE (two columns each). Revision rows use a mono number, text and a mono time, separated by `hair` rules; the previous row is ink 3, and an undone row is struck through with an uppercase tag. A new row slides up in 260ms, and figures step in 220ms. Blinded mode swaps the readings for a single explanatory cell.
+- **Parts lists (Items, Rankings, register):** text cells (Slots, Items, Projects or a summary), a Filter or Category control cell with its key, action cells (New project N, Import I on the register), and a Note cell on the register.
+- **Settings:** a STATUS cell (span 6) stating saved, unsaved changes by name, or the errors to fix; SAVE (Ctrl S) and DEFAULTS (Reset) action cells. A disabled action cell sets its text in ink 3 and its icon and key in `hair`, with a not-allowed cursor and no hover, and the status cell gives the reason.
+- **Phones:** the keys block, TITLE, FILE and SHEET cells are hidden, and the grid becomes 2 columns (Compare: 2 flexible columns plus a 7.5rem action column).
+
+### Specification table (Settings)
+Parameters as a ruled table: columns Parameter (name at 500 0.9375rem with a one-line help in 0.8125rem ink 2), Value (8.5rem), Default (5rem) and Range (6rem) in mono ink 3. Headers are drafting labels over a 1px ink rule; cells are divided by `hair` rules; group rows (Pair selection weights, Vote decay and so on) carry a 1px ink top rule and a 0.8125rem ink label. Value inputs are 2rem tall, right-aligned mono.
+- **Changed since save:** an outlined revision triangle appears before the value (accessible name "changed"), the value turns 600 and the input border turns ink. The status cell lists the changed parameters by name. The slot table's textarea takes the ink border when the list changed.
+- **Error:** the field error pattern (doubled `warn-mark` border, icon, bold lead and reason), and Save is disabled with the reason in the status cell.
+- **Reset:** fills every parameter with its default and leaves the slot list alone, then says so in the status cell; nothing is saved until Save.
+- **Switch:** a 1.25rem ruled ink square on `paper` that fills with ink (inset by a 3px paper ring) when on, with "On" or "Off" in words beside it; bold when changed. Focus is the global markup outline.
+- **Slot table:** a header row (SLOTS label and a count hint) over a body holding the slot textarea (mono 0.875rem, one comma-separated line, `Name = x` for an explicit short label), a hint, the slot board and legend, and the duplicate warning box.
+
+### Drawing register (project picker)
+The parts list of projects. Columns: No. (mono register number), Project (name, then the mono file name as the description line), Items, Votes (right-aligned mono) and Modified (mono). The callout's actions are Open (↵), Duplicate (D, a form that copies everything but votes) and Download. New project and Import open their forms in the callout on a NEW pseudo row at the top; import shows a dashed drop zone and the parsed file before importing. File conditions are tags after the name, each explained in the callout: **Old format** (a hint that opening upgrades it and keeps a `.v1.bak`, actions kept), **Newer format** and **Unreadable** (the warning box with cause and recovery in place of the actions, Download only). An empty data directory shows the parts-list empty state with New project and Import cell buttons.
 
 ### Notes
-A "NOTES" label over a numbered list (mono markers in ink 3, 0.9375rem ink 2 text, max 60ch). Notes sit in the lower-left corner of view sheets, bottom-aligned with the title block, with no border. They hold keys, legends and caveats. Hidden at 64rem and below. Parts-list sheets put their keys in the title block's keys block instead.
+A "NOTES" label over a numbered list (mono markers in ink 3, 0.9375rem ink 2 text, max 60ch). Notes sit in the lower-left corner of view sheets, bottom-aligned with the title block, with no border. They hold legends and caveats; keys live in the title block's keys block on every sheet, Compare included. Hidden at 64rem and below.
 
 ### Navigation (sheet tabs)
 Condensed caps tabs separated by 1px ink rules in the top bar. The current tab gets `paper-2`, ink text and a 4px inset ink underline. The Project menu sits at the far right as a tab-styled cell with a chevron, and its hover fills `paper-2`. On phones the tabs become a sticky bottom bar of 4 equal cells.
@@ -392,14 +441,16 @@ Condensed caps tabs separated by 1px ink rules in the top bar. The current tab g
 ## Do's and Don'ts
 
 ### Do:
-- **Do** draw every new screen as a sheet in the same set: the zoned frame, content in the drawing area, and a closed ruled title block in the lower-right carrying TITLE and FILE. View sheets put notes in the lower-left; parts-list sheets put their keys in the title block.
+- **Do** draw every new screen as a sheet in the same set: the zoned frame, content in the drawing area, and the standard 40rem title block in the lower-right with its KEYS block, TITLE, FILE and SHEET n OF N. Keys go in the keys block on every sheet; view sheets put caveats and legends in notes in the lower-left.
 - **Do** mark zones per ASME Y14.1: numbers right to left on the top and bottom, letters bottom to top on both sides, and an even zone count that follows sheet width (4, 6 or 8).
 - **Do** keep line weights to the scale: 2px frame, 1px cells, `line` or `hair` for construction and row rules.
 - **Do** set every number, key, slot, rank and file name in JetBrains Mono with tabular figures.
 - **Do** pair every colour signal with a shape, pattern, position or words: solid A, hatched B, bar count for strength, a bold name for selection, a tag for retired or unslotted rows, and an icon plus text for warnings.
 - **Do** keep markup blue for the live mark, the selected row, focus and text selection only.
 - **Do** show lists as parts lists that fold into columns and continuation sheets, snapped to the frame, with the sheet number in the title block's bottom-right cell.
-- **Do** put a selected row's actions, forms and detail in the row callout popover, and make clicking the selected row again equal Esc.
+- **Do** put a selected row's actions, forms and detail in the row callout popover, and make clicking the selected row again equal Esc. PgUp/PgDn change the sheet shown and never select.
+- **Do** show a named slot's short label (at most 2 characters) in lists, tables, boards and summaries, with the full name on hover and to assistive technology, and the full name in forms and Compare.
+- **Do** mark a value changed since the last save with the revision triangle plus a bold value, and state what changed in words.
 - **Do** keep motion to one discrete tick per action (140–260ms, `cubic-bezier(0.16, 1, 0.3, 1)`), with none under `prefers-reduced-motion`.
 - **Do** self-host Barlow, Barlow Condensed and JetBrains Mono in the real app.
 
@@ -407,6 +458,7 @@ Condensed caps tabs separated by 1px ink rules in the top bar. The current tab g
 - **Don't** divide views, scales or notes with rules, and don't draw a centre line. Space and alignment separate them on view sheets.
 - **Don't** use shadows for elevation, rounded cards, pill buttons, modal dialogs or raised keycaps. Controls are ruled cells, and the row callout popover is set off by its 2px rule, not a shadow.
 - **Don't** round anything except slot-identifier balloons and the callout's leader dot.
+- **Don't** fill a balloon anywhere but the slot board, and don't let an open ring mean "free" outside it.
 - **Don't** refold a parts list when a row is selected, and don't cover the find-number column; the callout is a popover beside it, tied to the row by a leader.
 - **Don't** use markup blue or warning orange decoratively, and don't use orange without an icon and words.
 - **Don't** convey side, state, category or strength by colour alone, and never set red against green.
