@@ -73,17 +73,19 @@
             <h2 id="slots-title">Slots</h2>
             <span class="field-hint" id="slots-count"></span>
           </div>
-          <label class="visually-hidden" for="slots">Slot list, one per line or comma separated</label>
-          <textarea class="input" id="slots" rows="4" spellcheck="false"></textarea>
-          <p class="field-hint">One per line or comma separated. Items pick their slot from this list.</p>
-          <ul class="slot-board" id="slot-board" aria-label="Slot board"></ul>
-          <p class="slot-legend" aria-hidden="true">
-            <span><span class="balloon"></span> in use</span>
-            <span><span class="balloon is-free"></span> free</span>
-          </p>
-          <div class="slot-warning" id="slot-warning" role="status" hidden>
-            <svg class="icon" aria-hidden="true"><use href="#i-warn"/></svg>
-            <p id="slot-warning-text" style="margin:0"></p>
+          <div class="spec-slots-body">
+            <label class="visually-hidden" for="slots">Slot list, comma separated</label>
+            <textarea class="input" id="slots" rows="4" spellcheck="false"></textarea>
+            <p class="field-hint">Comma separated. Add a short label for long names with <span class="num">Apostrophe = '</span>; otherwise lists show the first two characters.</p>
+            <ul class="slot-board" id="slot-board" aria-label="Slot board"></ul>
+            <p class="slot-legend" aria-hidden="true">
+              <span><span class="balloon is-used"></span> in use</span>
+              <span><span class="balloon"></span> free</span>
+            </p>
+            <div class="slot-warning" id="slot-warning" role="status" hidden>
+              <svg class="icon" aria-hidden="true"><use href="#i-warn"/></svg>
+              <p id="slot-warning-text" style="margin:0"></p>
+            </div>
           </div>
         </section>
 

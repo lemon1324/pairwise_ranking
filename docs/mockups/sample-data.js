@@ -70,9 +70,15 @@
     ["Akko V3 Piano Pro", "Tactile", "Soft bump, low pitch."],
   ];
 
-  // Slots 1-60 on the tester board; 9, 31, 44 and 57 are free.
-  const SLOTS = Array.from({ length: 60 }, (_, i) => String(i + 1));
-  const FREE = new Set(["9", "31", "44", "57"]);
+  // A 60-slot tester board: 56 numbered sockets plus four keyboard-key positions, whose names are
+  // longer than a list cell. 9, 31, 44 and Backspace are free.
+  const SLOTS = [...Array.from({ length: 56 }, (_, i) => String(i + 1)), "Apostrophe", "Enter", "Space", "Backspace"];
+  const FREE = new Set(["9", "31", "44", "Backspace"]);
+  // Short labels for lists (at most 2 characters). An explicit label wins; otherwise the first
+  // two characters. Full names show in forms, Compare and on hover.
+  const SLOT_SHORT = { Apostrophe: "'" };
+  window.slotShort = (slot) => SLOT_SHORT[slot] ?? (slot.length <= 2 ? slot : slot.slice(0, 2));
+  window.SLOT_SHORT = SLOT_SHORT;
   const RETIRED = new Set([13, 24, 38, 41, 44, 61]); // indexes into NAMES
   const NO_SLOT = new Set([52, 63]); // active but not yet placed on the board
 

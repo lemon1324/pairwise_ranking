@@ -1,17 +1,21 @@
 /* Settings sheet: parameter table, slot list panel and title block. Loaded after sheet.css and bom.css. */
 
+/* Two tables on the sheet, each ruled on its own: parameters anchored top-left, slots anchored
+   top-right, with open sheet between them. The slot table and the title block share the
+   standard title-block width, so their left edges align without sharing a line. */
 .spec-sheet {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) min(var(--tb-width), 100%);
   grid-template-rows: auto 1fr auto;
+  column-gap: var(--s-6);
 }
 
-/* Parameter table, snapped to the frame's top and left lines; its right rule is shared with the
-   slot panel and the title block. */
 .spec-params {
   grid-column: 1;
   grid-row: 1 / span 3;
+  align-self: start;
   border-right: var(--w-cell) solid var(--ink);
+  border-bottom: var(--w-cell) solid var(--ink);
 }
 
 .spec {
@@ -192,11 +196,15 @@
 
 /* ---------- Slot list panel ---------- */
 
+/* Slot table anchored top-right: its own left and bottom rules, a header row like the parameter
+   table's, and the list plus board as its body. */
 .spec-slots {
   grid-column: 2;
   grid-row: 1;
-  padding: var(--s-3) var(--s-4) var(--s-4);
+  align-self: start;
   min-width: 0;
+  border-left: var(--w-cell) solid var(--ink);
+  border-bottom: var(--w-cell) solid var(--ink);
 }
 
 .spec-slots-head {
@@ -204,16 +212,22 @@
   align-items: baseline;
   justify-content: space-between;
   gap: var(--s-3);
-  margin-bottom: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  border-bottom: var(--w-cell) solid var(--ink);
 }
 
 .spec-slots-head h2 {
   margin: 0;
   font-family: var(--font-label);
   font-weight: 600;
-  font-size: 0.8125rem;
+  font-size: 0.75rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+.spec-slots-body {
+  padding: var(--s-3);
 }
 
 .spec-slots textarea {
@@ -242,10 +256,10 @@
   font-size: 0.75rem;
 }
 
-.slot-board .balloon.is-free {
-  border-style: dashed;
-  border-color: var(--line);
-  color: var(--ink-3);
+/* In use reads as occupied: filled ink. Free is an open ring, ready for an item. */
+.slot-board .balloon.is-used {
+  background: var(--ink);
+  color: var(--paper);
 }
 
 .slot-board .balloon.is-dup {
@@ -274,9 +288,8 @@
   padding: 0;
 }
 
-.slot-legend .balloon.is-free {
-  border-style: dashed;
-  border-color: var(--line);
+.slot-legend .balloon.is-used {
+  background: var(--ink);
 }
 
 .slot-warning {
@@ -309,7 +322,6 @@
   grid-column: 2;
   grid-row: 3;
   align-self: end;
-  border-left: 0;
 }
 
 .tb-status.is-error .tb-text strong {
@@ -346,7 +358,9 @@
   .spec-slots {
     grid-column: 1;
     grid-row: 2;
+    margin-top: var(--s-5);
     border-top: var(--w-cell) solid var(--ink);
+    border-left: 0;
   }
 
   .spec-sheet > .titleblock {

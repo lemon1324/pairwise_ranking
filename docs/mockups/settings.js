@@ -101,15 +101,31 @@
     return { value: n };
   }
 
+  // Slot entries: "Name" or "Name = short label". The list is kept as one comma-separated line.
+  function parseEntries(text) {
+    return text
+      .split(/[\n,]+/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map((p) => {
+        const [name, short] = p.split("=").map((s) => s.trim());
+        return { name, short: short || null };
+      })
+      .filter((e) => e.name);
+  }
+
+  const shortFor = (e) => e.short ?? (e.name.length <= 2 ? e.name : e.name.slice(0, 2));
+  const serialize = (entries) => entries.map((e) => (e.short ? `${e.name} = ${e.short}` : e.name)).join(", ");
+
   function parseSlots(text) {
-    const parts = text.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean);
-    const seen = new Set();
+    const entries = parseEntries(text);
+    const seen = new Map();
     const dups = new Set();
-    for (const p of parts) {
-      if (seen.has(p)) dups.add(p);
-      seen.add(p);
+    for (const e of entries) {
+      if (seen.has(e.name)) dups.add(e.name);
+      else seen.set(e.name, e);
     }
-    return { list: [...seen], dups: [...dups], blanks: /(^|[\n,])\s*(?=[\n,]|$)/.test(text.trim()) };
+    return { entries: [...seen.values()], list: [...seen.keys()], dups: [...dups] };
   }
 
   function update() {
@@ -132,17 +148,21 @@
     }
 
     const slotText = $("slots").value;
-    const { list, dups } = parseSlots(slotText);
-    const slotsChanged = list.join("\n") !== savedSlots.join("\n");
+    const { entries, list, dups } = parseSlots(slotText);
+    const slotsChanged = serialize(entries) !== savedSlots;
     $("slots-panel").classList.toggle("is-changed", slotsChanged);
     if (slotsChanged) changed.push("Slots");
     $("slots-count").textContent = `${list.length} slots · ${list.filter((s) => usedSlots.has(s)).length} in use`;
-    $("slot-board").innerHTML = parseSlotsForBoard(slotText)
-      .map(({ slot, dup }) => {
+    // The board shows short labels; the full name and state are on hover and for screen readers.
+    $("slot-board").innerHTML = entries
+      .map((e) => {
+        const used = usedSlots.has(e.name);
+        const dup = dups.includes(e.name);
         const cls = ["balloon"];
-        if (!usedSlots.has(slot)) cls.push("is-free");
+        if (used) cls.push("is-used");
         if (dup) cls.push("is-dup");
-        return `<li class="${cls.join(" ")}" title="Slot ${esc(slot)}${usedSlots.has(slot) ? ", in use" : ", free"}${dup ? ", listed twice" : ""}">${esc(slot)}</li>`;
+        const label = `Slot ${esc(e.name)}, ${used ? "in use" : "free"}${dup ? ", listed twice" : ""}`;
+        return `<li class="${cls.join(" ")}" title="${label}" aria-label="${label}">${esc(shortFor(e))}</li>`;
       })
       .join("");
     const warning = $("slot-warning");
@@ -166,14 +186,6 @@
     $("save").disabled = errors.length > 0 || changed.length === 0;
   }
 
-  function parseSlotsForBoard(text) {
-    const parts = text.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean);
-    const count = new Map();
-    parts.forEach((p) => count.set(p, (count.get(p) || 0) + 1));
-    const shown = new Set();
-    return parts.filter((p) => !shown.has(p) && shown.add(p)).map((slot) => ({ slot, dup: count.get(slot) > 1 }));
-  }
-
   let note = "";
 
   function save() {
@@ -183,8 +195,9 @@
       return;
     }
     for (const f of FIELDS) saved[f.key] = validate(f, read(f)).value;
-    savedSlots = parseSlots($("slots").value).list;
-    $("slots").value = savedSlots.join(", ");
+    // Saving normalizes the list to one comma-separated line, dropping duplicates.
+    savedSlots = serialize(parseSlots($("slots").value).entries);
+    $("slots").value = savedSlots;
     lastSaved = "21:07";
     note = "Saved.";
     update();
@@ -202,18 +215,18 @@
     saved = Object.fromEntries(FIELDS.map((f) => [f.key, f.def]));
     saved.weight_uncompared = 3.0;
     saved.decay_timescale_days = 45;
-    savedSlots = [...window.SAMPLE.slots];
+    savedSlots = serialize(window.SAMPLE.slots.map((name) => ({ name, short: window.SLOT_SHORT[name] ?? null })));
     lastSaved = "20:58";
     renderTable();
     for (const f of FIELDS) write(f, saved[f.key]);
-    $("slots").value = savedSlots.join(", ");
+    $("slots").value = savedSlots;
     if (state === "changed" || state === "invalid") {
       write(byKey.weight_freshness, 0.75);
       write(byKey.top_tier_mode, true);
       write(byKey.blinded_comparison_mode, true);
     }
     if (state === "invalid") $("f-cross_category_rate").value = "1.5";
-    if (state === "dupslots") $("slots").value = `${savedSlots.join(", ")}, 7, 61`;
+    if (state === "dupslots") $("slots").value = `${savedSlots}, 7, Esc`;
     update();
     if (state === "reset") reset();
   }
