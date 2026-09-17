@@ -92,6 +92,11 @@ html.bom-fixed .bom-sheet > .titleblock {
   min-width: 0;
 }
 
+/* The project picker has no open project, so its top bar always shows the app name. */
+.sheet-title.is-app {
+  display: flex;
+}
+
 /* ---------- Table ---------- */
 
 .bom {
