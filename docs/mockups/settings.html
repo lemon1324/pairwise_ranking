@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Settings · Linear switches, winter shortlist</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="sheet.css">
+  <link rel="stylesheet" href="bom.css">
+  <link rel="stylesheet" href="settings.css">
+</head>
+<body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-chevron" viewBox="0 0 16 16"><path d="M4 6l4 4 4-4"/></symbol>
+    <symbol id="i-warn" viewBox="0 0 16 16"><path d="M8 2L1.5 13.5h13z"/><path d="M8 6.5v3.2"/><path d="M8 11.6v.1"/></symbol>
+    <symbol id="i-save" viewBox="0 0 16 16"><path d="M3 2.5h8l2 2v9H3z"/><path d="M5.5 2.5v3h5v-3"/><path d="M5.5 13.5v-4h5v4"/></symbol>
+    <symbol id="i-reset" viewBox="0 0 16 16"><path d="M2.5 8a5.5 5.5 0 105.5-5.5H5"/><path d="M6.5 1l-2 1.5L6.5 4"/></symbol>
+    <symbol id="i-rev" viewBox="0 0 14 14"><path d="M7 1.5L13 12.5H1z" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"/></symbol>
+  </svg>
+
+  <div class="sheet">
+    <header class="sheet-head">
+      <div class="sheet-title">
+        <h1>Linear switches, winter shortlist</h1>
+      </div>
+      <nav aria-label="Project sheets">
+        <ul class="sheet-tabs">
+          <li><a href="items.html">Items</a></li>
+          <li><a href="compare.html">Compare</a></li>
+          <li><a href="rankings.html">Rankings</a></li>
+          <li><a href="settings.html" aria-current="page">Settings</a></li>
+        </ul>
+      </nav>
+      <button class="sheet-menu" type="button" aria-haspopup="menu">
+        Project <svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg>
+      </button>
+    </header>
+
+    <main class="frame">
+      <!-- Zones per ASME Y14.1: numbers right to left, letters bottom to top, from the lower-right corner.
+           Numbers are listed high to low so narrower sheets hide the leftmost (highest) zones. -->
+      <ol class="zones zones-top" aria-hidden="true"><li>8</li><li>7</li><li>6</li><li>5</li><li>4</li><li>3</li><li>2</li><li>1</li></ol>
+      <ol class="zones zones-bottom" aria-hidden="true"><li>8</li><li>7</li><li>6</li><li>5</li><li>4</li><li>3</li><li>2</li><li>1</li></ol>
+      <ol class="zones zones-left" aria-hidden="true"><li>D</li><li>C</li><li>B</li><li>A</li></ol>
+      <ol class="zones zones-right" aria-hidden="true"><li>D</li><li>C</li><li>B</li><li>A</li></ol>
+
+      <form class="frame-inner spec-sheet" id="settings" novalidate>
+        <section class="spec-params" aria-label="Algorithm settings">
+          <table class="spec">
+            <caption class="visually-hidden">Algorithm settings</caption>
+            <colgroup>
+              <col>
+              <col class="c-value">
+              <col class="c-default">
+              <col class="c-range">
+            </colgroup>
+            <thead>
+              <tr>
+                <th scope="col">Parameter</th>
+                <th scope="col">Value</th>
+                <th scope="col" class="c-default">Default</th>
+                <th scope="col" class="c-range">Range</th>
+              </tr>
+            </thead>
+            <tbody id="params"></tbody>
+          </table>
+        </section>
+
+        <section class="spec-slots" id="slots-panel" aria-labelledby="slots-title">
+          <div class="spec-slots-head">
+            <h2 id="slots-title">Slots</h2>
+            <span class="field-hint" id="slots-count"></span>
+          </div>
+          <div class="spec-slots-body">
+            <label class="visually-hidden" for="slots">Slot list, comma separated</label>
+            <textarea class="input" id="slots" rows="4" spellcheck="false"></textarea>
+            <p class="field-hint">Comma separated. Add a short label for long names with <span class="num">Apostrophe = '</span>; otherwise lists show the first two characters.</p>
+            <ul class="slot-board" id="slot-board" aria-label="Slot board"></ul>
+            <p class="slot-legend" aria-hidden="true">
+              <span><span class="balloon is-used"></span> in use</span>
+              <span><span class="balloon"></span> free</span>
+            </p>
+            <div class="slot-warning" id="slot-warning" role="status" hidden>
+              <svg class="icon" aria-hidden="true"><use href="#i-warn"/></svg>
+              <p id="slot-warning-text" style="margin:0"></p>
+            </div>
+          </div>
+        </section>
+
+        <section class="titleblock tb-with-keys" aria-label="Title and controls" style="--tb-rows: 3">
+          <div class="tb-cell tb-keyblock">
+            <span class="label">Keys</span>
+            <ul class="tb-keylist">
+              <li><span class="key">Tab</span> next</li>
+              <li><span class="key">Ctrl S</span> save</li>
+              <li><span class="key">Esc</span> leave</li>
+            </ul>
+          </div>
+          <div class="tb-cell tb-title span-3">
+            <span class="label">Title</span>
+            <h1 class="tb-title-text">Linear switches, winter shortlist</h1>
+          </div>
+          <div class="tb-cell tb-file span-3">
+            <span class="label">File</span>
+            <span class="tb-file-text">switches-2026.pairrank</span>
+          </div>
+
+          <div class="tb-cell tb-status span-6 phone-wide" id="status-cell">
+            <span class="label">Status</span>
+            <p class="tb-text" id="status" aria-live="polite"></p>
+          </div>
+
+          <div class="tb-cell tb-press span-2">
+            <button type="submit" id="save" aria-keyshortcuts="Control+S">
+              <span class="label">Save</span>
+              <span class="tb-act"><svg class="icon" aria-hidden="true"><use href="#i-save"/></svg>Save <span class="key">Ctrl S</span></span>
+            </button>
+          </div>
+          <div class="tb-cell tb-press span-2">
+            <button type="button" id="reset">
+              <span class="label">Defaults</span>
+              <span class="tb-act"><svg class="icon" aria-hidden="true"><use href="#i-reset"/></svg>Reset</span>
+            </button>
+          </div>
+          <!-- Sheet number: bottom-right cell of the title block, as on a drawing. -->
+          <div class="tb-cell tb-sheet span-2">
+            <span class="label">Sheet</span>
+            <div class="tb-pager">
+              <span class="num">1 of 1</span>
+            </div>
+          </div>
+        </section>
+      </form>
+    </main>
+
+    <nav class="bottom-tabs" aria-label="Project sheets">
+      <ul class="sheet-tabs">
+        <li><a href="items.html">Items</a></li>
+        <li><a href="compare.html">Compare</a></li>
+        <li><a href="rankings.html">Rankings</a></li>
+        <li><a href="settings.html" aria-current="page">Settings</a></li>
+      </ul>
+    </nav>
+
+    <footer class="sheet-foot mockup-controls">
+      <fieldset>
+        <legend class="label">Mockup state</legend>
+        <label><input type="radio" name="state" value="normal" checked> Saved</label>
+        <label><input type="radio" name="state" value="changed"> Unsaved changes</label>
+        <label><input type="radio" name="state" value="invalid"> Invalid value</label>
+        <label><input type="radio" name="state" value="reset"> After reset</label>
+        <label><input type="radio" name="state" value="dupslots"> Duplicate slots</label>
+      </fieldset>
+      <fieldset>
+        <legend class="label">Theme</legend>
+        <label><input type="radio" name="theme" value="auto" checked> System</label>
+        <label><input type="radio" name="theme" value="light"> Light</label>
+        <label><input type="radio" name="theme" value="dark"> Dark</label>
+      </fieldset>
+      <p>Sample data. Keys work.</p>
+    </footer>
+  </div>
+
+  <script src="sample-data.js"></script>
+  <script src="settings.js"></script>
+</body>
+</html>
