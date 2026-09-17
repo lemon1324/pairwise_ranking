@@ -18,6 +18,15 @@ from .items import (
     validate_item_form,
 )
 from .record import OpponentRecord, WeightedRecord, weighted_record
+from .register import (
+    ProjectCondition,
+    ProjectFileInfo,
+    duplicate_without_votes,
+    import_file,
+    probe_project_file,
+    scan_directory,
+    unique_file_name,
+)
 from .slots import (
     SlotLabelError,
     SlotLabelVerdict,
@@ -49,6 +58,13 @@ __all__ = [
     "OpponentRecord",
     "WeightedRecord",
     "weighted_record",
+    "ProjectCondition",
+    "ProjectFileInfo",
+    "duplicate_without_votes",
+    "import_file",
+    "probe_project_file",
+    "scan_directory",
+    "unique_file_name",
     "SlotLabelError",
     "SlotLabelVerdict",
     "clean_slot_labels",
