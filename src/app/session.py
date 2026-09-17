@@ -88,6 +88,11 @@ class PairOffer:
     reason: Optional[NoPairReason]
     blinded: bool
 
+    def __post_init__(self):
+        """Take a copy of the statistics so the offer cannot be written through."""
+        if self.stats is not None:
+            object.__setattr__(self, "stats", dict(self.stats))
+
     def has_pair(self) -> bool:
         """
         Check whether the offer carries a pair.
@@ -113,6 +118,10 @@ class SlotSummary:
     total: int
     used: int
     free: list[str]
+
+    def __post_init__(self):
+        """Take a copy of the free slots so the summary cannot be written through."""
+        object.__setattr__(self, "free", list(self.free))
 
 
 @dataclass(frozen=True)
@@ -335,11 +344,14 @@ class ProjectSession:
         Return the statistics of the pair currently on offer.
 
         Returns:
-            Optional[dict]: The statistics from the most recent
+            Optional[dict]: A copy of the statistics from the most recent
             :meth:`next_pair`, or None when no pair has been offered since the
-            last mutation or the last offer carried no pair.
+            last mutation or the last offer carried no pair. It is a copy so
+            that a caller cannot write through it into the session's memo.
         """
-        return self._comparison_stats
+        if self._comparison_stats is None:
+            return None
+        return dict(self._comparison_stats)
 
     def skip(self) -> PairOffer:
         """

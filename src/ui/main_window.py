@@ -358,7 +358,11 @@ class MainWindow(QMainWindow):
         """
         slots = self.session.apply_settings(settings, self.settings_widget.get_slots())
         self._on_data_changed()
-        # Show the slot list as it was normalized.
+        # Show the slot list as it was normalized. Only the slots are pushed
+        # back: the settings themselves came from these very widgets, so
+        # re-setting them would change no value. It does mean the spin boxes
+        # keep the text as it was typed instead of being redrawn canonically
+        # ("05" stays "05" rather than becoming "5.00"), which is deliberate.
         self.settings_widget.set_slots(slots)
 
     def _on_tab_changed(self, index: int) -> None:

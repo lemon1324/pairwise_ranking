@@ -761,13 +761,23 @@ class TestProjectMutators(unittest.TestCase):
 
         self.assertEqual([v.id for v in self.project.votes], ["ca"])
 
-    def test_remove_unknown_item_is_a_no_op(self):
-        """Test that removing an id the project does not hold changes nothing."""
+    def test_remove_unknown_item_keeps_the_items(self):
+        """Test that removing an id the project does not hold removes no item."""
         returned = self.project.remove_item("missing")
 
         self.assertIsNone(returned)
         self.assertEqual(len(self.project.items), 3)
         self.assertEqual(len(self.project.votes), 3)
+
+    def test_remove_purges_orphan_votes_of_a_missing_item(self):
+        """Test that the cascade runs even when the item is already gone."""
+        orphan = Vote(winner_id="a", loser_id="ghost", weight=1.0, id="orphan")
+        self.project.add_vote(orphan)
+
+        returned = self.project.remove_item("ghost")
+
+        self.assertIsNone(returned)
+        self.assertEqual([v.id for v in self.project.votes], ["ab", "bc", "ca"])
 
     def test_remove_item_mutates_the_shared_lists(self):
         """Test that a caller holding the lists sees the removal."""

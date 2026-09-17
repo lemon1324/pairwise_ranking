@@ -315,7 +315,18 @@ class TestProjectSessionPairOffer(unittest.TestCase):
 
         offer = session.next_pair()
 
-        self.assertIs(session.comparison_stats(), offer.stats)
+        self.assertEqual(session.comparison_stats(), offer.stats)
+
+    def test_statistics_cannot_be_written_through(self):
+        """Test that the offer and the session each hand out their own copy."""
+        session = build_session(seed=0)
+
+        offer = session.next_pair()
+        offer.stats["total_items"] = -1
+        session.comparison_stats()["total_votes"] = -1
+
+        self.assertEqual(session.comparison_stats()["total_items"], 4)
+        self.assertEqual(session.comparison_stats()["total_votes"], 0)
 
     def test_statistics_are_cleared_when_no_pair_is_offered(self):
         """Test that a refused offer leaves no stale statistics behind."""
@@ -388,13 +399,22 @@ class TestProjectSessionVoting(unittest.TestCase):
         self.assertEqual([item.id for item in result.pair], ["item-2", "item-0"])
 
     def test_undo_reuses_the_statistics_of_the_fresh_offer(self):
-        """Test that the re-offered pair carries the statistics just computed."""
-        self.session.vote("item-0", "item-1", 2.0)
+        """Test that an undo selects exactly once and re-offers those statistics."""
+        selections = []
 
-        result = self.session.undo()
+        def rng_factory() -> random.Random:
+            selections.append(len(selections))
+            return random.Random(0)
 
+        session = ProjectSession(build_project(), rng_factory=rng_factory)
+        session.vote("item-0", "item-1", 2.0)
+        selections.clear()
+
+        result = session.undo()
+
+        self.assertEqual(len(selections), 1)
         self.assertIsNotNone(result.pair)
-        self.assertIs(result.offer.stats, self.session.comparison_stats())
+        self.assertEqual(result.offer.stats, session.comparison_stats())
 
     def test_undo_still_offers_a_pair_of_its_own(self):
         """Test that the undo carries a fresh offer for the frontend to render."""
@@ -586,6 +606,16 @@ class TestProjectSessionItemMutations(unittest.TestCase):
         """Test that deleting a missing item returns None instead of raising."""
         self.assertIsNone(self.session.delete_item("missing"))
 
+    def test_delete_purges_votes_of_an_item_the_project_has_lost(self):
+        """Test that the cascade runs even for an id no item holds any more."""
+        session = build_session(
+            project=build_project(votes=[build_vote("item-0", "item-gone", 2.0)])
+        )
+
+        session.delete_item("item-gone")
+
+        self.assertEqual(session.project.votes, [])
+
 
 class TestProjectSessionSlots(unittest.TestCase):
     """Test cases for the slot and identifier helpers."""
@@ -636,6 +666,14 @@ class TestProjectSessionSlots(unittest.TestCase):
         self.assertEqual(summary.total, 4)
         self.assertEqual(summary.used, 2)
         self.assertEqual(summary.free, ["A2", "A3"])
+
+    def test_slot_summary_cannot_be_written_through(self):
+        """Test that editing a summary's free list leaves the project alone."""
+        summary = self.session.slot_summary()
+
+        summary.free.append("A9")
+
+        self.assertEqual(self.session.slot_summary().free, ["A2", "A3"])
 
     def test_slot_summary_of_a_project_without_slots(self):
         """Test that a project defining no slots summarizes as empty."""
