@@ -6,9 +6,19 @@ dialog, message box and widget stays on the frontend side of the line.
 """
 
 from .record import OpponentRecord, WeightedRecord, weighted_record
+from .session import (
+    NoPairReason,
+    PairOffer,
+    ProjectSession,
+    UndoResult,
+)
 
 __all__ = [
     "OpponentRecord",
     "WeightedRecord",
     "weighted_record",
+    "NoPairReason",
+    "PairOffer",
+    "ProjectSession",
+    "UndoResult",
 ]
