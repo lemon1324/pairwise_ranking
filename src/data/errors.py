@@ -6,6 +6,17 @@ and another for a file it simply cannot read. Until now the only thing
 separating those cases was the word "newer" in an error message, and matching
 on message text is too fragile to hang a screen on.
 
+**Nothing catches these yet.** :mod:`src.app.register` never opens a file to
+find out what condition it is in - it compares the version it read against
+:data:`~src.models.project.CURRENT_FORMAT_VERSION` itself, because probing must
+not load - so the register classifies without needing an exception at all. The
+consumer these are for is the web error pages of phase 4 and after, where a
+route *does* open a project the user asked for and has to turn the failure into
+a page: "this file needs a newer version of the application" and "this file is
+damaged" are different pages, and telling them apart is what the types are for.
+Until then they are a typed shape around a message, not a rationale that has
+already paid off.
+
 **Every error here subclasses :class:`ValueError`, deliberately.** The desktop
 UI catches ``(OSError, ValueError)`` around each file operation and
 :class:`~src.data.project_storage.ProjectStorage` documents ValueError as what
