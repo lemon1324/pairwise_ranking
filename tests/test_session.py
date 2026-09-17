@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
+from src.app.confidence import ConfidenceReading
 from src.app.record import UNKNOWN_OPPONENT_NAME
 from src.app.session import DuplicateTargetError, NoPairReason, ProjectSession
 from src.data.project_storage import ProjectStorage
@@ -199,6 +200,86 @@ class TestProjectSessionRankings(unittest.TestCase):
         session.vote("item-0", "item-1", 2.0)
 
         self.assertIsNot(session.rankings(), before)
+
+
+class TestProjectSessionConfidence(unittest.TestCase):
+    """Test cases for the confidence reading the session exposes."""
+
+    def test_no_reading_without_enough_items(self):
+        """Test that a project with one item has no reading rather than an error."""
+        session = build_session(items=build_items(1))
+
+        self.assertIsNone(session.confidence())
+
+    def test_no_reading_when_only_one_item_is_active(self):
+        """Test that retired items do not make up a missing neighbour."""
+        items = build_items(2)
+        items[1].retire()
+        session = build_session(items=items)
+
+        self.assertIsNone(session.confidence())
+
+    def test_reading_over_the_active_items(self):
+        """Test that the reading counts one neighbour less than the active items."""
+        session = build_session(
+            items=build_items(4),
+            votes=[
+                build_vote("item-0", "item-1"),
+                build_vote("item-1", "item-2"),
+                build_vote("item-2", "item-3"),
+            ],
+        )
+
+        reading = session.confidence()
+
+        self.assertIsNotNone(reading)
+        self.assertEqual(reading.neighbours, 3)
+        self.assertLessEqual(reading.settled, reading.neighbours)
+
+    def test_reading_follows_the_votes(self):
+        """Test that casting votes changes the reading rather than caching it."""
+        session = build_session(
+            items=build_items(3),
+            votes=[build_vote("item-0", "item-1")],
+        )
+        before = session.confidence()
+
+        for _ in range(20):
+            session.vote("item-0", "item-1", 3.0)
+            session.vote("item-1", "item-2", 3.0)
+
+        self.assertGreater(session.confidence().settled, before.settled)
+
+    def test_the_reader_is_swappable(self):
+        """Test that a session can be handed another confidence formula."""
+
+        class Fixed:
+            """A reader that always reports the same thing."""
+
+            def read(self, rankings):
+                """Return a fixed reading."""
+                return ConfidenceReading(settled=2, neighbours=2, tolerance=9.0)
+
+        session = ProjectSession(build_project(), confidence_reader=Fixed())
+
+        self.assertEqual(session.confidence().tolerance, 9.0)
+
+    def test_the_reader_is_asked_for_the_current_rankings(self):
+        """Test that the session hands its rankings straight to the reader."""
+        seen = []
+
+        class Recording:
+            """A reader that remembers what it was given."""
+
+            def read(self, rankings):
+                """Record the rankings and report nothing."""
+                seen.append(rankings)
+                return None
+
+        session = ProjectSession(build_project(), confidence_reader=Recording())
+
+        self.assertIsNone(session.confidence())
+        self.assertEqual(seen, [session.rankings()])
 
 
 class TestProjectSessionPairOffer(unittest.TestCase):

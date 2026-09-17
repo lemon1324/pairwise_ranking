@@ -5,6 +5,12 @@ the planned web UI are both meant to be thin callers of the code here, so every
 dialog, message box and widget stays on the frontend side of the line.
 """
 
+from .confidence import (
+    AdjacentNeighbourConfidence,
+    ConfidenceReader,
+    ConfidenceReading,
+    DEFAULT_CONFIDENCE_READER,
+)
 from .items import (
     ItemFieldError,
     ItemForm,
@@ -32,6 +38,10 @@ from .session import (
 )
 
 __all__ = [
+    "AdjacentNeighbourConfidence",
+    "ConfidenceReader",
+    "ConfidenceReading",
+    "DEFAULT_CONFIDENCE_READER",
     "ItemFieldError",
     "ItemForm",
     "ItemFormVerdict",

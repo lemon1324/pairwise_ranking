@@ -17,6 +17,11 @@ from enum import Enum
 from pathlib import Path
 from typing import Callable, Optional
 
+from src.app.confidence import (
+    DEFAULT_CONFIDENCE_READER,
+    ConfidenceReader,
+    ConfidenceReading,
+)
 from src.app.record import WeightedRecord, weighted_record
 from src.data.project_storage import ProjectStorage
 from src.models.export import build_export_rows
@@ -169,6 +174,7 @@ class ProjectSession:
         project: Project,
         on_saved: Optional[Callable[[Project], None]] = None,
         rng_factory: Optional[Callable[[], random.Random]] = None,
+        confidence_reader: Optional[ConfidenceReader] = None,
     ):
         """
         Initialize the session.
@@ -182,10 +188,18 @@ class ProjectSession:
                 Defaults to a fresh :class:`random.Random` per selection, which
                 is what the desktop does today; pass a factory returning a
                 seeded instance for deterministic tests.
+            confidence_reader: Reads how settled the ranking is. Defaults to
+                :data:`~src.app.confidence.DEFAULT_CONFIDENCE_READER`; the
+                formula is meant to be swappable without a screen noticing.
         """
         self._project = project
         self._on_saved = on_saved
         self._rng_factory = rng_factory if rng_factory is not None else random.Random
+        self._confidence_reader = (
+            confidence_reader
+            if confidence_reader is not None
+            else DEFAULT_CONFIDENCE_READER
+        )
 
         self._rankings: Optional[list[RankingResult]] = None
         self._rankings_valid = False
@@ -271,6 +285,21 @@ class ProjectSession:
 
         self._rankings_valid = True
         return self._rankings
+
+    def confidence(self) -> Optional[ConfidenceReading]:
+        """
+        Report how settled the current ranking is.
+
+        This is the Compare screen's reading. It must not be shown in blinded
+        comparison mode, where the ranking itself is deliberately off screen;
+        that is the screen's decision, not the session's.
+
+        Returns:
+            Optional[ConfidenceReading]: The reading, or None when there is
+            nothing to read - fewer than two items ranked, for instance. A
+            missing reading is never an error.
+        """
+        return self._confidence_reader.read(self.rankings())
 
     def _eligible_items(self) -> tuple[list[Item], list[Item]]:
         """
