@@ -13,6 +13,7 @@ from .items import (
 )
 from .record import OpponentRecord, WeightedRecord, weighted_record
 from .session import (
+    DuplicateTargetError,
     NoPairReason,
     PairOffer,
     ProjectSession,
@@ -28,6 +29,7 @@ __all__ = [
     "OpponentRecord",
     "WeightedRecord",
     "weighted_record",
+    "DuplicateTargetError",
     "NoPairReason",
     "PairOffer",
     "ProjectSession",
