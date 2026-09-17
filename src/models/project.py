@@ -262,20 +262,22 @@ class Project:
         Remove an item and every vote it took part in.
 
         Deleting an item discards its history; retiring it is the way to keep
-        the history. Removing an id the project does not hold is a no-op.
+        the history. The vote cascade runs whether or not the item was there:
+        a file written elsewhere may hold votes naming an item the project has
+        already lost, and those orphans have to go too or the ranking model
+        keeps being fed them.
 
         Args:
             item_id: Id of the item to remove.
 
         Returns:
             Optional[Item]: The removed item, or None if there was no such
-            item.
+            item. The cascade has run in either case.
         """
         removed = self.find_item(item_id)
-        if removed is None:
-            return None
 
-        self.items[:] = [item for item in self.items if item.id != item_id]
+        if removed is not None:
+            self.items[:] = [item for item in self.items if item.id != item_id]
         self.votes[:] = [
             vote for vote in self.votes if not vote.involves_item(item_id)
         ]
