@@ -169,14 +169,22 @@
         <aside class="notes" aria-label="Notes">
           <span class="label">Notes</span>
           <ol>
-            <li>Keys <span class="key">1</span>–<span class="key">7</span> press the stations. <span class="key">S</span> skips, <span class="key">Ctrl</span> <span class="key">Z</span> undoes the last vote.</li>
             <li>Equal records no vote and moves to the next pair.</li>
             <li class="note-readings">Tolerance is the median rating uncertainty. Ratings are relative to the items in this project.</li>
             <li class="note-legend"><span class="swatch fill-a" aria-hidden="true"></span> View A, left. <span class="swatch fill-b" aria-hidden="true"></span> View B, right. Bar count is vote weight.</li>
           </ol>
         </aside>
 
-        <section class="titleblock" aria-label="Title and status">
+        <section class="titleblock tb-with-keys" aria-label="Title and status" style="--tb-rows: 4">
+          <!-- Keys block: full title-block height at its left edge, as on every sheet. -->
+          <div class="tb-cell tb-keyblock">
+            <span class="label">Keys</span>
+            <ul class="tb-keylist">
+              <li><span class="key">1–7</span> vote</li>
+              <li><span class="key">S</span> skip</li>
+              <li><span class="key">Ctrl Z</span> undo</li>
+            </ul>
+          </div>
           <div class="tb-cell tb-title">
             <span class="label">Title</span>
             <h1 class="tb-title-text">Linear switches, winter shortlist</h1>

@@ -449,7 +449,7 @@
 }
 
 .tb-revision {
-  grid-column: 1 / span 5;
+  grid-column: span 5;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   gap: var(--s-1) var(--s-3);
@@ -545,7 +545,7 @@
 }
 
 .tb-undo {
-  grid-column: 6;
+  grid-column: span 1;
   display: grid;
   align-content: stretch;
   padding: 0;
@@ -607,17 +607,18 @@
   color: var(--hair);
 }
 
+/* Spans only, no fixed column numbers, so the cells place correctly beside the keys block. */
 .tb-state {
-  grid-column: 1 / span 2;
+  grid-column: span 2;
 }
 
 .tb-skip {
-  grid-column: 3 / span 2;
+  grid-column: span 2;
   padding: 0;
 }
 
 .tb-mode {
-  grid-column: 5 / span 2;
+  grid-column: span 2;
   padding: 0;
 }
 
@@ -853,8 +854,14 @@
     font-size: 1rem;
   }
 
-  .titleblock {
+  .titleblock,
+  .titleblock.tb-with-keys {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 7.5rem;
+    grid-template-rows: none;
+  }
+
+  .tb-keyblock {
+    display: none;
   }
 
   .tb-cell {
