@@ -227,6 +227,75 @@ class Project:
         """
         return [item for item in self.items if item.is_active()]
 
+    def find_item(self, item_id: str) -> Optional[Item]:
+        """
+        Look an item up by id.
+
+        Args:
+            item_id: The id to find.
+
+        Returns:
+            Optional[Item]: The item, or None if the project has no item with
+            that id.
+        """
+        for item in self.items:
+            if item.id == item_id:
+                return item
+        return None
+
+    def add_item(self, item: Item) -> Item:
+        """
+        Add an item to the project.
+
+        Args:
+            item: The item to add. It is appended, so the project keeps the
+                order items were created in.
+
+        Returns:
+            Item: The item that was added.
+        """
+        self.items.append(item)
+        return item
+
+    def remove_item(self, item_id: str) -> Optional[Item]:
+        """
+        Remove an item and every vote it took part in.
+
+        Deleting an item discards its history; retiring it is the way to keep
+        the history. Removing an id the project does not hold is a no-op.
+
+        Args:
+            item_id: Id of the item to remove.
+
+        Returns:
+            Optional[Item]: The removed item, or None if there was no such
+            item.
+        """
+        removed = self.find_item(item_id)
+        if removed is None:
+            return None
+
+        self.items[:] = [item for item in self.items if item.id != item_id]
+        self.votes[:] = [
+            vote for vote in self.votes if not vote.involves_item(item_id)
+        ]
+        return removed
+
+    def add_vote(self, vote: Vote) -> Vote:
+        """
+        Record a vote.
+
+        Args:
+            vote: The vote to record. It is appended, so the votes stay in the
+                order they were cast and :meth:`pop_last_vote` undoes the most
+                recent one.
+
+        Returns:
+            Vote: The vote that was recorded.
+        """
+        self.votes.append(vote)
+        return vote
+
     def active_identifiers(self) -> set[str]:
         """
         Return the identifiers currently held by active items.
