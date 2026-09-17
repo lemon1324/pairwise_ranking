@@ -117,10 +117,12 @@ class TestUpgradeRaisesTypedErrors(unittest.TestCase):
 
         self.assertIn("No upgrade path", str(ctx.exception))
 
-    def test_unreadable_version_key_still_raises_value_error(self):
-        """Test that a bad version key is rejected before any typing applies."""
-        with self.assertRaises(ValueError):
+    def test_unreadable_version_key_is_not_a_format_error(self):
+        """Test that a bad version key stays a plain ValueError, untyped."""
+        with self.assertRaises(ValueError) as ctx:
             upgrade({"name": "Errors", FORMAT_VERSION_KEY: "three"})
+
+        self.assertNotIsInstance(ctx.exception, ProjectFormatError)
 
 
 if __name__ == "__main__":

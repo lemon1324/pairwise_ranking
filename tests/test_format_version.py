@@ -235,7 +235,7 @@ class TestUpgrade(unittest.TestCase):
 
     def test_newer_version_raises(self):
         """Test that a file from a newer application version is rejected."""
-        data = {"name": "Future", FORMAT_VERSION_KEY: 4}
+        data = {"name": "Future", FORMAT_VERSION_KEY: CURRENT_FORMAT_VERSION + 1}
 
         with self.assertRaises(ValueError) as ctx:
             upgrade(data)

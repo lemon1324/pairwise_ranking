@@ -2,6 +2,7 @@
 
 import math
 import unittest
+from dataclasses import FrozenInstanceError
 
 import numpy as np
 
@@ -97,6 +98,31 @@ def fitted_rankings() -> list[RankingResult]:
             (0, 5, 2.0),
             (5, 4, 1.0),
         ]
+    ]
+    model = BradleyTerryModel(items)
+    model.add_votes(votes)
+    return assign_active_ranks(model.compute_rankings())
+
+
+def decisive_rankings() -> list[RankingResult]:
+    """
+    Fit a model over data that leaves no doubt about the order.
+
+    Every item beats every weaker item six times over, so the gaps are wide
+    against the standard errors and the reading should settle everything. It
+    exists to be compared with :func:`fitted_rankings`, whose sparse data
+    settles nothing: between them the settled count is pinned as something that
+    follows the evidence rather than a number that happens to be right once.
+
+    Returns:
+        list[RankingResult]: Ranked results over five active items.
+    """
+    items = [Item(name=f"D{i}", id=f"d{i}") for i in range(5)]
+    votes = [
+        Vote(winner_id=f"d{winner}", loser_id=f"d{loser}", weight=3.0)
+        for winner in range(5)
+        for loser in range(winner + 1, 5)
+        for _ in range(6)
     ]
     model = BradleyTerryModel(items)
     model.add_votes(votes)
@@ -363,18 +389,33 @@ class TestConfidenceTolerance(unittest.TestCase):
 
         self.assertAlmostEqual(tolerance, median * points_per_log_unit, places=9)
 
-    def test_a_real_fit_reads(self):
-        """Test that a real Bradley-Terry fit produces a usable reading."""
+    def test_a_sparse_real_fit_settles_nothing(self):
+        """Test that eight votes over six items support no adjacent order."""
         reading = self.reader.read(fitted_rankings())
 
         self.assertEqual(reading.neighbours, 4)
-        self.assertGreaterEqual(reading.settled, 0)
-        self.assertLessEqual(reading.settled, reading.neighbours)
-        self.assertGreater(reading.tolerance, 0.0)
+        self.assertEqual(reading.settled, 0)
+        self.assertAlmostEqual(reading.tolerance, 157.182, places=2)
+
+    def test_a_decisive_real_fit_settles_every_pair(self):
+        """Test that the settled count rises with the evidence behind the order."""
+        reading = self.reader.read(decisive_rankings())
+
+        self.assertEqual(reading.neighbours, 4)
+        self.assertEqual(reading.settled, 4)
+        self.assertEqual(reading.settled_fraction, 1.0)
+        self.assertAlmostEqual(reading.tolerance, 78.725, places=2)
 
 
 class TestConfidenceSwappable(unittest.TestCase):
-    """Test cases for the reader being a replaceable piece."""
+    """
+    Test cases for the reader being a replaceable piece.
+
+    That a substituted reader actually reaches the screens is pinned in
+    tests/test_session.py, where ProjectSession is handed one; a stand-in
+    reader exercised on its own here would only prove that a method can be
+    called.
+    """
 
     def test_a_stricter_threshold_settles_fewer_pairs(self):
         """Test that the settled probability is a parameter of the reader."""
@@ -386,26 +427,11 @@ class TestConfidenceSwappable(unittest.TestCase):
         self.assertEqual(lenient.read(rankings).settled, 1)
         self.assertEqual(strict.read(rankings).settled, 0)
 
-    def test_a_custom_reader_satisfies_the_interface(self):
-        """Test that any object with read() can stand in for the default."""
-
-        class AlwaysSettled:
-            """A reader that declares everything settled."""
-
-            def read(self, rankings):
-                """Return a fixed reading."""
-                return ConfidenceReading(settled=7, neighbours=7, tolerance=1.0)
-
-        reading = AlwaysSettled().read(build_rankings((1.0, 0.1)))
-
-        self.assertEqual(reading.settled, 7)
-        self.assertEqual(reading.settled_fraction, 1.0)
-
     def test_the_reading_is_immutable(self):
         """Test that a screen cannot write through a reading it was handed."""
         reading = ConfidenceReading(settled=1, neighbours=2, tolerance=3.0)
 
-        with self.assertRaises(Exception):
+        with self.assertRaises(FrozenInstanceError):
             reading.settled = 5
 
 
