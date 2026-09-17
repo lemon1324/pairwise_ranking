@@ -12,6 +12,16 @@ from .items import (
     validate_item_form,
 )
 from .record import OpponentRecord, WeightedRecord, weighted_record
+from .slots import (
+    SlotLabelError,
+    SlotLabelVerdict,
+    clean_slot_labels,
+    format_slot_list,
+    label_collisions,
+    parse_slot_list,
+    short_label,
+    validate_slot_labels,
+)
 from .session import (
     DuplicateTargetError,
     NoPairReason,
@@ -29,6 +39,14 @@ __all__ = [
     "OpponentRecord",
     "WeightedRecord",
     "weighted_record",
+    "SlotLabelError",
+    "SlotLabelVerdict",
+    "clean_slot_labels",
+    "format_slot_list",
+    "label_collisions",
+    "parse_slot_list",
+    "short_label",
+    "validate_slot_labels",
     "DuplicateTargetError",
     "NoPairReason",
     "PairOffer",
