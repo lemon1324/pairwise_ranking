@@ -16,6 +16,7 @@
     let page = 0;
     let pages = 1;
     let limits = { bottom: Infinity, lastColBottom: Infinity };
+    let lastCalloutKey = "";
     const rowPage = new Map();
 
     const rem = () => parseFloat(getComputedStyle(document.documentElement).fontSize);
@@ -70,11 +71,17 @@
 
       const width = field.clientWidth;
       const height = field.clientHeight;
-      const n = Math.max(1, Math.floor(width / (MIN_COL_REM * rem())));
-      const colWidth = width / n;
+      // The rightmost column matches the standard title block width (--tb-width) so the title
+      // block sits exactly under it; the other columns share the rest, each >= MIN_COL_REM.
+      const tbStandard = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tb-width")) * rem();
+      const minCol = MIN_COL_REM * rem();
+      const tbWidth = Math.min(tbStandard, width);
+      const others = Math.floor((width - tbWidth) / minCol);
+      const n = others + 1;
+      const otherWidth = others ? (width - tbWidth) / others : 0;
+      const colWidthFor = (i) => (i === n - 1 ? tbWidth : otherWidth);
 
-      // The title block takes the footprint of the rightmost column, flush to the frame corner.
-      o.titleblock.style.width = `${colWidth}px`;
+      o.titleblock.style.width = `${tbWidth}px`;
       const tbTop = o.titleblock.getBoundingClientRect().top - field.getBoundingClientRect().top;
       const lastCol = n - 1;
       const lastColBottom = tbTop - CLEARANCE_REM * rem();
@@ -90,7 +97,7 @@
         colIndex += 1;
         col = document.createElement("div");
         col.className = "bom-col";
-        col.style.width = `${colWidth}px`;
+        col.style.width = `${colWidthFor(colIndex)}px`;
         col.dataset.limit = String(colIndex === lastCol ? lastColBottom : height);
         const table = tableShell();
         col.append(table);
@@ -161,6 +168,10 @@
 
       const callout = document.createElement("div");
       callout.className = "bom-callout strip";
+      // Only animate a callout that is new; a refold redrawing the same one keeps it still.
+      const key = `${selectedId}\n${html}`;
+      if (key === lastCalloutKey) callout.classList.add("is-settled");
+      lastCalloutKey = key;
       callout.innerHTML = html;
       o.field.append(callout);
 
