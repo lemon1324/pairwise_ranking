@@ -20,6 +20,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
 
+from src.app.record import OpponentRecord, weighted_record
 from src.models.vote import Vote
 from src.models.export import build_export_rows
 from src.models.ranking import RankingResult
@@ -281,18 +282,16 @@ class ResultsWidget(QWidget):
         # Standard error of log-strength (uncertainty)
         details["Uncertainty (SE)"] = f"{result.log_strength_se:.4f}"
 
-        # Win/loss record against each opponent
-        item_id = result.item.id
-        wins = {}
-        losses = {}
-
-        for vote in self._votes:
-            if vote.winner_id == item_id:
-                loser_name = self._get_item_name(vote.loser_id)
-                wins[loser_name] = wins.get(loser_name, 0) + vote.weight
-            elif vote.loser_id == item_id:
-                winner_name = self._get_item_name(vote.winner_id)
-                losses[winner_name] = losses.get(winner_name, 0) + vote.weight
+        # Win/loss record against each opponent. The core keeps opponents apart
+        # by id; this tab shows raw weights and merges opponents that share a
+        # name, so two items called the same thing read as one line.
+        record = weighted_record(
+            result.item.id,
+            self._votes,
+            [r.item for r in self._rankings],
+        )
+        wins = self._weight_by_name(record.wins)
+        losses = self._weight_by_name(record.losses)
 
         if wins:
             win_str = ", ".join(f"{name}: {w:.1f}" for name, w in sorted(wins.items()))
@@ -303,6 +302,23 @@ class ResultsWidget(QWidget):
             details["Losses (weighted)"] = loss_str
 
         return details
+
+    def _weight_by_name(self, records: list[OpponentRecord]) -> dict[str, float]:
+        """
+        Total the raw weight of a record's entries by opponent name.
+
+        Args:
+            records: The wins or the losses of one item.
+
+        Returns:
+            dict[str, float]: Raw weight per opponent name. Opponents sharing a
+            name are added together, which is what the detail rows show.
+        """
+        totals: dict[str, float] = {}
+        for record in records:
+            name = self._get_item_name(record.opponent_id)
+            totals[name] = totals.get(name, 0.0) + record.weight_raw
+        return totals
 
     def _get_item_name(self, item_id: str) -> str:
         """

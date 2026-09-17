@@ -25,8 +25,9 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import pyqtSignal, Qt
 from PyQt6.QtGui import QColor, QBrush
 
+from src.app.items import FIELD_IDENTIFIER, FIELD_NAME, validate_item_form
+from src.app.session import ProjectSession
 from src.models.item import Item, DEFAULT_CATEGORY
-from src.models.project import active_identifiers, free_slots
 
 
 # Colour used for retired rows and other de-emphasized text. The stylesheet
@@ -240,20 +241,25 @@ class ItemDialog(QDialog):
 
     def _validate_and_accept(self) -> None:
         """Validate input and accept dialog if valid."""
-        name = self.name_edit.text().strip()
-        if not name:
+        verdict = validate_item_form(
+            name=self.name_edit.text(),
+            identifier=self._identifier_text(),
+            category=self.category_edit.currentText(),
+            taken_identifiers=self._taken_identifiers,
+        )
+
+        if FIELD_NAME in verdict.errors:
             QMessageBox.warning(self, "Validation Error", "Item name cannot be empty.")
             self.name_edit.setFocus()
             return
 
-        identifier = self._identifier_text()
-        if identifier and identifier in self._taken_identifiers:
+        if FIELD_IDENTIFIER in verdict.errors:
             QMessageBox.warning(
                 self,
                 "Identifier In Use",
-                f"The identifier '{identifier}' is already assigned to another "
-                "active item.\n\nChoose a different identifier, or retire the "
-                "other item first to free it.",
+                f"The identifier '{verdict.form.identifier}' is already assigned "
+                "to another active item.\n\nChoose a different identifier, or "
+                "retire the other item first to free it.",
             )
             self.identifier_edit.setFocus()
             return
@@ -299,7 +305,8 @@ class ItemListWidget(QWidget):
     The widget owns no data: every action emits a signal and the main window
     applies it to the project and pushes the result back through
     :meth:`set_items`. The table keeps the selected item selected across those
-    refreshes.
+    refreshes. Slot and identifier questions go to the session rather than
+    being worked out here.
 
     Signals:
         item_added: Emitted when a new item is added.
@@ -316,18 +323,29 @@ class ItemListWidget(QWidget):
     item_retired = pyqtSignal(str)
     item_replaced = pyqtSignal(str, Item)
 
-    def __init__(self, parent: Optional[QWidget] = None):
+    def __init__(self, session: ProjectSession, parent: Optional[QWidget] = None):
         """
         Initialize the item list widget.
 
         Args:
+            session: Session holding the project on display.
             parent: Parent widget.
         """
         super().__init__(parent)
+        self._session = session
         self._items: list[Item] = []
-        self._slots: list[str] = []
         self._visible: list[Item] = []
         self._setup_ui()
+
+    def set_session(self, session: ProjectSession) -> None:
+        """
+        Point the widget at another project's session.
+
+        Args:
+            session: The session to ask from now on. The window installs it
+                before pushing the new project's items.
+        """
+        self._session = session
 
     def _setup_ui(self) -> None:
         """Set up the widget UI."""
@@ -410,16 +428,14 @@ class ItemListWidget(QWidget):
 
         layout.addWidget(self.table)
 
-    def set_items(self, items: list[Item], slots: Optional[list[str]] = None) -> None:
+    def set_items(self, items: list[Item]) -> None:
         """
         Set the list of items to display.
 
         Args:
             items: List of items to display, active and retired.
-            slots: The project's slot list, or None/empty when it defines none.
         """
         self._items = list(items)
-        self._slots = list(slots or [])
         self._refresh_table()
 
     def _visible_items(self) -> list[Item]:
@@ -520,36 +536,19 @@ class ItemListWidget(QWidget):
 
     def _refresh_slots_label(self) -> None:
         """Update the slot usage summary, hiding it when there are no slots."""
-        if not self._slots:
+        summary = self._session.slot_summary()
+        if summary.total == 0:
             self.slots_label.setVisible(False)
             self.slots_label.setText("")
             return
 
-        free = free_slots(self._slots, self._items)
-        used = len(self._slots) - len(free)
-        free_text = ", ".join(free) if free else "none free"
-        if free:
+        free_text = ", ".join(summary.free) if summary.free else "none free"
+        if summary.free:
             free_text = f"free: {free_text}"
         self.slots_label.setText(
-            f"Slots: {used} of {len(self._slots)} in use — {free_text}"
+            f"Slots: {summary.used} of {summary.total} in use — {free_text}"
         )
         self.slots_label.setVisible(True)
-
-    def _other_items(self, exclude_item_id: Optional[str] = None) -> list[Item]:
-        """
-        Return the items other than the one being edited or replaced.
-
-        Excluding an item is how its own slot is made to count as free.
-
-        Args:
-            exclude_item_id: Id of an item to leave out, or None for all.
-
-        Returns:
-            list[Item]: The remaining items.
-        """
-        if exclude_item_id is None:
-            return self._items
-        return [item for item in self._items if item.id != exclude_item_id]
 
     def _dialog_slots(self, exclude_item_id: Optional[str] = None) -> Optional[list[str]]:
         """
@@ -560,11 +559,13 @@ class ItemListWidget(QWidget):
 
         Returns:
             Optional[list[str]]: The free slots, or None when the project
-            defines no slot list and identifiers are free text.
+            defines no slot list and identifiers are free text. The dialog
+            builds a dropdown for a list and a plain text field for None, so
+            the two cases must stay apart.
         """
-        if not self._slots:
+        if self._session.slot_summary().total == 0:
             return None
-        return free_slots(self._slots, self._other_items(exclude_item_id))
+        return self._session.free_slots(exclude_item_id)
 
     def _get_existing_categories(self) -> list[str]:
         """Return sorted list of unique categories currently in use."""
@@ -605,7 +606,7 @@ class ItemListWidget(QWidget):
         dialog = ItemDialog(
             self,
             existing_categories=self._get_existing_categories(),
-            taken_identifiers=active_identifiers(self._items),
+            taken_identifiers=self._session.taken_identifiers(),
             free_slots=self._dialog_slots(),
         )
         if dialog.exec() == QDialog.DialogCode.Accepted:
@@ -622,7 +623,7 @@ class ItemListWidget(QWidget):
             self,
             item,
             existing_categories=self._get_existing_categories(),
-            taken_identifiers=active_identifiers(self._other_items(item.id)),
+            taken_identifiers=self._session.taken_identifiers(item.id),
             free_slots=self._dialog_slots(item.id),
         )
         if dialog.exec() == QDialog.DialogCode.Accepted:
@@ -638,7 +639,7 @@ class ItemListWidget(QWidget):
             self,
             item,
             existing_categories=self._get_existing_categories(),
-            taken_identifiers=active_identifiers(self._other_items(item.id)),
+            taken_identifiers=self._session.taken_identifiers(item.id),
             free_slots=self._dialog_slots(item.id),
             reactivate=True,
         )
@@ -685,7 +686,7 @@ class ItemListWidget(QWidget):
             existing_categories=self._get_existing_categories(),
             # The item being replaced hands its identifier to its successor,
             # so its own identifier must not count as taken.
-            taken_identifiers=active_identifiers(self._other_items(item.id)),
+            taken_identifiers=self._session.taken_identifiers(item.id),
             free_slots=self._dialog_slots(item.id),
             prefill_identifier=item.identifier,
             prefill_category=item.category,

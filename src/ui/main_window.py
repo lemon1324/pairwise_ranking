@@ -1,7 +1,6 @@
 """Main application window for the pairwise ranking application."""
 
 from pathlib import Path
-from typing import Optional
 
 from PyQt6.QtWidgets import (
     QMainWindow,
@@ -13,18 +12,13 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtGui import QAction
 
+from src.app.session import NoPairReason, PairOffer, ProjectSession
 from src.data.project_storage import ProjectStorage
 from src.data.user_config import UserConfig
 from src.models.project import Project
 from src.models.settings import Settings
 from src.models.item import Item
 from src.models.vote import Vote
-from src.models.ranking import (
-    BradleyTerryModel,
-    PairSelector,
-    RankingResult,
-    assign_active_ranks,
-)
 from src.ui.item_list import ItemListWidget
 from src.ui.comparison import ComparisonWidget
 from src.ui.results import ResultsWidget
@@ -47,8 +41,13 @@ class MainWindow(QMainWindow):
     - Rankings: View current rankings
     - Settings: Configure algorithm parameters
 
+    The window owns no application logic: it renders what
+    :class:`~src.app.session.ProjectSession` computes and hands user actions
+    back to it. File dialogs, message boxes and the wording of every message
+    stay here.
+
     Attributes:
-        project: The current project being edited.
+        session: The session over the project being edited.
         user_config: User configuration for recent projects.
     """
 
@@ -62,15 +61,8 @@ class MainWindow(QMainWindow):
         """
         super().__init__()
 
-        self.project = project
+        self.session = ProjectSession(project, on_saved=self._on_project_saved)
         self.user_config = user_config
-
-        # Current rankings (computed on demand)
-        self._rankings: Optional[list[RankingResult]] = None
-
-        # Stats from the selector that chose the pair on show, reused when a
-        # specific pair has to be put back on screen after an undo.
-        self._comparison_stats: Optional[dict] = None
 
         # Set up UI
         self._setup_menu()
@@ -80,6 +72,16 @@ class MainWindow(QMainWindow):
         # Initial data refresh
         self._refresh_all()
         self._update_window_title()
+
+    @property
+    def project(self) -> Project:
+        """
+        Return the project currently on screen.
+
+        Returns:
+            Project: The project the session is editing.
+        """
+        return self.session.project
 
     def _setup_menu(self) -> None:
         """Set up the menu bar."""
@@ -173,7 +175,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.tabs)
 
         # Create tabs
-        self.item_list_widget = ItemListWidget()
+        self.item_list_widget = ItemListWidget(self.session)
         self.comparison_widget = ComparisonWidget()
         self.results_widget = ResultsWidget()
         self.settings_widget = SettingsWidget()
@@ -203,100 +205,66 @@ class MainWindow(QMainWindow):
         # Tab change
         self.tabs.currentChanged.connect(self._on_tab_changed)
 
-    def _save_project(self) -> None:
-        """Save the current project to disk."""
-        if self.project.file_path:
-            ProjectStorage.save(self.project, self.project.file_path)
-            self.user_config.add_recent_project(
-                self.project.name,
-                self.project.file_path,
-                self.project.modified,
-            )
+    def _on_project_saved(self, project: Project) -> None:
+        """
+        Record a project the session has just saved.
+
+        The recent projects list is desktop business, so the session reports
+        its saves here instead of knowing about user configuration.
+
+        Args:
+            project: The project that was saved.
+        """
+        self.user_config.add_recent_project(
+            project.name,
+            project.file_path,
+            project.modified,
+        )
 
     def _refresh_all(self) -> None:
         """Refresh all widgets with current data."""
-        self._compute_rankings()
         self._refresh_item_list()
         self._refresh_comparison()
         self._refresh_results()
         self._refresh_settings()
         self._refresh_undo_state()
 
-    def _compute_rankings(self) -> None:
-        """Compute rankings from current items and votes."""
-        # Rankings are always computed for all items (not filtered by blinded mode)
-        # This ensures the Rankings tab shows all items regardless of mode
-        if len(self.project.items) < 2:
-            self._rankings = None
-            return
-
-        model = BradleyTerryModel(self.project.items)
-        model.add_votes(
-            self.project.votes,
-            decay_timescale_days=self.project.settings.decay_timescale_days,
-        )
-        # The model numbers every item it was given; ranks shown to the user
-        # count active items only.
-        self._rankings = assign_active_ranks(model.compute_rankings())
-
     def _refresh_item_list(self) -> None:
         """Refresh the items list widget."""
-        self.item_list_widget.set_items(self.project.items, self.project.slots)
-
-    def _eligible_comparison_items(self, active_items: list[Item]) -> list[Item]:
-        """
-        Narrow the active items down to those that can be compared right now.
-
-        Args:
-            active_items: The project's active items.
-
-        Returns:
-            list[Item]: The active items, further restricted to those with an
-            identifier when blinded comparison mode is on.
-        """
-        if self.project.settings.blinded_comparison_mode:
-            return [item for item in active_items if item.has_identifier()]
-        return active_items
+        self.item_list_widget.set_items(self.project.items)
 
     def _refresh_comparison(self) -> None:
         """Refresh the comparison widget with next pair."""
-        blinded_mode = self.project.settings.blinded_comparison_mode
-        self._comparison_stats = None
+        self._show_offer(self.session.next_pair())
 
-        # Retired items keep their history but are never offered for comparison
-        active_items = self.project.active_items()
+    def _show_offer(self, offer: PairOffer) -> None:
+        """
+        Render a pair offer, or the message that goes with its refusal.
 
-        # In blinded mode, only include items with identifiers
-        eligible_items = self._eligible_comparison_items(active_items)
-
-        if len(eligible_items) < 2:
-            if blinded_mode and len(active_items) >= 2:
-                # Have items but they lack identifiers
-                self.comparison_widget.set_no_items(
-                    "Assign identifiers to at least 2 items to compare in blinded mode"
-                )
-            else:
-                self.comparison_widget.set_no_items()
-            return
-
-        selector = PairSelector(
-            eligible_items, self.project.votes, self.project.settings
-        )
-        pair = selector.select_pair(self._rankings)
-
-        if pair is None:
+        Args:
+            offer: The offer to show. The session reports why it has no pair;
+                the wording of that is this window's business.
+        """
+        if offer.has_pair():
+            self.comparison_widget.set_pair(
+                offer.pair[0],
+                offer.pair[1],
+                offer.stats,
+                blinded_mode=offer.blinded,
+            )
+        elif offer.reason == NoPairReason.BLINDED_NO_IDENTIFIERS:
+            # Have items but they lack identifiers
+            self.comparison_widget.set_no_items(
+                "Assign identifiers to at least 2 items to compare in blinded mode"
+            )
+        else:
             self.comparison_widget.set_no_items()
-            return
-
-        self._comparison_stats = selector.get_comparison_stats()
-        self.comparison_widget.set_pair(
-            pair[0], pair[1], self._comparison_stats, blinded_mode=blinded_mode
-        )
 
     def _refresh_results(self) -> None:
         """Refresh the results widget."""
-        if self._rankings:
-            self.results_widget.set_rankings(self._rankings, self.project.votes)
+        rankings = self.session.rankings()
+        if rankings:
+            self.results_widget.set_rankings(rankings, self.project.votes)
         else:
             self.results_widget.set_no_rankings()
 
@@ -312,114 +280,71 @@ class MainWindow(QMainWindow):
         self.comparison_widget.set_undo_enabled(can_undo)
 
     def _on_data_changed(self) -> None:
-        """Persist the project and refresh everything that depends on the data."""
-        self._save_project()
-        self._compute_rankings()
+        """
+        Refresh everything that depends on the data.
+
+        The session has already saved by the time this runs. The Settings tab
+        is deliberately left alone: it holds edits the user may not have saved
+        yet.
+        """
         self._refresh_item_list()
         self._refresh_comparison()
         self._refresh_results()
         self._refresh_undo_state()
 
-    def _find_item(self, item_id: str) -> Optional[Item]:
-        """
-        Look an item up in the project by id.
-
-        Args:
-            item_id: The id to find.
-
-        Returns:
-            Optional[Item]: The item, or None if the project has no such item.
-        """
-        for item in self.project.items:
-            if item.id == item_id:
-                return item
-        return None
-
     def _on_item_added(self, item: Item) -> None:
         """Handle item added event."""
-        self.project.items.append(item)
+        self.session.add_item(item)
         self._on_data_changed()
 
     def _on_item_updated(self, item: Item) -> None:
         """Handle item updated event."""
-        for i, existing in enumerate(self.project.items):
-            if existing.id == item.id:
-                self.project.items[i] = item
-                break
+        self.session.update_item(item)
         self._on_data_changed()
 
     def _on_item_deleted(self, item_id: str) -> None:
         """Handle item deleted event."""
-        self.project.items[:] = [
-            item for item in self.project.items if item.id != item_id
-        ]
-
-        # Also delete votes involving this item
-        self.project.votes[:] = [
-            v for v in self.project.votes if not v.involves_item(item_id)
-        ]
-
+        self.session.delete_item(item_id)
         self._on_data_changed()
 
     def _on_item_retired(self, item_id: str) -> None:
         """Handle item retired event."""
-        item = self._find_item(item_id)
-        if item is not None:
-            item.retire()
+        self.session.retire(item_id)
         self._on_data_changed()
 
     def _on_item_replaced(self, old_item_id: str, new_item: Item) -> None:
         """Handle item replaced event: retire the old item, add its successor."""
-        old_item = self._find_item(old_item_id)
-        if old_item is not None:
-            old_item.retire(replaced_by=new_item.id)
-        self.project.items.append(new_item)
+        self.session.replace(old_item_id, new_item)
         self._on_data_changed()
 
     def _on_vote_submitted(self, vote: Vote) -> None:
         """Handle vote submitted event."""
-        self.project.votes.append(vote)
+        self.session.vote(vote.winner_id, vote.loser_id, vote.weight)
         self._on_data_changed()
 
     def _on_skip_requested(self) -> None:
         """Handle skip requested event - just get next pair."""
-        self._refresh_comparison()
+        self._show_offer(self.session.skip())
 
     def _on_undo_last_vote(self) -> None:
         """Remove the most recent vote and offer its pair again if possible."""
-        vote = self.project.pop_last_vote()
-        if vote is None:
+        result = self.session.undo()
+        if result is None:
             return
 
-        self._on_data_changed()
-        self._show_pair_for_vote(vote)
-
-    def _show_pair_for_vote(self, vote: Vote) -> None:
-        """
-        Show the pair of an undone vote again, if both items are still eligible.
-
-        An item may have been retired, deleted or stripped of its identifier
-        since the vote was cast; in that case the pair cannot be offered and
-        whatever _refresh_comparison already chose stands. The statistics it
-        computed for that refresh are reused rather than recomputed.
-
-        Args:
-            vote: The vote that was undone.
-        """
-        eligible = self._eligible_comparison_items(self.project.active_items())
-        by_id = {item.id: item for item in eligible}
-
-        winner = by_id.get(vote.winner_id)
-        loser = by_id.get(vote.loser_id)
-        if winner is None or loser is None:
-            return
-
-        self.comparison_widget.set_pair(
-            winner,
-            loser,
-            self._comparison_stats,
-            blinded_mode=self.project.settings.blinded_comparison_mode,
-        )
+        self._refresh_item_list()
+        self._show_offer(result.offer)
+        if result.pair is not None:
+            # The undone pair goes back up over whatever the session just
+            # chose, carrying that selection's statistics rather than new ones.
+            self.comparison_widget.set_pair(
+                result.pair[0],
+                result.pair[1],
+                result.offer.stats,
+                blinded_mode=result.offer.blinded,
+            )
+        self._refresh_results()
+        self._refresh_undo_state()
 
     def _on_settings_changed(self, settings: Settings) -> None:
         """
@@ -431,11 +356,10 @@ class MainWindow(QMainWindow):
         Args:
             settings: The settings as entered.
         """
-        self.project.settings = settings
-        self.project.set_slots(self.settings_widget.get_slots())
+        slots = self.session.apply_settings(settings, self.settings_widget.get_slots())
         self._on_data_changed()
         # Show the slot list as it was normalized.
-        self._refresh_settings()
+        self.settings_widget.set_slots(slots)
 
     def _on_tab_changed(self, index: int) -> None:
         """Handle tab change event."""
@@ -465,7 +389,7 @@ class MainWindow(QMainWindow):
 
     def _on_duplicate_project(self) -> None:
         """Handle File > Duplicate Without Votes."""
-        new_project = ask_duplicate_project(self, self.user_config, self.project)
+        new_project = ask_duplicate_project(self, self.user_config, self.session)
         if new_project is None:
             return
 
@@ -487,7 +411,7 @@ class MainWindow(QMainWindow):
             return
 
         # Only the name inside the project changes; the file keeps its path.
-        self.project.rename(new_name)
+        self.session.rename(new_name)
         self._on_data_changed()
         self._update_window_title()
 
@@ -507,7 +431,7 @@ class MainWindow(QMainWindow):
 
         try:
             self.project.file_path = file_path
-            self._save_project()
+            self.session.save()
             self._update_window_title()
             self._refresh_recent_menu()
         except (OSError, ValueError) as e:
@@ -527,7 +451,8 @@ class MainWindow(QMainWindow):
 
     def _switch_to_project(self, project: Project) -> None:
         """Switch to a different project."""
-        self.project = project
+        self.session = ProjectSession(project, on_saved=self._on_project_saved)
+        self.item_list_widget.set_session(self.session)
 
         self.user_config.add_recent_project(
             project.name,

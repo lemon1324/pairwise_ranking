@@ -11,6 +11,7 @@ from typing import Optional
 
 from PyQt6.QtWidgets import QFileDialog, QInputDialog, QMessageBox, QWidget
 
+from src.app.session import DuplicateTargetError, ProjectSession
 from src.data.project_storage import (
     ProjectStorage,
     ensure_pairrank_suffix,
@@ -145,7 +146,7 @@ def ask_new_project(
 def ask_duplicate_project(
     parent: Optional[QWidget],
     user_config: UserConfig,
-    source: Project,
+    session: ProjectSession,
 ) -> Optional[Project]:
     """
     Prompt for a name and location, then save a vote-free copy of a project.
@@ -158,7 +159,7 @@ def ask_duplicate_project(
     Args:
         parent: Parent widget for the dialogs.
         user_config: User configuration, used for the default directory.
-        source: The project to copy.
+        session: Session holding the project to copy.
 
     Returns:
         Optional[Project]: The newly created copy, or None if the user
@@ -168,7 +169,7 @@ def ask_duplicate_project(
         parent,
         "Duplicate Project",
         "New project name:",
-        text=f"{source.name} copy",
+        text=f"{session.project.name} copy",
     )
 
     if not ok or not name.strip():
@@ -180,12 +181,10 @@ def ask_duplicate_project(
     if file_path is None:
         return None
 
-    # The save dialog only warns about overwriting in general terms; writing the
-    # copy over the source file would destroy the original project's votes.
-    if (
-        source.file_path is not None
-        and file_path.resolve() == source.file_path.resolve()
-    ):
+    try:
+        return session.duplicate_without_votes(name, file_path)
+    except DuplicateTargetError:
+        # The save dialog only warns about overwriting in general terms.
         QMessageBox.critical(
             parent,
             "Error",
@@ -193,9 +192,6 @@ def ask_duplicate_project(
             "project.",
         )
         return None
-
-    try:
-        return ProjectStorage.create_copy(source, name, file_path)
     except (OSError, ValueError) as e:
         QMessageBox.critical(parent, "Error", f"Failed to duplicate project:\n{e}")
         return None
