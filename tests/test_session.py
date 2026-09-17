@@ -410,5 +410,238 @@ class TestProjectSessionVoting(unittest.TestCase):
         self.assertEqual(self.session.project.votes, [])
 
 
+class TestProjectSessionUndoEligibility(unittest.TestCase):
+    """Test cases for undoing a vote whose items have since changed."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.session = build_session(seed=0)
+
+    def test_undo_does_not_re_offer_a_retired_item(self):
+        """Test that a pair whose item was retired since cannot be put back."""
+        self.session.vote("item-0", "item-1", 2.0)
+        self.session.retire("item-1")
+
+        result = self.session.undo()
+
+        self.assertIsNone(result.pair)
+        self.assertTrue(result.offer.has_pair())
+
+    def test_deleting_an_item_takes_its_votes_with_it(self):
+        """Test that a deleted item leaves no vote of its own to undo."""
+        self.session.vote("item-0", "item-1", 2.0)
+
+        self.session.delete_item("item-1")
+
+        self.assertIsNone(self.session.undo())
+
+    def test_undo_does_not_re_offer_an_item_the_project_has_lost(self):
+        """Test that a vote naming an item that is gone cannot be put back."""
+        # Deleting an item normally takes its votes with it, so a vote can only
+        # outlive its item in a project file written elsewhere.
+        project = build_project(votes=[build_vote("item-0", "item-gone", 2.0)])
+        session = build_session(project=project, seed=0)
+
+        result = session.undo()
+
+        self.assertIsNotNone(result.vote)
+        self.assertIsNone(result.pair)
+
+    def test_undo_does_not_re_offer_an_item_without_an_identifier(self):
+        """Test that blinded mode refuses a pair whose item lost its identifier."""
+        session = build_session(seed=0, settings=Settings(blinded_comparison_mode=True))
+        session.vote("item-0", "item-1", 2.0)
+        session.update_item(Item(name="Item 1", identifier="", id="item-1"))
+
+        result = session.undo()
+
+        self.assertIsNone(result.pair)
+
+
+class TestProjectSessionItemMutations(unittest.TestCase):
+    """Test cases for adding, editing, retiring and deleting items."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.session = build_session(seed=0)
+
+    def test_add_item_appends_to_the_project(self):
+        """Test that an added item joins the project."""
+        item = Item(name="Item 4", identifier="A4", id="item-4")
+
+        returned = self.session.add_item(item)
+
+        self.assertIs(returned, item)
+        self.assertIn(item, self.session.project.items)
+
+    def test_add_item_invalidates_the_rankings(self):
+        """Test that the rankings account for the new item."""
+        before = len(self.session.rankings())
+
+        self.session.add_item(Item(name="Item 4", id="item-4"))
+
+        self.assertEqual(len(self.session.rankings()), before + 1)
+
+    def test_update_item_replaces_it_in_place(self):
+        """Test that an edited item keeps its position in the list."""
+        edited = Item(name="Renamed", identifier="A1", id="item-1")
+
+        returned = self.session.update_item(edited)
+
+        self.assertIs(returned, edited)
+        self.assertIs(self.session.project.items[1], edited)
+
+    def test_update_of_an_unknown_id_is_a_silent_no_op(self):
+        """Test that editing an item the project lost changes nothing and raises nothing."""
+        before = list(self.session.project.items)
+
+        returned = self.session.update_item(Item(name="Ghost", id="missing"))
+
+        self.assertIsNone(returned)
+        self.assertEqual(self.session.project.items, before)
+
+    def test_retire_keeps_the_item_and_frees_its_identifier(self):
+        """Test that retiring keeps the history but releases the slot."""
+        retired = self.session.retire("item-1")
+
+        self.assertFalse(retired.is_active())
+        self.assertEqual(retired.identifier, "")
+        self.assertIn(retired, self.session.project.items)
+
+    def test_retire_of_an_unknown_id_is_tolerated(self):
+        """Test that retiring a missing item returns None instead of raising."""
+        self.assertIsNone(self.session.retire("missing"))
+
+    def test_replace_hands_the_identifier_to_the_successor(self):
+        """Test that the successor keeps the slot the predecessor held."""
+        successor = Item(name="Item 1b", identifier="A1", id="item-1b")
+
+        self.session.replace("item-1", successor)
+
+        predecessor = self.session.project.find_item("item-1")
+        self.assertEqual(predecessor.identifier, "")
+        self.assertEqual(successor.identifier, "A1")
+        self.assertEqual(self.session.taken_identifiers(), {"A0", "A1", "A2", "A3"})
+
+    def test_replace_records_the_successor_on_the_predecessor(self):
+        """Test that the retired item points at the item that took its place."""
+        successor = Item(name="Item 1b", identifier="A1", id="item-1b")
+
+        self.session.replace("item-1", successor)
+
+        predecessor = self.session.project.find_item("item-1")
+        self.assertFalse(predecessor.is_active())
+        self.assertEqual(predecessor.replaced_by, "item-1b")
+
+    def test_replace_of_an_unknown_id_still_adds_the_successor(self):
+        """Test that a missing predecessor does not lose the new item."""
+        successor = Item(name="Orphan", id="item-orphan")
+
+        self.session.replace("missing", successor)
+
+        self.assertIn(successor, self.session.project.items)
+
+    def test_reactivate_returns_the_item_to_the_pool(self):
+        """Test that a retired item becomes active again with a new identifier."""
+        self.session.retire("item-1")
+
+        reactivated = self.session.reactivate("item-1", "A9")
+
+        self.assertTrue(reactivated.is_active())
+        self.assertEqual(reactivated.identifier, "A9")
+        self.assertIsNone(reactivated.replaced_by)
+
+    def test_reactivate_without_an_identifier_leaves_it_empty(self):
+        """Test that reactivating need not assign a slot."""
+        self.session.retire("item-1")
+
+        reactivated = self.session.reactivate("item-1")
+
+        self.assertEqual(reactivated.identifier, "")
+
+    def test_reactivate_of_an_unknown_id_is_tolerated(self):
+        """Test that reactivating a missing item returns None instead of raising."""
+        self.assertIsNone(self.session.reactivate("missing", "A9"))
+
+    def test_delete_removes_the_item(self):
+        """Test that a deleted item is gone from the project."""
+        removed = self.session.delete_item("item-1")
+
+        self.assertEqual(removed.id, "item-1")
+        self.assertNotIn("item-1", {item.id for item in self.session.project.items})
+
+    def test_delete_cascades_the_votes(self):
+        """Test that every vote involving the deleted item goes with it."""
+        self.session.vote("item-0", "item-1", 2.0)
+        kept = self.session.vote("item-2", "item-3", 1.0)
+
+        self.session.delete_item("item-1")
+
+        self.assertEqual(self.session.project.votes, [kept])
+
+    def test_delete_of_an_unknown_id_is_tolerated(self):
+        """Test that deleting a missing item returns None instead of raising."""
+        self.assertIsNone(self.session.delete_item("missing"))
+
+
+class TestProjectSessionSlots(unittest.TestCase):
+    """Test cases for the slot and identifier helpers."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        items = build_items(2)
+        self.session = build_session(
+            items=items, slots=["A0", "A1", "A2", "A3"]
+        )
+
+    def test_free_slots_skips_the_occupied_ones(self):
+        """Test that slots held by active items are not free."""
+        self.assertEqual(self.session.free_slots(), ["A2", "A3"])
+
+    def test_free_slots_can_release_one_item(self):
+        """Test that excluding an item makes its own slot count as free."""
+        self.assertEqual(
+            self.session.free_slots(exclude_item_id="item-0"), ["A0", "A2", "A3"]
+        )
+
+    def test_free_slots_is_empty_without_a_slot_list(self):
+        """Test that a project defining no slots has no free ones."""
+        session = build_session(items=build_items(2))
+
+        self.assertEqual(session.free_slots(), [])
+
+    def test_retiring_frees_a_slot(self):
+        """Test that a retired item releases the slot it held."""
+        self.session.retire("item-0")
+
+        self.assertEqual(self.session.free_slots(), ["A0", "A2", "A3"])
+
+    def test_taken_identifiers_lists_active_holders(self):
+        """Test that the identifiers in use come from the active items."""
+        self.assertEqual(self.session.taken_identifiers(), {"A0", "A1"})
+
+    def test_taken_identifiers_can_exclude_one_item(self):
+        """Test that the item being edited does not block its own identifier."""
+        self.assertEqual(
+            self.session.taken_identifiers(exclude_item_id="item-1"), {"A0"}
+        )
+
+    def test_slot_summary_counts_use(self):
+        """Test that the summary reports the totals and the free slots."""
+        summary = self.session.slot_summary()
+
+        self.assertEqual(summary.total, 4)
+        self.assertEqual(summary.used, 2)
+        self.assertEqual(summary.free, ["A2", "A3"])
+
+    def test_slot_summary_of_a_project_without_slots(self):
+        """Test that a project defining no slots summarizes as empty."""
+        summary = build_session(items=build_items(2)).slot_summary()
+
+        self.assertEqual(summary.total, 0)
+        self.assertEqual(summary.used, 0)
+        self.assertEqual(summary.free, [])
+
+
 if __name__ == "__main__":
     unittest.main()
