@@ -12,10 +12,14 @@ web can each word things their own way.
 
 import random
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
+from pathlib import Path
 from typing import Callable, Optional
 
+from src.app.record import WeightedRecord, weighted_record
 from src.data.project_storage import ProjectStorage
+from src.models.export import build_export_rows
 from src.models.item import Item
 from src.models.project import (
     Project,
@@ -28,6 +32,7 @@ from src.models.ranking import (
     RankingResult,
     assign_active_ranks,
 )
+from src.models.settings import Settings
 from src.models.vote import Vote
 
 
@@ -36,6 +41,15 @@ MIN_RANKABLE_ITEMS = 2
 
 # A comparison needs at least this many eligible items.
 MIN_COMPARABLE_ITEMS = 2
+
+
+class DuplicateTargetError(ValueError):
+    """
+    Raised when a project would be duplicated over its own file.
+
+    The save dialog only warns about overwriting in general terms, and writing
+    a vote-free copy over the original would destroy the original's votes.
+    """
 
 
 class NoPairReason(Enum):
@@ -570,3 +584,145 @@ class ProjectSession:
         free = self._project.free_slots()
         total = len(self._project.slots)
         return SlotSummary(total=total, used=total - len(free), free=free)
+
+    def apply_settings(self, settings: Settings, raw_slots: list[str]) -> list[str]:
+        """
+        Apply the settings and the slot list from one Save.
+
+        The slot list arrives raw, as the user typed it, and is normalized on
+        the way in; the normalized list comes back so the caller can show what
+        was actually stored. Taking both in one call is what makes one Save
+        exactly one save.
+
+        Args:
+            settings: The settings as entered.
+            raw_slots: Slot labels as entered. They are stripped, emptied
+                entries are dropped and duplicates are removed.
+
+        Returns:
+            list[str]: The slot list as it was stored.
+        """
+        self._project.settings = settings
+        self._project.set_slots(raw_slots)
+        self._changed()
+        return list(self._project.slots)
+
+    def reset_settings(self) -> Settings:
+        """
+        Return the algorithm settings to their defaults.
+
+        The slot list describes the project rather than the algorithm, so it is
+        deliberately left alone.
+
+        Nothing calls this yet: the desktop's Reset button only fills its form
+        with defaults and waits for a Save, which is a different gesture, so
+        wiring it here would start persisting a reset the user has not
+        confirmed. It is here for the web Settings screen, whose Reset does
+        apply immediately.
+
+        Returns:
+            Settings: The freshly applied default settings.
+        """
+        self._project.settings = Settings()
+        self._changed()
+        return self._project.settings
+
+    def rename(self, name: str) -> str:
+        """
+        Change the project's display name.
+
+        The file keeps its path; only the name stored inside it changes.
+
+        Args:
+            name: The new name. Surrounding whitespace is stripped.
+
+        Returns:
+            str: The stored name.
+
+        Raises:
+            ValueError: If the new name is empty or only whitespace.
+        """
+        self._project.rename(name)
+        self._changed()
+        return self._project.name
+
+    def duplicate_without_votes(self, name: str, file_path: Path) -> Project:
+        """
+        Save a vote-free copy of this project to another file.
+
+        The copy carries the items, settings and slots, with item ids
+        preserved, and starts with no votes. This session keeps editing the
+        original; opening the copy is the frontend's business.
+
+        Args:
+            name: Name for the copy.
+            file_path: Where to write the copy.
+
+        Returns:
+            Project: The copy, already saved.
+
+        Raises:
+            DuplicateTargetError: If the copy would be written over this
+                project's own file, which would destroy its votes.
+            ValueError: If the name is empty or the path is not a project file.
+            OSError: If the file cannot be written.
+        """
+        source_path = self._project.file_path
+        if source_path is not None and file_path.resolve() == source_path.resolve():
+            raise DuplicateTargetError(
+                "A copy cannot be written over the project it was copied from"
+            )
+
+        return ProjectStorage.create_copy(self._project, name, file_path)
+
+    def export_rows(
+        self,
+        category: Optional[str] = None,
+        include_retired: bool = False,
+    ) -> list[list[str]]:
+        """
+        Build the rows of a rankings export.
+
+        Args:
+            category: Category to restrict the export to, or None for every
+                category.
+            include_retired: Whether retired items are exported too.
+
+        Returns:
+            list[list[str]]: The header row followed by one row per exported
+            result. A project with nothing to rank exports the header alone.
+        """
+        return build_export_rows(
+            self.rankings() or [],
+            include_retired=include_retired,
+            category=category,
+        )
+
+    def item_details(
+        self,
+        item_id: str,
+        reference_time: Optional[datetime] = None,
+    ) -> WeightedRecord:
+        """
+        Return an item's weighted record against each opponent.
+
+        Opponents are kept apart by id, and both the raw and the decayed weight
+        are reported, so the frontend decides which to show and whether to
+        merge opponents that share a name.
+
+        Args:
+            item_id: Id of the item whose record is wanted.
+            reference_time: Time to measure decay from. Defaults to the current
+                time.
+
+        Returns:
+            WeightedRecord: The item's wins and losses per opponent. Both lists
+            are empty when the item has no votes, or no such item exists.
+        """
+        return weighted_record(
+            item_id,
+            self._project.votes,
+            self._project.items,
+            decay_timescale_days=self._project.settings.decay_timescale_days,
+            reference_time=reference_time,
+        )

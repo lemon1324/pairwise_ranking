@@ -8,7 +8,10 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
-from src.app.session import NoPairReason, ProjectSession
+from src.app.record import UNKNOWN_OPPONENT_NAME
+from src.app.session import DuplicateTargetError, NoPairReason, ProjectSession
+from src.data.project_storage import ProjectStorage
+from src.models.export import EXPORT_HEADER, build_export_rows
 from src.models.item import Item
 from src.models.project import Project
 from src.models.settings import Settings
@@ -641,6 +644,309 @@ class TestProjectSessionSlots(unittest.TestCase):
         self.assertEqual(summary.total, 0)
         self.assertEqual(summary.used, 0)
         self.assertEqual(summary.free, [])
+
+
+class TestProjectSessionSettings(unittest.TestCase):
+    """Test cases for applying and resetting settings."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.temp_dir = tempfile.mkdtemp()
+        self.saves = []
+        self.session = ProjectSession(
+            build_project(
+                slots=["A0", "A1"],
+                file_path=Path(self.temp_dir) / "settings.pairrank",
+            ),
+            on_saved=self.saves.append,
+        )
+
+    def tearDown(self):
+        """Clean up test files."""
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_apply_settings_stores_the_settings(self):
+        """Test that the entered settings replace the project's own."""
+        self.session.apply_settings(Settings(weight_freshness=4.0), [])
+
+        self.assertEqual(self.session.project.settings.weight_freshness, 4.0)
+
+    def test_apply_settings_normalizes_the_raw_slot_list(self):
+        """Test that the raw slot text is stripped, deduped and emptied of blanks."""
+        stored = self.session.apply_settings(
+            Settings(), ["  B1 ", "", "B2", "B1", "   "]
+        )
+
+        self.assertEqual(stored, ["B1", "B2"])
+        self.assertEqual(self.session.project.slots, ["B1", "B2"])
+
+    def test_apply_settings_saves_once(self):
+        """Test that settings and slots together are exactly one save."""
+        self.session.apply_settings(Settings(), ["B1"])
+
+        self.assertEqual(len(self.saves), 1)
+
+    def test_apply_settings_invalidates_the_rankings(self):
+        """Test that a decay change is reflected in the next rankings."""
+        before = self.session.rankings()
+
+        self.session.apply_settings(Settings(decay_timescale_days=1.0), [])
+
+        self.assertIsNot(self.session.rankings(), before)
+
+    def test_reset_settings_restores_the_defaults(self):
+        """Test that reset returns every algorithm setting to its default."""
+        self.session.apply_settings(
+            Settings(weight_freshness=4.0, blinded_comparison_mode=True), []
+        )
+
+        restored = self.session.reset_settings()
+
+        self.assertEqual(restored, Settings())
+        self.assertEqual(self.session.project.settings, Settings())
+
+    def test_reset_settings_leaves_the_slots_alone(self):
+        """Test that the slot list describes the project, not the algorithm."""
+        self.session.apply_settings(Settings(), ["B1", "B2"])
+
+        self.session.reset_settings()
+
+        self.assertEqual(self.session.project.slots, ["B1", "B2"])
+
+
+class TestProjectSessionRename(unittest.TestCase):
+    """Test cases for renaming the project."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.temp_dir = tempfile.mkdtemp()
+        self.file_path = Path(self.temp_dir) / "rename.pairrank"
+        self.session = build_session(project=build_project(file_path=self.file_path))
+
+    def tearDown(self):
+        """Clean up test files."""
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_rename_changes_the_name(self):
+        """Test that the project takes the new name, stripped."""
+        stored = self.session.rename("  Renamed  ")
+
+        self.assertEqual(stored, "Renamed")
+        self.assertEqual(self.session.project.name, "Renamed")
+
+    def test_rename_rejects_an_empty_name(self):
+        """Test that a blank name is refused by the model's own rule."""
+        with self.assertRaises(ValueError):
+            self.session.rename("   ")
+
+    def test_rename_keeps_the_file_path(self):
+        """Test that renaming does not move the project to another file."""
+        self.session.rename("Renamed")
+
+        self.assertEqual(self.session.project.file_path, self.file_path)
+        self.assertEqual(ProjectStorage.load(self.file_path).name, "Renamed")
+
+
+class TestProjectSessionExport(unittest.TestCase):
+    """Test cases for the export rows."""
+
+    #: (description, category, include_retired)
+    FILTERS = [
+        ("all", None, False),
+        ("all_with_retired", None, True),
+        ("linear", "Linear", False),
+        ("linear_with_retired", "Linear", True),
+        ("clicky", "Clicky", False),
+        ("clicky_with_retired", "Clicky", True),
+        ("unknown_category", "Nonexistent", False),
+        ("unknown_category_with_retired", "Nonexistent", True),
+    ]
+
+    def setUp(self):
+        """Build a project with two categories and a retired item."""
+        items = build_items(4)
+        items[0].category = "Linear"
+        items[1].category = "Linear"
+        items[2].category = "Clicky"
+        items[3].category = "Clicky"
+        items[3].retire()
+        votes = [build_vote("item-0", "item-1", 2.0), build_vote("item-2", "item-0")]
+        self.session = build_session(project=build_project(items=items, votes=votes))
+
+    def test_export_rows_match_the_shared_builder(self):
+        """Test that the session exports exactly what build_export_rows builds."""
+        for label, category, include_retired in self.FILTERS:
+            with self.subTest(label):
+                self.assertEqual(
+                    self.session.export_rows(category, include_retired),
+                    build_export_rows(
+                        self.session.rankings(),
+                        include_retired=include_retired,
+                        category=category,
+                    ),
+                )
+
+    def test_export_of_an_unrankable_project_is_the_header_alone(self):
+        """Test that a project with nothing to rank still exports its header."""
+        session = build_session(items=build_items(1))
+
+        self.assertEqual(session.export_rows(), [list(EXPORT_HEADER)])
+
+
+class TestProjectSessionItemDetails(unittest.TestCase):
+    """Test cases for the per-opponent weighted record."""
+
+    def setUp(self):
+        """Build a project whose items include two sharing a name."""
+        items = build_items(3)
+        items[1].name = "Twin"
+        items[2].name = "Twin"
+        votes = [
+            build_vote("item-0", "item-1", 2.0, days_ago=30.0),
+            build_vote("item-0", "item-2", 3.0),
+            build_vote("item-1", "item-0", 1.0, days_ago=30.0),
+        ]
+        self.session = build_session(
+            project=build_project(
+                items=items, votes=votes, settings=Settings(decay_timescale_days=30.0)
+            )
+        )
+
+    def test_same_named_opponents_stay_separate(self):
+        """Test that the record keys by opponent id, not by name."""
+        record = self.session.item_details("item-0", reference_time=NOW)
+
+        self.assertEqual([r.opponent_id for r in record.wins], ["item-1", "item-2"])
+        self.assertEqual([r.name for r in record.wins], ["Twin", "Twin"])
+
+    def test_raw_and_decayed_weights_are_both_reported(self):
+        """Test that the project's decay half-life is applied to the decayed weight."""
+        record = self.session.item_details("item-0", reference_time=NOW)
+
+        by_id = {r.opponent_id: r for r in record.wins}
+        self.assertEqual(by_id["item-1"].weight_raw, 2.0)
+        self.assertAlmostEqual(by_id["item-1"].weight_decayed, 1.0)
+        self.assertEqual(by_id["item-2"].weight_raw, 3.0)
+        self.assertAlmostEqual(by_id["item-2"].weight_decayed, 3.0)
+
+    def test_losses_are_reported_too(self):
+        """Test that the item's defeats land in the losses list."""
+        record = self.session.item_details("item-0", reference_time=NOW)
+
+        self.assertEqual([r.opponent_id for r in record.losses], ["item-1"])
+        self.assertEqual(record.losses[0].weight_raw, 1.0)
+
+    def test_an_item_with_no_votes_has_an_empty_record(self):
+        """Test that an uncompared item reports no wins and no losses."""
+        self.session.add_item(Item(name="Fresh", id="item-fresh"))
+
+        record = self.session.item_details("item-fresh", reference_time=NOW)
+
+        self.assertEqual(record.wins, [])
+        self.assertEqual(record.losses, [])
+
+    def test_an_opponent_the_project_lost_is_named_unknown(self):
+        """Test that a vote naming a missing item still reports a record."""
+        project = build_project(votes=[build_vote("item-0", "item-gone", 2.0)])
+        session = build_session(project=project)
+
+        record = session.item_details("item-0", reference_time=NOW)
+
+        self.assertEqual(record.wins[0].opponent_id, "item-gone")
+        self.assertEqual(record.wins[0].name, UNKNOWN_OPPONENT_NAME)
+
+
+class TestProjectSessionPersistence(unittest.TestCase):
+    """Test cases for autosaving and duplicating."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.temp_dir = tempfile.mkdtemp()
+        self.file_path = Path(self.temp_dir) / "session.pairrank"
+        self.copy_path = Path(self.temp_dir) / "copy.pairrank"
+        self.saved = []
+        self.session = ProjectSession(
+            build_project(file_path=self.file_path),
+            on_saved=self.saved.append,
+        )
+
+    def tearDown(self):
+        """Clean up test files."""
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_a_mutation_writes_the_file(self):
+        """Test that voting saves the project without being asked."""
+        self.session.vote("item-0", "item-1", 2.0)
+
+        reloaded = ProjectStorage.load(self.file_path)
+        self.assertEqual(len(reloaded.votes), 1)
+
+    def test_every_mutation_reports_the_save(self):
+        """Test that the on_saved callback fires once per mutation."""
+        self.session.vote("item-0", "item-1", 2.0)
+        self.session.retire("item-2")
+
+        self.assertEqual(len(self.saved), 2)
+        self.assertEqual(self.saved[0], self.session.project)
+
+    def test_a_project_without_a_file_is_not_written(self):
+        """Test that an unsaved project can be edited without raising."""
+        session = ProjectSession(build_project(), on_saved=self.saved.append)
+
+        session.vote("item-0", "item-1", 2.0)
+
+        self.assertEqual(self.saved, [])
+        self.assertEqual(len(session.project.votes), 1)
+
+    def test_save_writes_on_demand(self):
+        """Test that an explicit save writes the file the project points at."""
+        session = ProjectSession(build_project(), on_saved=self.saved.append)
+        session.project.file_path = self.file_path
+
+        session.save()
+
+        self.assertTrue(self.file_path.exists())
+        self.assertEqual(len(self.saved), 1)
+
+    def test_duplicate_without_votes_writes_a_vote_free_copy(self):
+        """Test that the copy carries the items but none of the votes."""
+        self.session.vote("item-0", "item-1", 2.0)
+
+        copy = self.session.duplicate_without_votes("Copy", self.copy_path)
+
+        self.assertEqual(copy.name, "Copy")
+        self.assertEqual(copy.votes, [])
+        self.assertEqual(len(copy.items), 4)
+        self.assertTrue(self.copy_path.exists())
+
+    def test_duplicate_leaves_the_source_alone(self):
+        """Test that duplicating does not disturb the project being copied."""
+        self.session.vote("item-0", "item-1", 2.0)
+
+        self.session.duplicate_without_votes("Copy", self.copy_path)
+
+        self.assertEqual(self.session.project.file_path, self.file_path)
+        self.assertEqual(len(ProjectStorage.load(self.file_path).votes), 1)
+
+    def test_duplicate_refuses_the_source_file(self):
+        """Test that a copy cannot be written over the project it came from."""
+        with self.assertRaises(DuplicateTargetError):
+            self.session.duplicate_without_votes("Copy", self.file_path)
+
+    def test_duplicate_refuses_the_source_file_by_another_route(self):
+        """Test that the refusal compares resolved paths, not spelling."""
+        indirect = Path(self.temp_dir) / "sub" / ".." / "session.pairrank"
+
+        with self.assertRaises(DuplicateTargetError):
+            self.session.duplicate_without_votes("Copy", indirect)
+
+    def test_duplicate_of_an_unsaved_project_is_allowed(self):
+        """Test that a project with no file of its own has nothing to overwrite."""
+        session = ProjectSession(build_project())
+
+        copy = session.duplicate_without_votes("Copy", self.copy_path)
+
+        self.assertEqual(copy.name, "Copy")
 
 
 if __name__ == "__main__":
