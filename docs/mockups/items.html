@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Items · Linear switches, winter shortlist</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="sheet.css">
+  <link rel="stylesheet" href="bom.css">
+</head>
+<body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-chevron" viewBox="0 0 16 16"><path d="M4 6l4 4 4-4"/></symbol>
+    <symbol id="i-up" viewBox="0 0 16 16"><path d="M4 10l4-4 4 4"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3v10"/><path d="M3 8h10"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 16 16"><path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/></symbol>
+    <symbol id="i-eye-off" viewBox="0 0 16 16"><path d="M6.2 3.8A6.6 6.6 0 018 3.5C12 3.5 14.5 8 14.5 8a11.6 11.6 0 01-1.9 2.4M4.2 4.9A11 11 0 001.5 8S4 12.5 8 12.5a6.3 6.3 0 003.4-1"/><path d="M6.6 6.6a2 2 0 002.8 2.8"/><path d="M2 2l12 12"/></symbol>
+    <symbol id="i-warn" viewBox="0 0 16 16"><path d="M8 2L1.5 13.5h13z"/><path d="M8 6.5v3.2"/><path d="M8 11.6v.1"/></symbol>
+    <symbol id="i-search" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></symbol>
+  </svg>
+
+  <datalist id="dl-categories"></datalist>
+  <datalist id="dl-slots"></datalist>
+
+  <div class="sheet">
+    <header class="sheet-head">
+      <div class="sheet-title">
+        <h1>Linear switches, winter shortlist</h1>
+      </div>
+      <nav aria-label="Project sheets">
+        <ul class="sheet-tabs">
+          <li><a href="items.html" aria-current="page">Items</a></li>
+          <li><a href="compare.html">Compare</a></li>
+          <li><a href="rankings.html">Rankings</a></li>
+          <li><a href="settings.html">Settings</a></li>
+        </ul>
+      </nav>
+      <button class="sheet-menu" type="button" aria-haspopup="menu">
+        Project <svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg>
+      </button>
+    </header>
+
+    <main class="frame">
+      <!-- Zones per ASME Y14.1: numbers right to left, letters bottom to top, from the lower-right corner.
+           Numbers are listed high to low so narrower sheets hide the leftmost (highest) zones. -->
+      <ol class="zones zones-top" aria-hidden="true"><li>8</li><li>7</li><li>6</li><li>5</li><li>4</li><li>3</li><li>2</li><li>1</li></ol>
+      <ol class="zones zones-bottom" aria-hidden="true"><li>8</li><li>7</li><li>6</li><li>5</li><li>4</li><li>3</li><li>2</li><li>1</li></ol>
+      <ol class="zones zones-left" aria-hidden="true"><li>D</li><li>C</li><li>B</li><li>A</li></ol>
+      <ol class="zones zones-right" aria-hidden="true"><li>D</li><li>C</li><li>B</li><li>A</li></ol>
+
+      <div class="frame-inner bom-sheet">
+        <section class="bom-field" id="field" aria-label="Parts list"></section>
+
+        <section class="titleblock tb-with-keys" id="titleblock" aria-label="Title and controls" style="--tb-rows: 4">
+          <!-- Keys block: full title-block height at its left edge, like a standard-tolerance block. -->
+          <div class="tb-cell tb-keyblock">
+            <span class="label">Keys</span>
+            <ul class="tb-keylist">
+              <li><span><span class="key">↑</span><span class="key">↓</span></span> select</li>
+              <li><span class="key">Pg↑↓</span> sheet</li>
+              <li><span class="key">↵</span> edit</li>
+              <li><span class="key">R</span> retire</li>
+              <li><span class="key">P</span> replace</li>
+              <li><span class="key">A</span> reactivate</li>
+              <li><span class="key">Del</span> delete</li>
+              <li><span class="key">Esc</span> clear</li>
+            </ul>
+          </div>
+          <div class="tb-cell tb-title span-3">
+            <span class="label">Title</span>
+            <h1 class="tb-title-text">Linear switches, winter shortlist</h1>
+          </div>
+          <div class="tb-cell tb-file span-3">
+            <span class="label">File</span>
+            <span class="tb-file-text">switches-2026.pairrank</span>
+          </div>
+
+          <div class="tb-cell span-3">
+            <span class="label">Slots</span>
+            <p class="tb-text" id="tb-slots"></p>
+          </div>
+          <div class="tb-cell span-3">
+            <span class="label">Items</span>
+            <p class="tb-text" id="tb-counts"></p>
+          </div>
+
+          <div class="tb-cell span-4 phone-wide">
+            <span class="label">Last change</span>
+            <p class="tb-text" id="tb-last" aria-live="polite"></p>
+          </div>
+          <div class="tb-cell span-2 phone-wide">
+            <label class="label" for="filter">Filter</label>
+            <div class="tb-control">
+              <input class="input" id="filter" type="search" placeholder="Name" autocomplete="off" aria-keyshortcuts="/">
+              <span class="key" aria-hidden="true">/</span>
+            </div>
+          </div>
+
+          <div class="tb-cell tb-press span-2">
+            <button type="button" id="add" aria-keyshortcuts="N">
+              <span class="label">Add</span>
+              <span class="tb-act"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>Add item <span class="key">N</span></span>
+            </button>
+          </div>
+          <div class="tb-cell tb-press span-2">
+            <button type="button" id="toggle-retired" aria-pressed="false" aria-keyshortcuts="H">
+              <span class="label">Retired</span>
+              <span class="tb-act"><svg class="icon" aria-hidden="true"><use href="#i-eye-off" id="retired-icon"/></svg><span id="retired-text">Hidden</span> <span class="key">H</span></span>
+            </button>
+          </div>
+          <!-- Sheet number: bottom-right cell of the title block, as on a drawing. -->
+          <div class="tb-cell tb-sheet span-2">
+            <span class="label">Sheet</span>
+            <div class="tb-pager">
+              <span class="num" id="sheet-no">1 of 1</span>
+              <button class="cell-button" type="button" id="page-prev" aria-label="Previous sheet" aria-keyshortcuts="PageUp"><svg class="icon" aria-hidden="true"><use href="#i-up"/></svg></button>
+              <button class="cell-button" type="button" id="page-next" aria-label="Next sheet" aria-keyshortcuts="PageDown"><svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg></button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <nav class="bottom-tabs" aria-label="Project sheets">
+      <ul class="sheet-tabs">
+        <li><a href="items.html" aria-current="page">Items</a></li>
+        <li><a href="compare.html">Compare</a></li>
+        <li><a href="rankings.html">Rankings</a></li>
+        <li><a href="settings.html">Settings</a></li>
+      </ul>
+    </nav>
+
+    <footer class="sheet-foot mockup-controls">
+      <fieldset>
+        <legend class="label">Mockup state</legend>
+        <label><input type="radio" name="state" value="normal" checked> Normal</label>
+        <label><input type="radio" name="state" value="selected"> Selected</label>
+        <label><input type="radio" name="state" value="editing"> Editing</label>
+        <label><input type="radio" name="state" value="conflict"> Slot conflict</label>
+        <label><input type="radio" name="state" value="delete"> Confirm delete</label>
+        <label><input type="radio" name="state" value="retired"> Retired shown</label>
+        <label><input type="radio" name="state" value="sheet2"> Sheet 2</label>
+        <label><input type="radio" name="state" value="empty"> No items</label>
+        <label><input type="radio" name="state" value="noslots"> No slot list</label>
+        <label><input type="radio" name="state" value="full"> Slots full</label>
+      </fieldset>
+      <fieldset>
+        <legend class="label">Theme</legend>
+        <label><input type="radio" name="theme" value="auto" checked> System</label>
+        <label><input type="radio" name="theme" value="light"> Light</label>
+        <label><input type="radio" name="theme" value="dark"> Dark</label>
+      </fieldset>
+      <p>Sample data. Keys work.</p>
+    </footer>
+  </div>
+
+  <script src="sample-data.js"></script>
+  <script src="bom.js"></script>
+  <script src="items.js"></script>
+</body>
+</html>

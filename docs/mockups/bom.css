@@ -1,0 +1,828 @@
+/*
+ * Parts-list sheets (Items, Rankings): the folded BOM table, the callout strip under the
+ * selected row, strip forms, and title-block controls. Loaded after sheet.css.
+ */
+
+/* ---------- Sheet layout ---------- */
+
+/* Default (phone, or no JavaScript): one long table, title block after it. */
+.bom-sheet {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.bom-field {
+  position: relative;
+  flex: 1;
+  padding: var(--s-4) var(--s-5) var(--s-5);
+  min-width: 0;
+}
+
+.bom-sheet > .titleblock {
+  align-self: flex-end;
+  width: min(46rem, 100%);
+  border-left: var(--w-cell) solid var(--ink);
+}
+
+/* Desktop with JavaScript: the sheet is exactly the viewport; rows fold into columns and sheets. */
+html.bom-fixed .sheet {
+  height: 100dvh;
+  min-height: 0;
+}
+
+html.bom-fixed .sheet > main {
+  min-height: 0;
+}
+
+html.bom-fixed .bom-sheet {
+  position: relative;
+  display: block;
+}
+
+/* The table snaps to the inner frame lines: no padding, and it drops the edges it shares. */
+html.bom-fixed .bom-field {
+  position: absolute;
+  inset: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+html.bom-fixed .bom-field .bom {
+  border-top: 0;
+}
+
+html.bom-fixed .bom-col:first-child .bom {
+  border-left: 0;
+}
+
+html.bom-fixed .bom-col.is-edge .bom {
+  border-right: 0;
+}
+
+html.bom-fixed .bom-field > .bom-empty {
+  margin: var(--s-5);
+}
+
+html.bom-fixed .bom-sheet > .titleblock {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  z-index: 1;
+}
+
+/* Folded columns share the vertical rule between them, as on a drawing. */
+.bom-page {
+  display: flex;
+  align-items: flex-start;
+}
+
+/* Each column keeps its own left rule and overlaps its neighbour's right rule by 1px, so the
+   shared line stays continuous whichever column runs longer. */
+.bom-col + .bom-col {
+  margin-left: calc(var(--w-cell) * -1);
+}
+
+.bom-page[hidden] {
+  display: none;
+}
+
+.bom-col {
+  flex: none;
+  min-width: 0;
+}
+
+/* The project picker has no open project, so its top bar always shows the app name. */
+.sheet-title.is-app {
+  display: flex;
+}
+
+/* ---------- Table ---------- */
+
+.bom {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  border: var(--w-cell) solid var(--ink);
+}
+
+.bom caption {
+  caption-side: top;
+  text-align: left;
+  padding: 0 0 var(--s-1);
+}
+
+.bom th {
+  padding: var(--s-2) var(--s-3);
+  border-bottom: var(--w-cell) solid var(--ink);
+  border-left: var(--w-cell) solid var(--ink);
+  text-align: left;
+  vertical-align: bottom;
+  font-family: var(--font-label);
+  font-weight: 600;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.bom td {
+  padding: 0.375rem var(--s-3);
+  border-top: var(--w-cell) solid var(--hair);
+  border-left: var(--w-cell) solid var(--hair);
+  vertical-align: middle;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.bom th:first-child,
+.bom td:first-child {
+  border-left: 0;
+}
+
+.bom tbody tr:first-child td {
+  border-top: 0;
+}
+
+.bom th.n,
+.bom td.n {
+  text-align: right;
+}
+
+.bom td.n {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.875rem;
+}
+
+.bom td.c-find {
+  text-align: center;
+}
+
+.bom-row {
+  cursor: pointer;
+}
+
+.bom-row:hover td {
+  background: var(--paper-2);
+}
+
+.bom-row.is-selected td {
+  background: var(--markup-wash);
+}
+
+.bom-row:focus {
+  outline: none;
+}
+
+.bom-row:focus-visible {
+  outline: 2px solid var(--markup);
+  outline-offset: -2px;
+}
+
+.bom-name {
+  display: block;
+  font-weight: 500;
+  font-size: 0.9375rem;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bom-row.is-selected .bom-name {
+  font-weight: 600;
+}
+
+.bom-desc {
+  display: block;
+  font-size: 0.8125rem;
+  line-height: 1.3;
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bom .balloon {
+  min-width: 1.75rem;
+  height: 1.75rem;
+  padding: 0 0.25rem;
+  font-size: 0.8125rem;
+}
+
+.balloon.is-empty {
+  border-style: dashed;
+  border-color: var(--line);
+  color: var(--ink-3);
+}
+
+.bom-rank {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  font-size: 0.9375rem;
+}
+
+.bom-cat {
+  font-size: 0.875rem;
+  color: var(--ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+
+.status {
+  font-size: 0.875rem;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+/* Tag: a ruled condensed label, the non-colour marker for retired and no-slot rows. */
+.tag {
+  display: inline-block;
+  padding: 0.0625rem 0.3rem;
+  border: var(--w-cell) solid var(--line);
+  font-family: var(--font-label);
+  font-weight: 600;
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.bom-row.is-retired td {
+  color: var(--ink-3);
+}
+
+.bom-row.is-retired .bom-name,
+.bom-row.is-retired .bom-desc,
+.bom-row.is-retired .bom-cat {
+  color: var(--ink-3);
+}
+
+.bom-row.is-new .bom-name {
+  color: var(--ink-3);
+}
+
+/* ---------- Callout for the selected row ---------- */
+
+/* A popover on the sheet, beside the find-number column and just off the selected row (or
+   above it when there is no room below), so selecting never refolds the sheet. Positioned by
+   bom.js. It is set off by line weight, not shadow: a 2px frame-weight rule all round. */
+.bom-callout {
+  --w-pop: var(--w-frame);
+  position: absolute;
+  z-index: 2;
+  background: var(--paper);
+  border: var(--w-pop) solid var(--ink);
+  animation: strip-in 160ms var(--ease-out);
+}
+
+/* Elbow leader: from a dot on the selected row's find number, down (or up) the gap and across
+   into the popover's side, like a balloon leader. bom.js sets --leader-dx and --gap. */
+.bom-callout::before {
+  content: "";
+  position: absolute;
+  left: calc(-1 * var(--leader-dx, 1.5rem) - var(--w-pop));
+  top: calc(-1 * var(--gap, 0.5rem) - var(--w-pop));
+  width: var(--leader-dx, 1.5rem);
+  height: calc(var(--gap, 0.5rem) + var(--w-pop) + 1.125rem);
+  border-left: var(--w-cell) solid var(--ink);
+  border-bottom: var(--w-cell) solid var(--ink);
+}
+
+.bom-callout::after {
+  content: "";
+  position: absolute;
+  left: calc(-1 * var(--leader-dx, 1.5rem) - var(--w-pop) - 3px);
+  top: calc(-1 * var(--gap, 0.5rem) - var(--w-pop) - 3px);
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ink);
+}
+
+.bom-callout.is-above::before {
+  top: auto;
+  bottom: calc(-1 * var(--gap, 0.5rem) - var(--w-pop));
+  border-bottom: 0;
+  border-top: var(--w-cell) solid var(--ink);
+}
+
+.bom-callout.is-above::after {
+  top: auto;
+  bottom: calc(-1 * var(--gap, 0.5rem) - var(--w-pop) - 3px);
+}
+
+@keyframes strip-in {
+  from {
+    opacity: 0;
+    translate: 0 -0.25rem;
+  }
+}
+
+.bom-callout.is-above {
+  animation-name: strip-in-above;
+}
+
+.bom-callout.is-settled {
+  animation: none;
+}
+
+@keyframes strip-in-above {
+  from {
+    opacity: 0;
+    translate: 0 0.25rem;
+  }
+}
+
+.strip-actions {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: var(--w-cell);
+  background: var(--ink);
+}
+
+.strip-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  min-height: 2.5rem;
+  padding: var(--s-1) var(--s-3);
+  border: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 0.9375rem;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.strip-action:hover {
+  background: var(--paper-2);
+}
+
+.strip-action:active {
+  background: var(--paper-3);
+}
+
+.strip-action:focus-visible {
+  outline-offset: -4px;
+}
+
+.strip-action .key {
+  min-width: 1.375rem;
+  height: 1.375rem;
+  font-size: 0.75rem;
+}
+
+.strip-body {
+  padding: var(--s-3);
+}
+
+.strip-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  margin: 0 0 var(--s-3);
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+/* ---------- Strip forms ---------- */
+
+.strip-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s-3);
+}
+
+.field {
+  display: grid;
+  gap: var(--s-1);
+  align-content: start;
+  min-width: 0;
+}
+
+.field-wide {
+  grid-column: 1 / -1;
+}
+
+.input {
+  width: 100%;
+  min-height: 2.25rem;
+  padding: 0.3rem 0.5rem;
+  border: var(--w-cell) solid var(--line);
+  border-radius: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.9375rem;
+}
+
+.input.num {
+  font-family: var(--font-num);
+}
+
+textarea.input {
+  resize: vertical;
+  line-height: 1.4;
+}
+
+.input::placeholder {
+  color: var(--ink-3);
+  opacity: 1;
+}
+
+.input:hover {
+  border-color: var(--ink-2);
+}
+
+.input:focus-visible {
+  outline: 2px solid var(--markup);
+  outline-offset: -1px;
+  border-color: var(--markup);
+}
+
+.field-hint {
+  font-size: 0.8125rem;
+  color: var(--ink-3);
+}
+
+.field-hint .num {
+  color: var(--ink-2);
+}
+
+.field.is-error .input {
+  border-color: var(--warn-mark);
+  box-shadow: inset 0 0 0 1px var(--warn-mark);
+}
+
+.field-error {
+  display: flex;
+  gap: var(--s-1);
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--ink);
+}
+
+.field-error .icon {
+  color: var(--warn);
+  margin-top: 0.1rem;
+}
+
+.field-error strong {
+  color: var(--warn);
+}
+
+.strip-buttons {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.cell-button .key {
+  min-width: 1.25rem;
+  height: 1.25rem;
+  font-size: 0.6875rem;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.cell-button.is-primary {
+  background: var(--paper-2);
+}
+
+/* Delete confirmation: the warning box, in place of the actions. */
+.strip-confirm {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--s-2) var(--s-3);
+  padding: var(--s-3);
+  background: var(--warn-wash);
+}
+
+.strip-confirm > .icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  color: var(--warn);
+  margin-top: 0.1rem;
+}
+
+.strip-confirm p {
+  margin: 0;
+  font-size: 0.9375rem;
+}
+
+.strip-confirm strong {
+  color: var(--warn);
+}
+
+.strip-confirm .strip-buttons {
+  margin-top: var(--s-2);
+}
+
+.strip-confirm .cell-button.is-danger {
+  border-color: var(--warn);
+}
+
+/* Rankings detail: figures beside the weighted record. */
+.strip-detail {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: var(--s-4);
+}
+
+.strip-detail dl {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--s-1) var(--s-3);
+  margin: 0;
+  align-content: start;
+}
+
+.strip-detail dt {
+  align-self: baseline;
+}
+
+.strip-detail dd {
+  margin: 0;
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.875rem;
+}
+
+.strip-detail .detail-desc {
+  grid-column: 1 / -1;
+  margin: var(--s-2) 0 0;
+  font-size: 0.875rem;
+  color: var(--ink-2);
+}
+
+.record {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 0.8125rem;
+}
+
+.record caption {
+  text-align: left;
+  padding-bottom: var(--s-1);
+}
+
+.record th {
+  padding: 0.125rem var(--s-2);
+  border-bottom: var(--w-cell) solid var(--ink);
+  font-family: var(--font-label);
+  font-weight: 600;
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  text-align: left;
+}
+
+.record td {
+  padding: 0.125rem var(--s-2);
+  border-top: var(--w-cell) solid var(--hair);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.record tr:first-child td {
+  border-top: 0;
+}
+
+.record .n {
+  text-align: right;
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  width: 3.5rem;
+}
+
+.record .more {
+  color: var(--ink-3);
+  font-size: 0.8125rem;
+  padding-top: var(--s-1);
+}
+
+/* ---------- Empty and ghost states ---------- */
+
+.bom-empty {
+  display: grid;
+  justify-items: center;
+  gap: var(--s-2);
+  max-width: 36rem;
+  padding: var(--s-6) var(--s-5);
+  border: var(--w-cell) dashed var(--line);
+  text-align: center;
+}
+
+.bom-empty p {
+  margin: 0;
+}
+
+.bom-empty .lead {
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.bom-empty .detail {
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+}
+
+/* ---------- Title-block controls ---------- */
+
+.tb-press {
+  padding: 0;
+}
+
+.tb-press > button {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  align-content: start;
+  justify-items: start;
+  gap: var(--s-1);
+  padding: 0.375rem var(--s-3) var(--s-2);
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.tb-press > button:hover {
+  background: var(--paper-2);
+}
+
+.tb-press > button:active {
+  background: var(--paper-3);
+}
+
+.tb-press > button:focus-visible {
+  outline-offset: -4px;
+}
+
+.tb-act {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-weight: 600;
+}
+
+.tb-act .key {
+  min-width: 1.25rem;
+  height: 1.25rem;
+  font-size: 0.6875rem;
+}
+
+.tb-text {
+  margin: var(--s-1) 0 0;
+  font-size: 0.875rem;
+  line-height: 1.3;
+}
+
+.tb-text .num {
+  font-size: 0.875rem;
+}
+
+.tb-muted {
+  color: var(--ink-3);
+}
+
+.tb-control {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-top: var(--s-1);
+}
+
+.tb-control .input {
+  min-height: 2rem;
+  padding: 0.2rem 0.4rem;
+}
+
+.tb-control .key {
+  min-width: 1.25rem;
+  height: 1.25rem;
+  font-size: 0.6875rem;
+  flex: none;
+}
+
+.tb-pager {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  margin-top: var(--s-1);
+  white-space: nowrap;
+}
+
+.tb-pager .num {
+  font-size: 1rem;
+  font-weight: 500;
+  margin-right: auto;
+}
+
+.tb-pager .cell-button {
+  min-height: 1.625rem;
+  width: 1.625rem;
+  padding: 0;
+  justify-content: center;
+}
+
+.span-2 { grid-column: span 2; }
+.span-3 { grid-column: span 3; }
+.span-4 { grid-column: span 4; }
+.span-6 { grid-column: span 6; }
+
+/* ---------- Phone ---------- */
+
+@media (max-width: 40rem) {
+  /* Scrolled-to callouts clear the top bar and the sticky bottom tabs. */
+  html {
+    scroll-padding-top: 3.5rem;
+    scroll-padding-bottom: 4.5rem;
+  }
+
+  .bom-field {
+    padding: var(--s-3) var(--s-2) var(--s-3);
+  }
+
+  .bom-sheet > .titleblock,
+  .bom-sheet > .titleblock.tb-with-keys {
+    width: 100%;
+    border-left: 0;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: none;
+  }
+
+  .bom-sheet > .titleblock > .tb-cell {
+    grid-column: span 1;
+  }
+
+  .bom-sheet > .titleblock > .tb-title,
+  .bom-sheet > .titleblock > .tb-file,
+  .bom-sheet > .titleblock > .tb-sheet,
+  .bom-sheet > .titleblock > .tb-keyblock {
+    display: none;
+  }
+
+  .bom-sheet > .titleblock > .phone-wide {
+    grid-column: 1 / -1;
+  }
+
+  .bom .c-cat,
+  .bom .c-phone-hide {
+    display: none;
+  }
+
+  .bom td {
+    padding: var(--s-2) var(--s-2);
+  }
+
+  .bom th {
+    padding: var(--s-2);
+  }
+
+  .strip-actions {
+    grid-auto-flow: row;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .strip-action {
+    min-height: 2.75rem;
+  }
+
+  .strip-form,
+  .strip-detail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .input {
+    font-size: 1rem;
+    min-height: 2.75rem;
+  }
+
+  .tb-act .key,
+  .tb-control .key {
+    display: none;
+  }
+
+  .tb-press > button {
+    min-height: 3rem;
+  }
+}

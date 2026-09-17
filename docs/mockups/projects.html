@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Projects · Pairwise Ranking</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="sheet.css">
+  <link rel="stylesheet" href="bom.css">
+</head>
+<body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-chevron" viewBox="0 0 16 16"><path d="M4 6l4 4 4-4"/></symbol>
+    <symbol id="i-up" viewBox="0 0 16 16"><path d="M4 10l4-4 4 4"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3v10"/><path d="M3 8h10"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 16 16"><path d="M8 10.5v-8"/><path d="M4.5 6L8 2.5 11.5 6"/><path d="M2.5 13.5h11"/></symbol>
+    <symbol id="i-warn" viewBox="0 0 16 16"><path d="M8 2L1.5 13.5h13z"/><path d="M8 6.5v3.2"/><path d="M8 11.6v.1"/></symbol>
+  </svg>
+
+  <div class="sheet">
+    <!-- No project is open: the top bar carries the app name instead of sheet tabs. -->
+    <header class="sheet-head">
+      <div class="sheet-title is-app">
+        <h1>Pairwise Ranking</h1>
+      </div>
+    </header>
+
+    <main class="frame">
+      <!-- Zones per ASME Y14.1: numbers right to left, letters bottom to top, from the lower-right corner.
+           Numbers are listed high to low so narrower sheets hide the leftmost (highest) zones. -->
+      <ol class="zones zones-top" aria-hidden="true"><li>8</li><li>7</li><li>6</li><li>5</li><li>4</li><li>3</li><li>2</li><li>1</li></ol>
+      <ol class="zones zones-bottom" aria-hidden="true"><li>8</li><li>7</li><li>6</li><li>5</li><li>4</li><li>3</li><li>2</li><li>1</li></ol>
+      <ol class="zones zones-left" aria-hidden="true"><li>D</li><li>C</li><li>B</li><li>A</li></ol>
+      <ol class="zones zones-right" aria-hidden="true"><li>D</li><li>C</li><li>B</li><li>A</li></ol>
+
+      <div class="frame-inner bom-sheet">
+        <section class="bom-field" id="field" aria-label="Projects"></section>
+
+        <section class="titleblock tb-with-keys" id="titleblock" aria-label="Title and controls" style="--tb-rows: 3">
+          <div class="tb-cell tb-keyblock">
+            <span class="label">Keys</span>
+            <ul class="tb-keylist">
+              <li><span><span class="key">↑</span><span class="key">↓</span></span> select</li>
+              <li><span class="key">↵</span> open</li>
+              <li><span class="key">D</span> duplicate</li>
+              <li><span class="key">Esc</span> deselect</li>
+            </ul>
+          </div>
+          <div class="tb-cell tb-title span-3">
+            <span class="label">Title</span>
+            <p class="tb-title-text" style="margin:0.25rem 0 0">Drawing register</p>
+          </div>
+          <div class="tb-cell tb-file span-3">
+            <span class="label">Data directory</span>
+            <span class="tb-file-text">/data</span>
+          </div>
+
+          <div class="tb-cell span-2 phone-wide">
+            <span class="label">Projects</span>
+            <p class="tb-text" id="tb-counts"></p>
+          </div>
+          <div class="tb-cell tb-press span-2">
+            <button type="button" id="new" aria-keyshortcuts="N">
+              <span class="label">New</span>
+              <span class="tb-act"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>Project <span class="key">N</span></span>
+            </button>
+          </div>
+          <div class="tb-cell tb-press span-2">
+            <button type="button" id="import" aria-keyshortcuts="I">
+              <span class="label">Import</span>
+              <span class="tb-act"><svg class="icon" aria-hidden="true"><use href="#i-upload"/></svg>File <span class="key">I</span></span>
+            </button>
+          </div>
+
+          <div class="tb-cell span-4 phone-wide">
+            <span class="label">Note</span>
+            <p class="tb-text" id="tb-note">Every .pairrank file in /data is listed. Copy projects from the desktop app into the appdata share to see them here.</p>
+          </div>
+          <!-- Sheet number: bottom-right cell of the title block, as on a drawing. -->
+          <div class="tb-cell tb-sheet span-2">
+            <span class="label">Sheet</span>
+            <div class="tb-pager">
+              <span class="num" id="sheet-no">1 of 1</span>
+              <button class="cell-button" type="button" id="page-prev" aria-label="Previous sheet" aria-keyshortcuts="PageUp"><svg class="icon" aria-hidden="true"><use href="#i-up"/></svg></button>
+              <button class="cell-button" type="button" id="page-next" aria-label="Next sheet" aria-keyshortcuts="PageDown"><svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg></button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <footer class="sheet-foot mockup-controls">
+      <fieldset>
+        <legend class="label">Mockup state</legend>
+        <label><input type="radio" name="state" value="normal" checked> Normal</label>
+        <label><input type="radio" name="state" value="selected"> Selected</label>
+        <label><input type="radio" name="state" value="v1"> Old format</label>
+        <label><input type="radio" name="state" value="newer"> Newer format</label>
+        <label><input type="radio" name="state" value="unreadable"> Unreadable</label>
+        <label><input type="radio" name="state" value="new"> New project</label>
+        <label><input type="radio" name="state" value="newconflict"> Name taken</label>
+        <label><input type="radio" name="state" value="import"> Import</label>
+        <label><input type="radio" name="state" value="importerror"> Import error</label>
+        <label><input type="radio" name="state" value="empty"> Empty</label>
+      </fieldset>
+      <fieldset>
+        <legend class="label">Theme</legend>
+        <label><input type="radio" name="theme" value="auto" checked> System</label>
+        <label><input type="radio" name="theme" value="light"> Light</label>
+        <label><input type="radio" name="theme" value="dark"> Dark</label>
+      </fieldset>
+      <p>Sample data. Keys work.</p>
+    </footer>
+  </div>
+
+  <script src="bom.js"></script>
+  <script src="projects.js"></script>
+</body>
+</html>

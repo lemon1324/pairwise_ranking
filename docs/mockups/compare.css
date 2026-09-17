@@ -1,0 +1,976 @@
+/* Compare sheet: views, station scale and Compare title-block cells. Loaded after sheet.css. */
+
+.frame-inner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) min(var(--tb-width), 100%);
+  grid-template-rows: minmax(12rem, 1fr) auto auto;
+}
+
+/* ---------- Views ---------- */
+
+.views {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/* Views are centred in their half of the sheet; space, not a rule, separates them. */
+.view {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  justify-items: center;
+  padding: var(--s-4) var(--s-6) var(--s-5);
+  min-width: 0;
+  text-align: center;
+}
+
+/* View title centred under the view and underlined, drafting-style. */
+.view-label {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-top: var(--s-5);
+  padding-bottom: var(--s-1);
+  border-bottom: var(--w-cell) solid var(--ink);
+}
+
+.view-mark {
+  width: 0.875rem;
+  height: 0.875rem;
+  color: var(--ink);
+}
+
+.view-body {
+  align-self: center;
+  transition: opacity 140ms var(--ease-out), translate 140ms var(--ease-out);
+}
+
+.view-body.is-leaving {
+  opacity: 0;
+  translate: 0 0.25rem;
+}
+
+.item-name {
+  margin: 0;
+  font-size: clamp(1.625rem, 1rem + 1.6vw, 2.625rem);
+  font-weight: 600;
+  line-height: 1.08;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+}
+
+.item-desc {
+  margin: var(--s-3) auto 0;
+  max-width: 42ch;
+  color: var(--ink-2);
+  font-size: 1.0625rem;
+  text-wrap: pretty;
+}
+
+.item-desc:empty {
+  display: none;
+}
+
+/* Category above slot, labels and values meeting at the view's centre axis;
+   phones keep them on one line to save height. */
+.item-notes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  gap: var(--s-2) var(--s-3);
+  width: 100%;
+  margin: var(--s-4) 0 0;
+}
+
+.item-notes div {
+  display: contents;
+}
+
+.item-notes dt {
+  justify-self: end;
+}
+
+.item-notes dd {
+  justify-self: start;
+}
+
+.item-notes dd {
+  margin: 0;
+  font-size: 0.9375rem;
+}
+
+/* Blinded view: the slot balloon is the whole content. */
+.view-slot {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.view-slot .balloon {
+  min-width: 5.5rem;
+  height: 5.5rem;
+  padding: 0 0.75rem;
+  font-size: 2.25rem;
+  border-width: var(--w-frame);
+}
+
+.is-blinded .view-open {
+  display: none;
+}
+
+.is-blinded .view-slot {
+  display: flex;
+}
+
+.is-blinded .note-readings {
+  display: none;
+}
+
+/* Ghosted views for the not-enough-items state. */
+.view-ghost {
+  display: none;
+  align-self: stretch;
+  justify-self: stretch;
+  margin-top: var(--s-2);
+  border: var(--w-cell) dashed var(--line);
+  place-items: center;
+  color: var(--ink-3);
+  font-family: var(--font-label);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  min-height: 8rem;
+}
+
+.is-empty .view-body {
+  display: none;
+}
+
+.is-empty .view {
+  grid-template-rows: 1fr auto;
+}
+
+.is-empty .view-ghost {
+  display: grid;
+}
+
+/* ---------- Station scale ---------- */
+
+.scale {
+  grid-column: 1 / -1;
+  position: relative;
+  padding-top: var(--s-4);
+}
+
+.dimension {
+  display: grid;
+  grid-template-columns: auto 1fr auto 1fr auto;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-5) 0;
+  color: var(--ink-2);
+}
+
+.dimension .rule {
+  position: relative;
+  height: 9px;
+  display: grid;
+  align-items: center;
+}
+
+.dimension .arrowhead {
+  position: absolute;
+  top: 0;
+  width: 9px;
+  height: 9px;
+}
+
+.rule-a .arrowhead {
+  left: -1px;
+}
+
+.rule-b .arrowhead {
+  left: auto;
+  right: -1px;
+}
+
+.dimension svg {
+  width: 100%;
+  height: 9px;
+  overflow: visible;
+}
+
+.dimension .zero {
+  font-family: var(--font-num);
+  font-size: 0.8125rem;
+  color: var(--ink-3);
+}
+
+.stations {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  padding: var(--s-3) var(--s-5) var(--s-5);
+}
+
+.station {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto 2.25rem auto auto;
+  justify-items: center;
+  align-content: start;
+  gap: var(--s-2);
+  min-height: 7.5rem;
+  padding: var(--s-3) var(--s-2);
+  border: var(--w-cell) solid var(--ink);
+  margin-left: calc(var(--w-cell) * -1);
+  background: transparent;
+  cursor: pointer;
+  text-align: center;
+  transition: background-color 120ms var(--ease-out);
+}
+
+.station:first-child {
+  margin-left: 0;
+}
+
+/* Station tick on the dimension line. */
+.station::before {
+  content: "";
+  position: absolute;
+  top: calc(var(--s-3) * -1 - 1px);
+  left: 50%;
+  width: 1px;
+  height: var(--s-3);
+  background: var(--line);
+}
+
+.station:hover:not(:disabled) {
+  background: var(--paper-2);
+}
+
+.station:active:not(:disabled) {
+  background: var(--paper-3);
+}
+
+.station:focus-visible {
+  outline: 2px solid var(--markup);
+  outline-offset: -4px;
+  z-index: 1;
+}
+
+.station .key {
+  color: var(--ink);
+}
+
+.strength {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 2.25rem;
+  color: var(--ink);
+}
+
+.strength i {
+  display: block;
+  width: 0.625rem;
+}
+
+.strength i:nth-child(1) {
+  height: 33%;
+}
+
+.strength i:nth-child(2) {
+  height: 66%;
+}
+
+.strength i:nth-child(3) {
+  height: 100%;
+}
+
+.strength-equal {
+  align-items: center;
+}
+
+.strength-equal i {
+  width: 1.75rem;
+  height: 1px !important;
+  background: var(--ink);
+}
+
+.station-name {
+  font-weight: 600;
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+.station-weight {
+  font-family: var(--font-num);
+  font-size: 0.75rem;
+  color: var(--ink-3);
+}
+
+.station[data-key="4"] .station-weight {
+  font-family: var(--font-ui);
+  font-size: 0.8125rem;
+}
+
+/* The mark: the station just pressed takes the markup colour for one beat. */
+.station.is-marked {
+  background: var(--markup-wash);
+  border-color: var(--markup);
+  z-index: 1;
+}
+
+.station.is-marked .key,
+.station.is-marked .strength,
+.station.is-marked .strength-equal i {
+  color: var(--markup);
+}
+
+.station.is-marked .strength-equal i {
+  background: var(--markup);
+}
+
+.station.is-marked .key {
+  background: var(--markup);
+  color: var(--paper);
+  border-color: var(--markup);
+}
+
+.station:disabled {
+  cursor: not-allowed;
+  color: var(--ink-3);
+  border-color: var(--hair);
+}
+
+.station:disabled .key,
+.station:disabled .strength {
+  color: var(--hair);
+}
+
+.station:disabled .strength-equal i {
+  background: var(--hair);
+}
+
+.station:disabled::before {
+  background: var(--hair);
+}
+
+.scale-empty {
+  display: none;
+  position: absolute;
+  inset: var(--s-3) var(--s-5) var(--s-5);
+  place-content: center;
+  justify-items: center;
+  gap: var(--s-2);
+  background: color-mix(in srgb, var(--paper) 88%, transparent);
+  text-align: center;
+  z-index: 2;
+}
+
+.scale-empty p {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.scale-empty .detail {
+  font-size: 0.9375rem;
+  font-weight: 400;
+  color: var(--ink-2);
+}
+
+.is-empty .scale-empty {
+  display: grid;
+}
+
+/* ---------- Notes and title block ---------- */
+
+.tb-settled,
+.tb-tolerance,
+.tb-votes {
+  grid-column: span 2;
+}
+
+.tb-hidden {
+  grid-column: span 4;
+  display: none;
+  align-content: center;
+}
+
+.tb-hidden p {
+  margin: var(--s-1) 0 0;
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+}
+
+.is-blinded .tb-settled,
+.is-blinded .tb-tolerance {
+  display: none;
+}
+
+.is-blinded .tb-hidden {
+  display: grid;
+}
+
+.tb-figure {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  margin-top: var(--s-1);
+  flex-wrap: wrap;
+}
+
+.tb-figure .num {
+  font-size: 1.5rem;
+  font-weight: 500;
+  line-height: 1.1;
+  display: inline-block;
+}
+
+.tb-figure .unit {
+  font-size: 0.8125rem;
+  color: var(--ink-3);
+  line-height: 1.25;
+}
+
+.num.is-stepping {
+  animation: step 220ms var(--ease-out);
+}
+
+@keyframes step {
+  from {
+    translate: 0 -0.35em;
+    opacity: 0.2;
+  }
+}
+
+.tb-revision {
+  grid-column: span 5;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--s-1) var(--s-3);
+  align-content: start;
+}
+
+.tb-revision .label {
+  grid-column: 1 / -1;
+}
+
+.rev-rows {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  overflow: hidden;
+}
+
+.rev-row {
+  display: grid;
+  grid-template-columns: 3.5rem minmax(0, 1fr) auto;
+  gap: var(--s-3);
+  align-items: baseline;
+  padding: 0.3rem 0;
+  font-size: 0.9375rem;
+}
+
+.rev-row + .rev-row {
+  border-top: var(--w-cell) solid var(--hair);
+}
+
+.rev-row.is-previous {
+  color: var(--ink-3);
+}
+
+.rev-row .rev-no,
+.rev-row .rev-time {
+  font-family: var(--font-num);
+  font-size: 0.8125rem;
+}
+
+.rev-row .rev-time {
+  color: var(--ink-3);
+}
+
+.rev-row .rev-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.rev-row .rev-strength {
+  color: var(--ink-3);
+}
+
+.rev-row.is-previous .rev-strength {
+  color: inherit;
+}
+
+.rev-row.is-new {
+  animation: rev-in 260ms var(--ease-out);
+}
+
+@keyframes rev-in {
+  from {
+    translate: 0 100%;
+    opacity: 0;
+  }
+}
+
+.rev-row.is-undone .rev-text {
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  color: var(--ink-3);
+}
+
+.rev-tag {
+  font-family: var(--font-label);
+  font-weight: 600;
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  text-decoration: none;
+  display: inline-block;
+  margin-left: var(--s-2);
+}
+
+.rev-empty {
+  color: var(--ink-3);
+  font-size: 0.9375rem;
+  padding: 0.3rem 0;
+}
+
+.tb-undo {
+  grid-column: span 1;
+  display: grid;
+  align-content: stretch;
+  padding: 0;
+}
+
+.tb-undo button,
+.tb-skip button,
+.tb-mode a {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  gap: var(--s-1);
+  padding: 0.375rem var(--s-3) var(--s-2);
+  background: transparent;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.tb-undo button:hover:not(:disabled),
+.tb-skip button:hover:not(:disabled),
+.tb-mode a:hover {
+  background: var(--paper-2);
+}
+
+.tb-undo button:focus-visible,
+.tb-skip button:focus-visible,
+.tb-mode a:focus-visible {
+  outline-offset: -4px;
+}
+
+.tb-action {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-weight: 600;
+}
+
+.tb-undo .keys {
+  display: flex;
+  gap: 3px;
+}
+
+.tb-undo button:disabled {
+  cursor: not-allowed;
+  color: var(--ink-3);
+}
+
+.tb-undo button:disabled .tb-action {
+  font-weight: 400;
+}
+
+.tb-undo button:disabled .key,
+.tb-undo button:disabled .icon {
+  color: var(--hair);
+}
+
+/* Spans only, no fixed column numbers, so the cells place correctly beside the keys block. */
+.tb-state {
+  grid-column: span 2;
+}
+
+.tb-skip {
+  grid-column: span 2;
+  padding: 0;
+}
+
+.tb-mode {
+  grid-column: span 2;
+  padding: 0;
+}
+
+.tb-state .tb-figure .num {
+  font-size: 1rem;
+}
+
+.mode-value {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-weight: 600;
+}
+
+/* Save failure: replaces the revision rows with a warning that names cause and recovery. */
+.save-warning {
+  display: none;
+  grid-column: 1 / -1;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--s-2) var(--s-3);
+  margin: var(--s-1) 0 0;
+  padding: var(--s-2) var(--s-3);
+  background: var(--warn-wash);
+  border: var(--w-cell) solid var(--warn-mark);
+  color: var(--ink);
+}
+
+.save-warning .icon {
+  color: var(--warn);
+  width: 1.25rem;
+  height: 1.25rem;
+  margin-top: 0.1rem;
+}
+
+.save-warning p {
+  margin: 0;
+  font-size: 0.9375rem;
+}
+
+.save-warning strong {
+  color: var(--warn);
+}
+
+.save-warning .cell-button {
+  justify-self: start;
+  margin-top: var(--s-1);
+  border-color: var(--warn);
+}
+
+.is-save-failed .save-warning {
+  display: grid;
+}
+
+.is-save-failed .rev-rows {
+  display: none;
+}
+
+/* ---------- Phone ---------- */
+
+@media (max-width: 64rem) {
+  .frame-inner {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+}
+
+@media (max-width: 40rem) {
+  .frame-inner {
+    grid-template-rows: auto auto auto;
+  }
+
+  .views {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: var(--s-2);
+  }
+
+  .view {
+    padding: var(--s-3) var(--s-4) var(--s-2);
+    grid-template-rows: auto auto;
+  }
+
+  .view-label {
+    margin-top: var(--s-3);
+    padding-bottom: 0.125rem;
+  }
+
+  .item-name {
+    font-size: 1.5rem;
+  }
+
+  .item-desc {
+    margin-top: var(--s-1);
+    font-size: 0.9375rem;
+  }
+
+  .item-notes {
+    display: flex;
+    align-items: center;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    column-gap: var(--s-4);
+    margin-top: var(--s-2);
+  }
+
+  .item-notes .label {
+    display: none;
+  }
+
+  .item-notes .balloon {
+    min-width: 1.75rem;
+    height: 1.75rem;
+    padding: 0 0.25rem;
+    font-size: 0.8125rem;
+  }
+
+  .view-slot .balloon {
+    min-width: 4rem;
+    height: 4rem;
+    padding: 0 0.5rem;
+    font-size: 1.75rem;
+  }
+
+  .view-ghost {
+    min-height: 4rem;
+    margin-top: var(--s-2);
+  }
+
+  .dimension {
+    display: none;
+  }
+
+  .stations {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-areas:
+      "k1 k7"
+      "k2 k6"
+      "k3 k5"
+      "k4 k4";
+    padding: var(--s-3);
+    gap: 0;
+  }
+
+  .station {
+    grid-template-rows: none;
+    grid-template-columns: auto auto minmax(0, 1fr);
+    justify-items: start;
+    align-items: center;
+    column-gap: var(--s-2);
+    min-height: 3.25rem;
+    padding: var(--s-2) var(--s-3);
+    margin: calc(var(--w-cell) * -1) 0 0 calc(var(--w-cell) * -1);
+    text-align: left;
+  }
+
+  .station::before {
+    display: none;
+  }
+
+  .station .strength {
+    height: 1.25rem;
+    gap: 2px;
+  }
+
+  .station .strength i {
+    width: 0.375rem;
+  }
+
+  .station .station-weight {
+    display: none;
+  }
+
+  .station .key {
+    min-width: 1.25rem;
+    height: 1.25rem;
+    font-size: 0.6875rem;
+  }
+
+  .station-name {
+    font-size: 0.9375rem;
+  }
+
+  .station[data-key="1"] { grid-area: k1; }
+  .station[data-key="2"] { grid-area: k2; }
+  .station[data-key="3"] { grid-area: k3; }
+  .station[data-key="4"] {
+    grid-area: k4;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: var(--s-2);
+  }
+  .station[data-key="5"] { grid-area: k5; }
+  .station[data-key="6"] { grid-area: k6; }
+  .station[data-key="7"] { grid-area: k7; }
+
+  .station[data-key="5"],
+  .station[data-key="6"],
+  .station[data-key="7"] {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    justify-items: end;
+    text-align: right;
+  }
+
+  .station[data-key="5"] .station-name,
+  .station[data-key="6"] .station-name,
+  .station[data-key="7"] .station-name {
+    order: -1;
+  }
+
+  .station[data-key="5"] .strength,
+  .station[data-key="6"] .strength,
+  .station[data-key="7"] .strength {
+    order: 0;
+  }
+
+  .station[data-key="5"] .key,
+  .station[data-key="6"] .key,
+  .station[data-key="7"] .key {
+    order: 1;
+  }
+
+  .station[data-key="4"] .station-weight {
+    display: inline;
+    color: var(--ink-3);
+  }
+
+  .scale-empty {
+    inset: var(--s-3);
+  }
+
+  .scale-empty p {
+    font-size: 1rem;
+  }
+
+  .titleblock,
+  .titleblock.tb-with-keys {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 7.5rem;
+    grid-template-rows: none;
+  }
+
+  .tb-keyblock {
+    display: none;
+  }
+
+  .tb-cell {
+    padding: var(--s-1) var(--s-3) var(--s-2);
+  }
+
+  .tb-title,
+  .tb-file {
+    display: none;
+  }
+
+  .tb-settled {
+    grid-column: 1;
+  }
+
+  .tb-tolerance {
+    grid-column: 2;
+  }
+
+  .tb-votes,
+  .tb-skip,
+  .tb-state {
+    display: none;
+  }
+
+  .tb-hidden {
+    grid-column: 1 / span 2;
+  }
+
+  .tb-hidden p {
+    display: none;
+  }
+
+  .tb-hidden .label::after {
+    content: " · blinded";
+  }
+
+  .tb-mode {
+    grid-column: 3;
+  }
+
+  .tb-mode .label {
+    display: none;
+  }
+
+  .tb-figure {
+    margin-top: 0;
+    gap: var(--s-1);
+    flex-wrap: nowrap;
+  }
+
+  .tb-figure .num {
+    font-size: 1.0625rem;
+  }
+
+  .tb-figure .unit {
+    font-size: 0.75rem;
+  }
+
+  .tb-revision {
+    grid-column: 1 / span 2;
+    order: 1;
+  }
+
+  .tb-revision .label {
+    display: none;
+  }
+
+  .rev-row {
+    grid-template-columns: minmax(0, 1fr);
+    font-size: 0.875rem;
+    padding: 0.2rem 0;
+  }
+
+  .rev-row .rev-no,
+  .rev-row .rev-time,
+  .rev-row.is-previous {
+    display: none;
+  }
+
+  .rev-row + .rev-row {
+    border-top: 0;
+  }
+
+  .tb-undo {
+    grid-column: 3;
+    order: 1;
+  }
+
+  .tb-undo button,
+  .tb-mode a {
+    min-height: 3rem;
+    min-width: 5.5rem;
+    justify-items: center;
+    align-content: center;
+    padding: var(--s-1) var(--s-3);
+  }
+
+  .tb-undo .label,
+  .tb-undo .keys {
+    display: none;
+  }
+
+  .tb-mode .mode-value span {
+    font-size: 0.875rem;
+  }
+
+  .mockup-controls {
+    padding: var(--s-3) var(--s-4);
+    gap: var(--s-3);
+  }
+}
