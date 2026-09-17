@@ -49,6 +49,7 @@ def build_project(
     votes: Optional[list[Vote]] = None,
     settings: Optional[Settings] = None,
     slots: Optional[list[str]] = None,
+    slot_labels: Optional[dict[str, str]] = None,
     file_path: Optional[Path] = None,
 ) -> Project:
     """
@@ -59,6 +60,7 @@ def build_project(
         votes: The votes to hold, or None for none.
         settings: The settings to use, or None for the defaults.
         slots: The slot list, or None for no slots.
+        slot_labels: The short label per slot, or None for none.
         file_path: The file to autosave to, or None for an unsaved project.
 
     Returns:
@@ -72,6 +74,7 @@ def build_project(
         votes=list(votes or []),
         settings=settings if settings is not None else Settings(),
         slots=list(slots or []),
+        slot_labels=dict(slot_labels or {}),
         file_path=file_path,
     )
 
@@ -750,6 +753,78 @@ class TestProjectSessionSettings(unittest.TestCase):
         self.session.reset_settings()
 
         self.assertEqual(self.session.project.slots, ["B1", "B2"])
+
+
+class TestProjectSessionSlotLabels(unittest.TestCase):
+    """Test cases for the slot labels surviving a frontend that cannot edit them."""
+
+    def setUp(self):
+        """Set up a session whose project carries two labelled slots."""
+        self.temp_dir = tempfile.mkdtemp()
+        self.file_path = Path(self.temp_dir) / "labels.pairrank"
+        self.session = ProjectSession(
+            build_project(
+                slots=["Apostrophe", "Apex"],
+                slot_labels={"Apostrophe": "'", "Apex": "Ax"},
+                file_path=self.file_path,
+            )
+        )
+
+    def tearDown(self):
+        """Clean up test files."""
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_apply_settings_preserves_the_labels(self):
+        """Test that saving settings without touching the slots keeps the labels."""
+        self.session.apply_settings(
+            Settings(weight_freshness=4.0), ["Apostrophe", "Apex"]
+        )
+
+        self.assertEqual(
+            self.session.project.slot_labels,
+            {"Apostrophe": "'", "Apex": "Ax"},
+        )
+
+    def test_labels_survive_a_round_trip_through_the_file(self):
+        """Test that a save and reload brings the labels back."""
+        self.session.apply_settings(Settings(), ["Apostrophe", "Apex"])
+
+        reloaded = ProjectStorage.load(self.file_path)
+
+        self.assertEqual(
+            reloaded.slot_labels, {"Apostrophe": "'", "Apex": "Ax"}
+        )
+
+    def test_reordering_the_slots_preserves_the_labels(self):
+        """Test that moving a slot along the line does not lose its label."""
+        self.session.apply_settings(Settings(), ["Apex", "Apostrophe"])
+
+        self.assertEqual(
+            self.session.project.slot_labels, {"Apex": "Ax", "Apostrophe": "'"}
+        )
+
+    def test_renaming_a_slot_drops_only_that_slots_label(self):
+        """Test that a renamed slot loses its label and the others keep theirs."""
+        self.session.apply_settings(Settings(), ["Apostrophe", "Apogee"])
+
+        self.assertEqual(self.session.project.slots, ["Apostrophe", "Apogee"])
+        self.assertEqual(self.session.project.slot_labels, {"Apostrophe": "'"})
+
+    def test_dropping_every_slot_drops_every_label(self):
+        """Test that clearing the slot line leaves no orphaned labels behind."""
+        self.session.apply_settings(Settings(), [])
+
+        self.assertEqual(self.session.project.slot_labels, {})
+
+    def test_duplicating_carries_the_labels(self):
+        """Test that a vote-free copy keeps the labels along with the slots."""
+        copy_path = Path(self.temp_dir) / "copy.pairrank"
+
+        copy = self.session.duplicate_without_votes("Copy", copy_path)
+
+        self.assertEqual(
+            copy.slot_labels, {"Apostrophe": "'", "Apex": "Ax"}
+        )
 
 
 class TestProjectSessionRename(unittest.TestCase):
