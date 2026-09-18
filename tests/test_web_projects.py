@@ -744,7 +744,9 @@ class TestNewProject(RegisterTestCase):
         body = self.client.get("/projects/new/callout?name=Alpha&submitted=1").text
 
         self.assertIn("is-error", body)
-        self.assertIn("Alpha.pairrank already exists", body)
+        # The whole path, because this line replaces the hint that said where
+        # the project would have been saved.
+        self.assertIn(f"{self.data_dir}/Alpha.pairrank already exists", body)
 
     def test_an_empty_field_is_not_an_error_until_it_has_been_submitted(self):
         """Test that opening the form does not open it complaining."""
@@ -1016,6 +1018,32 @@ class TestImportProject(RegisterTestCase):
         )
 
         self.assertIn("Alpha (2).pairrank", response.text)
+
+    def test_a_preview_puts_the_chosen_name_on_the_drop_zone(self):
+        """
+        Test that the box a file was dropped on stops asking for one.
+
+        The drop zone is a label around the file input, so it cannot be
+        swapped with the detail area without throwing away the file the
+        browser has already chosen. The name goes out of band instead, which
+        changes the words and leaves the input alone.
+        """
+        response = self.post(
+            "/projects/import/preview",
+            files=self.upload("Imported.pairrank", self.good_bytes()),
+        )
+
+        self.assertIn('id="import-lead"', response.text)
+        self.assertIn('hx-swap-oob="true"', response.text)
+        self.assertIn("Imported.pairrank</span>", response.text)
+
+    def test_a_preview_of_nothing_leaves_the_drop_zone_asking(self):
+        """Test that an empty upload does not blank the invitation."""
+        response = self.post(
+            "/projects/import/preview", files={"file": ("", b"")}
+        )
+
+        self.assertNotIn("hx-swap-oob", response.text)
 
     def test_a_preview_of_something_that_is_not_a_project_says_so(self):
         """Test that the file is judged before Import is ever pressed."""

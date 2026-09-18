@@ -13,7 +13,9 @@
 
   The preview's swap lands inside this callout, and the folding engine places
   the callout again when it does, so the popover grows against its row rather
-  than over it. It never touches the host itself.
+  than over it. It never touches the host itself. The drop zone's own words are
+  changed out of band by the same response, because swapping the label would
+  take the file input inside it - and the chosen file with it.
 
   Import stays pressable before a file has been described, unlike the mockup,
   where parsing was instant and local. Here it is a round trip, and a form
@@ -29,7 +31,7 @@
     <form class="strip-form" method="post" action="{{ action }}"
           enctype="multipart/form-data" hx-encoding="multipart/form-data">
       <label class="field field-wide bom-empty" style="max-width:none;padding:var(--s-4);cursor:pointer">
-        <span class="lead" style="font-size:1rem">Drop a .pairrank file</span>
+        <span class="lead" id="import-lead" style="font-size:1rem">Drop a .pairrank file</span>
         <span class="cell-button">Choose file</span>
         <input class="visually-hidden" type="file" name="file" accept=".pairrank" required
                hx-post="{{ preview_url }}" hx-trigger="change"

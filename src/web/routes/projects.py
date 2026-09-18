@@ -301,8 +301,11 @@ def _draft(data_dir: Path, name: str, submitted: bool) -> tuple:
 
     file_name = default_file_name(trimmed)
     if _name_taken(data_dir, file_name):
+        # The path in full, as the mockup writes it: this line replaces the
+        # hint that said where the project would be saved, so it has to say
+        # where the file it clashes with already is.
         return file_name, {
-            "lead": f"{file_name} already exists.",
+            "lead": f"{data_dir}/{file_name} already exists.",
             "detail": "Choose another name.",
         }
     return file_name, None
@@ -627,7 +630,15 @@ async def preview_import(
     return _templates(request).TemplateResponse(
         request,
         "register/import_detail.html",
-        {"detail": detail, "directory": str(config.data_dir)},
+        {
+            "detail": detail,
+            "directory": str(config.data_dir),
+            # The drop zone still says "drop a file" until it is told
+            # otherwise; the fragment carries the name out of band so the box
+            # a person just used says what is now in it. Empty when nothing
+            # was chosen, which leaves the invitation where it was.
+            "chosen": file_name,
+        },
     )
 
 
