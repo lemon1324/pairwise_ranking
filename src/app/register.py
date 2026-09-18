@@ -33,6 +33,7 @@ directory it belongs in.
 """
 
 import json
+import os
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
@@ -568,23 +569,63 @@ def _taken_names(data_dir: Path) -> set:
     """
     List the project file names a directory already holds.
 
+    Read with :func:`os.scandir` rather than with :meth:`~pathlib.Path.glob`,
+    which is not as strict as it looks: ``glob`` returns an empty iterator for
+    a path that is not a directory and swallows a ``PermissionError`` from the
+    scan itself. Every caller here is about to write a file, and "I could not
+    read the directory" answered as "nothing is in it" is a green light for a
+    write that truncates whatever is really there.
+
     Args:
         data_dir: The directory to look in.
 
     Returns:
         set: Every ``.pairrank`` name in it, case-folded, because the
         filesystems this runs on are case-insensitive and two names differing
-        only in case are one file on a Windows share. Empty when the directory
-        cannot be listed - the caller is choosing a name, and failing to read
-        the directory is the write's problem to report, not the naming's.
+        only in case are one file on a Windows share. The suffix is matched
+        case-insensitively for the same reason, on every platform: ``X.PAIRRANK``
+        and ``X.pairrank`` are one file where this application actually runs,
+        and treating them as two is how a name is handed out that overwrites
+        one of them.
+
+    Raises:
+        OSError: If the directory is there and cannot be listed - it is not a
+            directory, or it cannot be read. A directory that is simply not
+            there yet holds nothing, and the write that follows will create it
+            or fail saying so.
     """
     try:
-        return {
-            path.name.casefold()
-            for path in data_dir.glob(f"*{ProjectStorage.FILE_EXTENSION}")
-        }
-    except OSError:
+        with os.scandir(data_dir) as entries:
+            names = [entry.name for entry in entries]
+    except FileNotFoundError:
         return set()
+    return {
+        name.casefold()
+        for name in names
+        if name.casefold().endswith(ProjectStorage.FILE_EXTENSION)
+    }
+
+
+def name_is_taken(data_dir: Path, file_name: str) -> bool:
+    """
+    Check whether a directory already holds a project of this file name.
+
+    The register's two naming paths differ in what they do about a collision -
+    the picker's New refuses the name and asks for another, while an import
+    suffixes it - but not in what counts as one, so both ask here.
+
+    Args:
+        data_dir: The directory to look in.
+        file_name: The candidate file name.
+
+    Returns:
+        bool: True when something of that name is already there, compared
+        without regard to case.
+
+    Raises:
+        OSError: If the directory is there and cannot be listed.
+    """
+    return file_name.casefold() in _taken_names(data_dir)
 
 
 def unique_file_name(data_dir: Path, name: str) -> str:
