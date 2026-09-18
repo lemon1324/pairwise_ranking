@@ -2,7 +2,7 @@
 <iframe id="f"></iframe>
 <script>
   // Fixed-size viewport for review captures of the *running* app:
-  //   web-frame.html?url=http%3A%2F%2F127.0.0.1%3A8099%2F_sheet%3Ftheme%3Ddark&w=390&h=844
+  //   web-frame.html?url=http%3A%2F%2F127.0.0.1%3A8099%2F%3Fform%3Dnew&w=390&h=844
   // Same trick as frame.html, which can only reach the file-system mockups: the
   // iframe lays out at exactly w x h whatever the browser window is doing, which
   // is what makes a 390 px phone capture possible from a window Chrome refuses
@@ -11,5 +11,5 @@
   const f = document.getElementById('f');
   f.width = q.get('w') || 1280;
   f.height = q.get('h') || 900;
-  f.src = q.get('url') || 'http://127.0.0.1:8099/_sheet';
+  f.src = q.get('url') || 'http://127.0.0.1:8099/';
 </script>

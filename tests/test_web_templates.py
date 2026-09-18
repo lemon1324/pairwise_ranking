@@ -30,9 +30,9 @@ VOID_ELEMENTS = frozenset(
     }
 )
 
-# Every static file base.html and placeholder.html ask for by name. Listed
-# rather than globbed: the point is that the page's references resolve, and a
-# glob would pass just as happily over a directory that had lost the file.
+# Every static file base.html and register.html ask for by name. Listed rather
+# than globbed: the point is that the page's references resolve, and a glob
+# would pass just as happily over a directory that had lost the file.
 REFERENCED_ASSETS = (
     "css/sheet.css",
     "css/bom.css",
@@ -131,13 +131,20 @@ class TemplateTestCase(unittest.TestCase):
         return self.app.state.templates.env.from_string(source).render(**context)
 
 
-class TestPlaceholderSheet(TemplateTestCase):
-    """Test cases for the empty sheet the shell is checked against."""
+class TestSheetShell(TemplateTestCase):
+    """
+    Test cases for the shell every screen is drawn in.
+
+    Checked against the register over an empty data directory, which is the
+    application's own empty sheet: the frame, the zones, the title block and
+    the callout host, with nothing on the field. Phase 5a checked the same
+    things against a scaffolding route, which the register has replaced.
+    """
 
     def setUp(self):
         """Fetch the sheet once; every test here reads the same page."""
         super().setUp()
-        self.response = self.client.get("/_sheet")
+        self.response = self.client.get("/")
         self.body = self.response.text
 
     def test_the_sheet_renders(self):
@@ -217,106 +224,7 @@ class TestPlaceholderSheet(TemplateTestCase):
         self.assertIn("pairrank-theme", self.body)
 
 
-class TestPartsListOnTheSheet(TemplateTestCase):
-    """
-    Test cases for the parts list the folding engine is given.
-
-    The engine is checked in a browser, because folding is a measurement and
-    there is nothing to measure here. What these cover is the other half of the
-    contract: that the server hands it one long table with every row in it, in
-    order, whatever the engine then does with them - which is also exactly what
-    a reader with no JavaScript gets and has to be able to use.
-    """
-
-    def setUp(self):
-        """Fetch a sheet with rows on it."""
-        super().setUp()
-        self.response = self.client.get("/_sheet?rows=12")
-        self.body = self.response.text
-
-    def test_the_rows_are_drawn_as_one_long_table(self):
-        """Test that the server folds nothing: one table, every row in it."""
-        self.assertEqual(self.body.count('<table class="bom"'), 1)
-        self.assertEqual(self.body.count('class="bom-row'), 12)
-        self.assertNotIn("bom-col", self.body)
-        self.assertNotIn("bom-page", self.body)
-
-    def test_the_rows_keep_the_order_they_were_given_in(self):
-        """
-        Test that document order is the order the engine folds in.
-
-        The engine moves these elements into columns without sorting them, so
-        the order on the sheet is whatever order the route wrote them in.
-        """
-        self.assertEqual(
-            re.findall(r'data-id="(r\d+)"', self.body),
-            [f"r{n}" for n in range(1, 13)],
-        )
-
-    def test_a_row_asks_for_its_own_callout_into_the_one_host(self):
-        """
-        Test that the row carries the hookup, targeted outside the sheet.
-
-        `sheet:select` is what the engine fires on the row it has just
-        selected; htmx hears it there. Any other target would put the callout
-        inside the region the rows are swapped in, which is the one thing
-        base.html keeps it out of.
-        """
-        row = re.search(r'<tr class="bom-row[^>]*data-id="r3"[^>]*>', self.body, re.S)
-        self.assertIsNotNone(row)
-        self.assertIn('hx-get="/_sheet/callout/r3"', row.group(0))
-        self.assertIn('hx-target="#row-callout"', row.group(0))
-        self.assertIn('hx-trigger="sheet:select"', row.group(0))
-
-    def test_the_sheet_asks_for_the_folding_engine(self):
-        """Test that the script is on the page, and deferred."""
-        self.assertRegex(self.body, r'<script src="[^"]*js/sheet\.js" defer></script>')
-
-    def test_the_pager_is_drawn_but_offers_nothing_yet(self):
-        """
-        Test that the sheet count starts at one of one, both buttons dead.
-
-        The server cannot know how many sheets the rows fold onto - that is a
-        measurement of the reader's window - so it states the only thing it
-        knows, and the engine corrects it. With no engine that statement stays
-        true: there is one long sheet and nowhere to page to.
-        """
-        self.assertIn('<span class="num" id="sheet-no">1 of 1</span>', self.body)
-        for button in ("page-prev", "page-next"):
-            with self.subTest(button=button):
-                markup = re.search(rf'<button[^>]*id="{button}"[^>]*>', self.body)
-                self.assertIsNotNone(markup)
-                self.assertIn("disabled", markup.group(0))
-
-    def test_a_row_count_is_bounded(self):
-        """Test that the scaffolding cannot be asked for an unbounded page."""
-        self.assertEqual(self.client.get("/_sheet?rows=100000").status_code, 422)
-        self.assertEqual(self.client.get("/_sheet?rows=-1").status_code, 422)
-
-    def test_no_rows_is_still_the_empty_sheet(self):
-        """Test that the sheet with no rows on it keeps its empty state."""
-        body = self.client.get("/_sheet").text
-
-        self.assertNotIn('class="bom-row', body)
-        self.assertIn('class="bom-empty"', body)
-
-    def test_a_callout_fragment_is_the_callout_and_nothing_else(self):
-        """
-        Test that a callout comes back as a fragment, not as a page.
-
-        It is swapped into a host that is already on the sheet, so anything
-        around it - a shell, a wrapper, a second host - would be swapped in
-        with it.
-        """
-        body = self.client.get("/_sheet/callout/r3").text
-
-        self.assertNotIn("<html", body)
-        self.assertNotIn("row-callout", body)
-        self.assertEqual(body.count("bom-callout"), 1)
-        self.assertTrue(body.strip().startswith("<div class=\"bom-callout"))
-
-
-class TestPlaceholderSheetUnderARootPath(TemplateTestCase):
+class TestSheetShellUnderARootPath(TemplateTestCase):
     """Test cases for the shell behind a reverse proxy on a subpath."""
 
     root_path = "/rank"
@@ -325,7 +233,7 @@ class TestPlaceholderSheetUnderARootPath(TemplateTestCase):
         """Test that the stylesheets are still reachable under the subpath."""
         client = TestClient(self.app, root_path=self.root_path)
 
-        body = client.get("/rank/_sheet").text
+        body = client.get("/rank/").text
 
         self.assertIn(f'"/rank{STATIC_MOUNT}/css/sheet.css"', body)
 
@@ -339,7 +247,7 @@ class TestPlaceholderSheetUnderARootPath(TemplateTestCase):
         """
         client = TestClient(self.app, root_path=self.root_path)
 
-        body = client.get("/rank/_sheet").text
+        body = client.get("/rank/").text
 
         self.assertNotIn("http://testserver", body)
 
@@ -615,7 +523,7 @@ class TestErrorPagesOnTheShell(TemplateTestCase):
         status both positionally and by keyword, so every non-404 HTTPException
         raised a TypeError from inside the handler meant to answer it.
         """
-        response = self.client.post("/_sheet")
+        response = self.client.post("/")
 
         self.assertEqual(response.status_code, 405)
         self.assertIn('class="error-sheet"', response.text)

@@ -30,7 +30,7 @@ from src.data.migration import StorageMigration
 
 from .config import WebConfig, load_config
 from .registry import ProjectNotFoundError, ProjectRegistry, ProjectUnreadableError
-from .routes import placeholder, projects
+from .routes import projects
 from .urls import SHEET_TABS, project_url, register_url
 
 
@@ -263,9 +263,6 @@ def create_app(config: Optional[WebConfig] = None) -> FastAPI:
     # After the handlers, so a route that raises on its first request is
     # already answered by a page rather than by a bare traceback.
     app.include_router(projects.router)
-    # Phase 5a's scaffolding sheet, still mounted: chunk 5b was cut short
-    # before it could be deleted and its tests retargeted at the register.
-    app.include_router(placeholder.router)
 
     @app.get("/healthz", include_in_schema=False)
     async def healthz() -> JSONResponse:
