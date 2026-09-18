@@ -21,8 +21,11 @@
 {% block body_class %}error-page{% endblock %}
 
 {% block sheet_title %}
+  {# A brand mark rather than a heading: the page's own <h1> is below, and this
+     bar is shown at every width, so an <h1> here would be a second one on
+     screen. The register does the same thing for the same reason. #}
   <div class="sheet-title is-app">
-    <h1>Pairwise Ranking</h1>
+    <p class="sheet-title-text">Pairwise Ranking</p>
   </div>
 {% endblock %}
 
