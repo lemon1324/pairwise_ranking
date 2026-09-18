@@ -45,6 +45,11 @@ What is checked, and why each one is here:
     than blurring the field or clearing the selection. Every form callout in
     the set depends on it.
 
+``autofocus-select``
+    A callout's prefilled field is selected as well as focused, so the first
+    keystroke replaces the draft - but a field carrying a name that was just
+    refused is not, because those are the words the person typed.
+
 ``short-window``
     A window too short for the title block to sit under the last column. The
     fold must degrade to fewer rows a sheet, not to one row a sheet - which is
@@ -525,6 +530,59 @@ def check_escape_in_field(devtools: DevTools, base: str) -> str:
     return "Esc with the caret in the name field pressed Cancel and left the form"
 
 
+def check_autofocus_select(devtools: DevTools, base: str) -> str:
+    """
+    Check that a prefilled draft is selected and a refused one is not.
+
+    Args:
+        devtools: The CDP session.
+        base: The server's base URL.
+
+    Returns:
+        str: What was measured, for the log.
+    """
+    caret = """
+    (() => {
+      const el = document.activeElement;
+      if (!el || el.id !== "f-name") return null;
+      return {
+        value: el.value,
+        start: el.selectionStart,
+        end: el.selectionEnd,
+        invalid: el.getAttribute("aria-invalid") === "true",
+      };
+    })()
+    """
+
+    open_page(devtools, f"{base}/?form=new&name=Draft%20name", *NARROW)
+    draft = devtools.evaluate(caret)
+    expect(draft is not None, "the new-project form did not take the focus")
+    expect(
+        (draft["start"], draft["end"]) == (0, len(draft["value"])),
+        f"a prefilled draft was focused but not selected: {draft}",
+    )
+
+    # A name already on the register, so the form comes back refused.
+    open_page(devtools, f"{base}/", *NARROW)
+    taken = devtools.evaluate(
+        '(document.querySelector("tr[data-id]").dataset.id || "")'
+        '.replace(/\\.pairrank$/, "")'
+    )
+    open_page(devtools, f"{base}/?form=new&name={taken}&submitted=1", *NARROW)
+    refused = devtools.evaluate(caret)
+    expect(refused is not None, "the refused form did not take the focus")
+    expect(refused["invalid"], f"{taken!r} was not refused as a name already taken")
+    expect(
+        refused["start"] == refused["end"],
+        "a refused name was selected, so the next keystroke would wipe what "
+        f"the person typed: {refused}",
+    )
+    return (
+        f"{draft['value']!r} selected on open; {refused['value']!r}, refused, "
+        "left with a caret and no selection"
+    )
+
+
 def check_short_window(devtools: DevTools, base: str) -> str:
     """
     Check the fold in a window too short for the title block to clear.
@@ -567,6 +625,7 @@ CHECKS = {
     "swap-fewer": check_swap_fewer,
     "page-then-arrow": check_page_then_arrow,
     "escape-in-field": check_escape_in_field,
+    "autofocus-select": check_autofocus_select,
     "short-window": check_short_window,
 }
 
