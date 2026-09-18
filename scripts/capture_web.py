@@ -11,16 +11,18 @@ Usage (from WSL, with the Windows venv - see "Why the Windows venv" below)::
     mkdir -p ../capture-data
     ./.venv/Scripts/python.exe scripts/capture_web.py \\
         --data-dir ../capture-data \\
-        /_sheet items=/projects/demo/items
+        register=/ items=/projects/demo/items
 
 The data directory has to live somewhere Windows can see - under ``/mnt/...``,
 not in WSL's own filesystem, which the server process cannot reach at all.
 
 Each positional argument is an app path, optionally prefixed with ``label=`` to
-name the files. Without a label the path is slugified: ``/_sheet`` becomes
-``sheet``, ``/projects/demo/items`` becomes ``projects-demo-items``. Files land
-as ``.impeccable/review/web-<label>-<width>-<theme>.png`` - for example
-``web-sheet-390-dark.png``. That directory is in ``.git/info/exclude``, so the
+name the files. Without a label the path is slugified: ``/healthz`` becomes
+``healthz``, ``/projects/demo/items`` becomes ``projects-demo-items``. The
+register is served at ``/``, which slugifies to nothing, so it needs a label of
+its own. Files land as
+``.impeccable/review/web-<label>-<width>-<theme>.png`` - for example
+``web-register-390-dark.png``. That directory is in ``.git/info/exclude``, so the
 captures never reach a commit.
 
 Options worth knowing:
@@ -39,7 +41,7 @@ Options worth knowing:
 Every capture reads ``window.innerWidth`` back out of the page and compares it
 to the width that was asked for. A mismatch aborts the whole run::
 
-    capture_web.py: viewport width mismatch at /_sheet: asked for 390 CSS px,
+    capture_web.py: viewport width mismatch at /: asked for 390 CSS px,
     the page laid out at 500
 
 which is the failure this script exists to prevent. Windows Chrome refuses to
@@ -458,7 +460,7 @@ def parse_target(argument: str) -> tuple:
     if not path.startswith("/"):
         raise CaptureError(
             f"{argument!r} is not an app path; write it with a leading slash, "
-            "e.g. /_sheet or items=/projects/demo/items"
+            "e.g. register=/ or items=/projects/demo/items"
         )
     return label, path
 
@@ -845,7 +847,7 @@ def main(argv: list = None) -> int:
         "paths",
         nargs="+",
         metavar="[LABEL=]PATH",
-        help="app paths to capture, e.g. /_sheet or items=/projects/demo/items",
+        help="app paths to capture, e.g. register=/ or items=/projects/demo/items",
     )
     parser.add_argument(
         "--data-dir",
