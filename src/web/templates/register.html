@@ -63,8 +63,8 @@
             <td>{{ name_cell(row.name, description=row.file_name,
                              tags=(row.tag,) if row.tag else (),
                              description_class="num") }}</td>
-            <td class="n c-phone-hide">{{ row.items }}</td>
-            <td class="n">{{ row.votes }}</td>
+            <td class="n c-phone-hide">{{ row.item_count }}</td>
+            <td class="n">{{ row.vote_count }}</td>
             <td class="c-cat"><span class="bom-cat num">{{ row.modified }}</span></td>
           {% endcall %}
         {% endfor %}

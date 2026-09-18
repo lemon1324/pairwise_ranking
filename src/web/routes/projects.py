@@ -58,6 +58,7 @@ from src.app.register import (
     scan_directory,
     unique_file_name,
 )
+from src.data.errors import ProjectFormatError
 from src.data.project_storage import ProjectStorage
 
 from ..config import WebConfig
@@ -218,8 +219,13 @@ def _row(request: Request, info: ProjectFileInfo, number: int, form: str) -> dic
         # A file this application cannot open is drawn like a retired item:
         # ink 3, with a tag saying which kind of unusable it is.
         "dimmed": not info.openable,
-        "items": str(info.item_count) if counted else NO_FIGURE,
-        "votes": str(info.vote_count) if counted else NO_FIGURE,
+        # Not "items" and "votes". A template reaching a mapping key with dot
+        # syntax gets the attribute first, and every mapping has an `items`
+        # method - so `row.items` renders "<built-in method items of dict>" and
+        # renders it silently, because it is a perfectly good object. The
+        # columns are counts anyway, so they are named for what they hold.
+        "item_count": str(info.item_count) if counted else NO_FIGURE,
+        "vote_count": str(info.vote_count) if counted else NO_FIGURE,
         "modified": (
             info.modified.strftime(MODIFIED_FORMAT) if info.modified else NO_FIGURE
         ),
@@ -647,8 +653,10 @@ def _describe_upload(data_dir: Path, file_name: str, raw: bytes) -> dict:
     return {
         "name": info.display_name,
         "file_name": file_name,
-        "items": info.item_count,
-        "votes": info.vote_count,
+        # Named as in :func:`_row`, and for the same reason: `detail.items`
+        # would reach the mapping's own method rather than this key.
+        "item_count": info.item_count,
+        "vote_count": info.vote_count,
         "target": target,
         "tag": CONDITION_TAGS.get(info.condition),
     }
@@ -874,6 +882,13 @@ async def duplicate_project(
                 )
             except FileNotFoundError as e:
                 raise ProjectNotFoundError(str(e)) from e
+            except ProjectFormatError:
+                # Before the ValueError clause, and not merged into it: every
+                # error in src.data.errors *is* a ValueError, so a plain
+                # `except ValueError` here would turn a file from a newer
+                # application into a file this one calls damaged - which is the
+                # one distinction those types exist to keep.
+                raise
             except ValueError as e:
                 raise ProjectUnreadableError(
                     f"{info.file_name} could not be copied: {e}"
