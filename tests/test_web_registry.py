@@ -88,6 +88,24 @@ class RegistryTestCase(unittest.TestCase):
         path.write_text(text, encoding="utf-8")
         return path
 
+    def lock_in_use(self, path: Path) -> threading.RLock:
+        """
+        Fetch the lock object the registry is currently using for a path.
+
+        Reaching into the registry rather than asking it: the lock is only ever
+        handed out for the length of a ``with`` block now, so a test that needs
+        the object itself - to contend for it from another thread, or to say
+        that it is still the same one - has nowhere else to get it.
+
+        Args:
+            path: A resolved project path.
+
+        Returns:
+            threading.RLock: The lock, which must exist.
+        """
+        self.assertIn(path, self.registry._locks)
+        return self.registry._locks[path]
+
     def rewrite_with_name(self, name: str) -> None:
         """
         Replace the shared project file with one carrying a different name.
@@ -162,23 +180,93 @@ class TestRegistryCache(RegistryTestCase):
 
         self.assertIsNot(self.registry.open(self.project_id), first)
 
-    def test_forget_keeps_the_lock(self):
-        """Test that a re-opened project is guarded by the same lock."""
-        path = self.registry.resolve(self.project_id)
-        lock = self.registry.lock_for(path)
-        self.registry.forget(self.project_id)
+    def test_an_open_project_keeps_its_lock(self):
+        """Test that the lock lives as long as the project it guards."""
+        entry = self.registry.open(self.project_id)
+        lock = self.lock_in_use(entry.path)
 
-        self.assertIs(self.registry.lock_for(path), lock)
+        self.assertIs(self.lock_in_use(entry.path), lock)
+        with self.registry.locked(entry.path):
+            self.assertIs(self.lock_in_use(entry.path), lock)
 
     def test_different_projects_get_different_locks(self):
         """Test that a request about one project does not block another."""
         other = self.data_dir / "Other.pairrank"
         ProjectStorage.create_new("Other", other)
 
+        self.registry.open(self.project_id)
+        self.registry.open("Other.pairrank")
+
         self.assertIsNot(
-            self.registry.lock_for(self.registry.resolve(self.project_id)),
-            self.registry.lock_for(self.registry.resolve("Other.pairrank")),
+            self.lock_in_use(self.registry.resolve(self.project_id)),
+            self.lock_in_use(self.registry.resolve("Other.pairrank")),
         )
+
+
+class TestRegistryLocks(RegistryTestCase):
+    """Test cases for how long a project's lock lives."""
+
+    def test_a_failed_open_leaves_no_lock_behind(self):
+        """
+        Test that names for files that are not there cannot hoard locks.
+
+        Any client on the LAN can ask for a project that does not exist, as
+        fast as it likes. The lock was minted before the load was attempted, so
+        each of those asks used to leave one behind for a path that will never
+        have an entry - a dictionary that grows for as long as the server runs.
+        """
+        for index in range(50):
+            with self.assertRaises(ProjectNotFoundError):
+                self.registry.open(f"Absent{index}.pairrank")
+
+        self.assertEqual(self.registry._locks, {})
+        self.assertEqual(self.registry._lock_users, {})
+
+    def test_a_damaged_project_leaves_no_lock_behind(self):
+        """Test that the other failing load path prunes as well."""
+        self.write_raw("{ this is not json", "Broken.pairrank")
+
+        with self.assertRaises(ProjectUnreadableError):
+            self.registry.open("Broken.pairrank")
+
+        self.assertEqual(self.registry._locks, {})
+
+    def test_a_lock_in_use_is_not_taken_from_its_holder(self):
+        """
+        Test that pruning cannot split one path across two locks.
+
+        The guarantee is that one path has one lock; dropping a lock that
+        another caller is inside would hand the next caller a different object
+        and let the two of them run over the same file at once.
+        """
+        path = self.registry.resolve("Absent.pairrank")
+
+        with self.registry.locked(path):
+            held = self.lock_in_use(path)
+            with self.assertRaises(ProjectNotFoundError):
+                self.registry.open("Absent.pairrank")
+
+            self.assertIs(self.lock_in_use(path), held)
+
+        self.assertNotIn(path, self.registry._locks)
+
+    def test_a_failed_open_does_not_disturb_an_open_project(self):
+        """Test that pruning one path leaves the projects that are open."""
+        entry = self.registry.open(self.project_id)
+        lock = self.lock_in_use(entry.path)
+
+        with self.assertRaises(ProjectNotFoundError):
+            self.registry.open("Absent.pairrank")
+
+        self.assertIs(self.lock_in_use(entry.path), lock)
+        self.assertIs(self.registry.open(self.project_id), entry)
+
+    def test_a_forgotten_project_does_not_strand_its_lock(self):
+        """Test that deleting a project does not leave its lock for ever."""
+        self.registry.open(self.project_id)
+        self.registry.forget(self.project_id)
+
+        self.assertEqual(self.registry._locks, {})
 
 
 class TestRegistryLoadFailures(RegistryTestCase):
@@ -218,7 +306,8 @@ class TestRegistryMutation(RegistryTestCase):
 
     def test_mutate_holds_the_lock(self):
         """Test that another thread cannot mutate the same project meanwhile."""
-        lock = self.registry.lock_for(self.registry.resolve(self.project_id))
+        entry = self.registry.open(self.project_id)
+        lock = self.lock_in_use(entry.path)
         # From another thread, because the lock is reentrant and this one
         # would be let straight back in.
         acquired = []
@@ -238,7 +327,8 @@ class TestRegistryMutation(RegistryTestCase):
 
     def test_the_lock_is_released_after_a_failed_mutation(self):
         """Test that a route raising mid-edit does not wedge the project."""
-        lock = self.registry.lock_for(self.registry.resolve(self.project_id))
+        entry = self.registry.open(self.project_id)
+        lock = self.lock_in_use(entry.path)
 
         with self.assertRaises(RuntimeError):
             with self.registry.mutate(self.project_id):
