@@ -39,8 +39,12 @@ SHEET_TABS = (
     ("settings", "Settings"),
 )
 
-# The sheet a project opens on, which is the one the desktop app opens on.
-DEFAULT_SHEET = "compare"
+# The sheet a project opens on. The desktop app opens on Compare, and this
+# should say "compare" again the day phase 7 builds it. Until then it points at
+# Items, which phase 6 builds first: a register whose Open leads to a 404 is a
+# front door onto nothing, and one phase of pointing at the wrong sheet costs
+# less than a phase of not being able to open a project at all.
+DEFAULT_SHEET = "items"
 
 
 def root_path(request: Request) -> str:
