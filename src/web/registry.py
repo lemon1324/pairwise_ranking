@@ -126,6 +126,12 @@ def load_project(path: Path) -> Project:
         # reason the typed errors exist.
         raise
     except (OSError, ValueError) as e:
+        # Every deep fault arrives as a ValueError, including the ones the
+        # register's shallow probe cannot see - an item entry missing a key, a
+        # `created` that is not a date - because ProjectStorage.load wraps
+        # them. That is what lets the picker tag a file OK and still answer
+        # honestly when opening it fails: see `open_project` in
+        # src/web/routes/projects.py.
         raise ProjectUnreadableError(f"{path.name} could not be read: {e}") from e
 
 

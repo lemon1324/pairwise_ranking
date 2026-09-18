@@ -461,7 +461,19 @@ def scan_directory(data_dir: Path) -> list[ProjectFileInfo]:
     try:
         if not data_dir.is_dir():
             return []
-        paths = list(data_dir.glob(f"*{ProjectStorage.FILE_EXTENSION}"))
+        # The glob is case-insensitive on Windows and on the SMB shares this
+        # application is usually pointed at, so it also finds TASTING.PAIRRANK;
+        # the suffix is then checked exactly, because everything downstream
+        # checks it exactly. :meth:`~src.data.project_storage.ProjectStorage.load`
+        # refuses a differently-cased extension and so does
+        # :func:`resolve_project_path`, so a row for such a file would be one
+        # the register could draw and nothing could open - listed and
+        # unreachable, by the desktop app as much as by the web one.
+        paths = [
+            path
+            for path in data_dir.glob(f"*{ProjectStorage.FILE_EXTENSION}")
+            if path.suffix == ProjectStorage.FILE_EXTENSION
+        ]
     except OSError:
         return []
 
@@ -588,6 +600,11 @@ def _checked_file_name(file_name: str) -> str:
         raise ValueError(
             f"A project file name cannot refer to another directory: {file_name!r}"
         )
+    # Case-sensitive, and :func:`scan_directory` filters its glob the same way
+    # so that listing and addressing agree about what a project file is. See
+    # the note there: the decision is made by
+    # :meth:`~src.data.project_storage.ProjectStorage.load`, which refuses a
+    # differently-cased extension outright.
     if Path(name).suffix != ProjectStorage.FILE_EXTENSION:
         raise ValueError(
             f"A project file must have the {ProjectStorage.FILE_EXTENSION} "
