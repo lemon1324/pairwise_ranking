@@ -29,3 +29,10 @@
     <p class="field-hint">Choose a .pairrank file from the desktop app, or drop it here.</p>
   {% endif %}
 </div>
+{%- if chosen %}
+{# The drop zone is outside this fragment and must not be swapped with it -
+   replacing the label would replace the file input inside it and lose the
+   file the browser has already chosen. So the name goes out of band, which
+   changes the words and nothing else. #}
+<span class="lead" id="import-lead" style="font-size:1rem" hx-swap-oob="true">{{ chosen }}</span>
+{%- endif %}
