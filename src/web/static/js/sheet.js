@@ -33,6 +33,9 @@
   const PHONE = matchMedia("(max-width: 40rem)");
   const MIN_COL_REM = 36;
   const CLEARANCE_REM = 0.75; // space between the last column and the title block below it
+  // Less room than this above the title block and the block is covering the drawing area rather
+  // than sitting under it. See renderFolded, where it is the last column's floor.
+  const MIN_LAST_COL_REM = 8;
   const GAP_REM = 0.5; // between the selected row and its callout
   const EDGE_REM = 0.375; // between the find-number column and the callout's left edge
   const MIN_CALLOUT_REM = 12;
@@ -191,7 +194,16 @@
         ? titleblock.getBoundingClientRect().top - field.getBoundingClientRect().top
         : height;
       const lastCol = columns - 1;
-      const lastColBottom = tbTop - CLEARANCE_REM * rem();
+      // The title block can be taller than the drawing area - a short window, or text-only zoom
+      // past 200% - and it is pinned to the corner either way, so the room above it goes to zero
+      // and then negative. Unfloored, every row overflows the last column, the one-row-per-column
+      // guard below is the only thing that stops the loop, and 68 rows fold onto 68 sheets. There
+      // is no fold that helps at that height: the block covers the sheet whatever we do. So the
+      // last column stops being treated as the last one and is folded like any other, which at
+      // least puts a sheet's worth of rows on a sheet.
+      const clearance = tbTop - CLEARANCE_REM * rem();
+      const lastColBottom =
+        clearance < MIN_LAST_COL_REM * rem() ? height : clearance;
       limits = { bottom: height, lastColBottom };
 
       const pageEls = [];
