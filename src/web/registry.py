@@ -273,9 +273,15 @@ class ProjectRegistry:
         self.data_dir = data_dir
         self._entries: dict[Path, OpenProject] = {}
         self._locks: dict[Path, threading.RLock] = {}
-        # Guards the two dictionaries above, and nothing else. It is never held
-        # while a file is read or written, so a slow project cannot block a
-        # request about a different one.
+        # How many callers are inside or waiting for each lock. This is what
+        # lets a lock be dropped again: a lock nobody holds, nobody is queued
+        # for and no open project needs is guarding nothing, and keeping it
+        # would let a stream of names for files that are not there grow this
+        # dictionary without bound.
+        self._lock_users: dict[Path, int] = {}
+        # Guards the three dictionaries above, and nothing else. It is never
+        # held while a file is read or written, so a slow project cannot block
+        # a request about a different one.
         self._guard = threading.Lock()
 
     def resolve(self, project_id: str) -> Path:
@@ -304,28 +310,54 @@ class ProjectRegistry:
             raise ProjectNotFoundError(str(e)) from e
         return path.resolve()
 
-    def lock_for(self, path: Path) -> threading.RLock:
+    @contextmanager
+    def locked(self, path: Path) -> Iterator[None]:
         """
-        Return the lock guarding one project file.
+        Hold the lock guarding one project file for the length of a block.
 
         Public because the routes that create, import, duplicate and delete
         files need the same lock as the ones that edit them, and a second lock
-        over the same file would guard nothing.
+        over the same file would guard nothing. It is the *only* way to take
+        that lock: handing the bare lock out instead would leave the registry
+        unable to tell whether anybody still wanted it, and therefore unable to
+        drop it.
+
+        One path has exactly one lock for as long as anyone is inside it,
+        queued for it, or has the project open - which is the whole guarantee.
+        Outside those cases the lock is discarded, because a lock nobody can
+        reach through this method is a lock no second caller can collide with,
+        and a file need not exist to be locked: creating and importing take the
+        lock over a path before there is anything there.
 
         Args:
             path: A resolved project path.
 
-        Returns:
-            threading.RLock: The one lock for that path, created on first ask.
-            It is reentrant so that a mutation may call another operation that
-            takes the same lock.
+        Yields:
+            None: The lock is held for the body of the block. It is reentrant,
+            so an operation inside it may call another that takes it too.
         """
         with self._guard:
             lock = self._locks.get(path)
             if lock is None:
                 lock = threading.RLock()
                 self._locks[path] = lock
-            return lock
+            self._lock_users[path] = self._lock_users.get(path, 0) + 1
+
+        try:
+            with lock:
+                yield
+        finally:
+            with self._guard:
+                remaining = self._lock_users[path] - 1
+                if remaining:
+                    self._lock_users[path] = remaining
+                else:
+                    del self._lock_users[path]
+                    # Only now is it certain that no other caller holds this
+                    # object, so replacing it later cannot split one path's
+                    # traffic across two locks.
+                    if path not in self._entries:
+                        del self._locks[path]
 
     def open(self, project_id: str) -> OpenProject:
         """
@@ -348,8 +380,10 @@ class ProjectRegistry:
         """
         path = self.resolve(project_id)
         # Under the file's own lock, so that two requests for a project nobody
-        # has opened yet do not both read and both construct it.
-        with self.lock_for(path):
+        # has opened yet do not both read and both construct it. When the load
+        # fails - which for a name a browser invented is the usual outcome -
+        # the block leaves no entry behind, and the lock goes with it.
+        with self.locked(path):
             entry = self._entries.get(path)
             if entry is None:
                 entry = OpenProject(path)
@@ -401,7 +435,7 @@ class ProjectRegistry:
             ProjectUnreadableError: If the file cannot be read or parsed.
         """
         path = self.resolve(project_id)
-        with self.lock_for(path):
+        with self.locked(path):
             entry = self.open(project_id)
             reloaded = entry.reload_if_changed()
             yield Mutation(session=entry.session, reloaded=reloaded)
@@ -410,9 +444,10 @@ class ProjectRegistry:
         """
         Drop a project from the cache, so the next open re-reads the file.
 
-        The lock is kept: something may be waiting on it, and a file that is
-        deleted and later recreated under the same name must be guarded by the
-        same lock throughout.
+        The lock outlives the entry for as long as anyone is inside it or
+        waiting on it - a file that is deleted and later recreated under the
+        same name stays guarded by the same lock throughout the operations that
+        are in flight over it - and is discarded once nobody is.
 
         Args:
             project_id: The project's file name.
@@ -422,6 +457,6 @@ class ProjectRegistry:
                 the data directory.
         """
         path = self.resolve(project_id)
-        with self.lock_for(path):
+        with self.locked(path):
             with self._guard:
                 self._entries.pop(path, None)
