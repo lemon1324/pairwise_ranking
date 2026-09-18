@@ -648,7 +648,18 @@
         // are untouched, so nothing is refolded and nothing else moves.
         placeCallout();
         const first = host.querySelector("[autofocus]");
-        if (first) first.focus({ preventScroll: true });
+        if (first) {
+          first.focus({ preventScroll: true });
+          // A prefilled draft is selected, so the first keystroke replaces it rather than landing
+          // in front of it - docs/mockups/projects.js:221, which is `if (!error) input.select()`.
+          // The condition is the point: a field carrying a name that was just refused holds the
+          // words the person typed, and they want to correct them, not lose them. Guarded on
+          // select() being there at all, because a callout's first field is not always a text one
+          // - the import drop zone is a <label>.
+          if (first.select && first.getAttribute("aria-invalid") !== "true") {
+            first.select();
+          }
+        }
         return;
       }
       const current = document.querySelector(".bom-field");
