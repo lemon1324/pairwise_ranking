@@ -129,6 +129,8 @@ class ProjectFileInfo:
         condition: Which of the four states the file is in.
         reason: Why the condition is not OK, phrased for a person. Empty when
             the condition is OK.
+        format_version: The format version the file declares. Zero when the
+            file is unreadable, which is exactly when it has none to declare.
     """
 
     path: Path
@@ -139,6 +141,29 @@ class ProjectFileInfo:
     modified: Optional[datetime]
     condition: ProjectCondition
     reason: str = ""
+    format_version: int = 0
+
+    @property
+    def backup_name(self) -> str:
+        """
+        Name the backup that opening an old-format file would leave beside it.
+
+        Migration keeps the original under the file's own name with the
+        version in the suffix - ``Foo.pairrank`` becomes ``Foo.pairrank.v1.bak``
+        - so a screen that tells someone their file will be upgraded can say
+        what it will be called afterwards rather than "a backup".
+
+        Returns:
+            str: The backup's file name, or an empty string for a file no
+            migration will be run on.
+        """
+        if self.condition is not ProjectCondition.OLD_FORMAT:
+            return ""
+        return self.path.with_suffix(
+            ProjectStorage.MIGRATION_BACKUP_TEMPLATE.format(
+                version=self.format_version
+            )
+        ).name
 
     @property
     def openable(self) -> bool:
@@ -418,6 +443,7 @@ def _info_from_bytes(
                 f"The file is in format version {version}, and this "
                 f"application understands version {CURRENT_FORMAT_VERSION}."
             ),
+            format_version=version,
         )
 
     shape_error = _top_level_shape_error(data)
@@ -442,6 +468,7 @@ def _info_from_bytes(
             if old
             else ""
         ),
+        format_version=version,
     )
 
 

@@ -38,7 +38,10 @@
     {% endcall %}
   {% else %}
     {% if old_format %}
-      <p class="strip-body field-hint" style="margin:0;padding-bottom:0">{{ info.reason }}</p>
+      {# `upgrade_note`, not `info.reason`: the shared sentence says "keeps a
+         backup of the original beside it", and here the backup's name is
+         derivable, so the callout says what it will be called. #}
+      <p class="strip-body field-hint" style="margin:0;padding-bottom:0">{{ upgrade_note }}</p>
     {% endif %}
     {{ popover_actions([
         {"action": "open", "label": "Open", "key": "↵", "shortcut": "Enter", "href": open_url},
