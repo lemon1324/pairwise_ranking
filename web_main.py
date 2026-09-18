@@ -59,6 +59,9 @@ def main() -> int:
         # Not passed as uvicorn's root_path: the application already carries it,
         # and setting it in both places prefixes it twice.
         log_config=None,
+        # Safe to hand over unexamined: load_config has already settled on a
+        # name uvicorn knows. uvicorn looks this up in a dict, so a level it
+        # has not heard of is a KeyError here rather than a "Cannot start".
         log_level=config.log_level.lower(),
     )
     return 0
