@@ -1015,6 +1015,24 @@ class TestImportProject(RegisterTestCase):
         self.assertIn(f'data-id="{GHOST_ROW_ID}"', body)
         self.assertIn('hx-get="/projects/import/callout"', body)
 
+    def test_the_import_callout_says_where_the_focus_goes(self):
+        """
+        Test that the drop zone is the callout's one [autofocus] field.
+
+        sheet.js focuses `[autofocus]` after a callout swap, and a callout
+        without one leaves the focus on whatever the last swap left it on.
+        It cannot be the file input, which is visually hidden: Chrome matches
+        :focus-visible on a programmatically focused field only when it
+        carries `autofocus`, and the ring would be drawn on a one-pixel box in
+        any case. So it is the label that is the whole dashed drop zone, made
+        a keyboard target with tabindex.
+        """
+        body = self.client.get("/projects/import/callout").text
+        focused = re.findall(r"<(\w+)[^>]*\bautofocus\b", body)
+
+        self.assertEqual(focused, ["label"])
+        self.assertIn('tabindex="0"', re.search(r"<label[^>]*>", body).group(0))
+
     def test_import_declares_the_key_its_legend_draws(self):
         """
         Test that the ↵ on the Import button is wired to the button.

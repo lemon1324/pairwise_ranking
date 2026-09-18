@@ -30,7 +30,14 @@
   {% call popover_body("Import a project file") %}
     <form class="strip-form" method="post" action="{{ action }}"
           enctype="multipart/form-data" hx-encoding="multipart/form-data">
-      <label class="field field-wide bom-empty" style="max-width:none;padding:var(--s-4);cursor:pointer">
+      {# The drop zone is this callout's first field, so it is where the
+         engine puts the focus - every callout in the set has to say where
+         that is, and the file input cannot be it: it is visually hidden, so
+         its focus ring would be drawn a pixel wide in the corner of the
+         sheet. The label is the whole dashed box and is the click target for
+         the input already; tabindex makes it the keyboard target too. #}
+      <label class="field field-wide bom-empty" tabindex="0" autofocus
+             style="max-width:none;padding:var(--s-4);cursor:pointer">
         <span class="lead" id="import-lead" style="font-size:1rem">Drop a .pairrank file</span>
         <span class="cell-button">Choose file</span>
         <input class="visually-hidden" type="file" name="file" accept=".pairrank" required
