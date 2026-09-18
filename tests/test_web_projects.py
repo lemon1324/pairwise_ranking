@@ -414,6 +414,32 @@ class TestRegisterListing(RegisterTestCase):
         """Test that the script is on the page, and deferred."""
         self.assertRegex(self.body, r'<script src="[^"]*js/sheet\.js" defer></script>')
 
+    def test_the_boot_script_binds_its_listener_on_the_window(self):
+        """
+        Test that the row this page arrives on is selected from `window`.
+
+        Not a style preference, and the four screens that have not been built
+        will copy whichever way this is written. htmx wires every hx-trigger
+        from a listener it binds on **document**, registered when its own
+        deferred script runs - before this inline script has even been parsed.
+        DOMContentLoaded is fired at the document and bubbles, so a listener on
+        `window` runs in the bubble phase, strictly after every document one.
+        Bind this on `document` and it becomes a race this side can lose:
+        sheet:select fires before the row has an hx-trigger to hear it, htmx
+        never asks for the callout, and the sheet comes up with the form
+        missing - silently, on every page load.
+        """
+        body = self.client.get("/?form=new").text
+        boot = [
+            block
+            for block in re.findall(r"<script>(.*?)</script>", body, re.S)
+            if "window.sheet.select" in block
+        ]
+
+        self.assertEqual(len(boot), 1)
+        self.assertIn('window.addEventListener("DOMContentLoaded"', boot[0])
+        self.assertNotIn("document.addEventListener", boot[0])
+
     def test_the_pager_is_drawn_but_offers_nothing_yet(self):
         """
         Test that the sheet count starts at one of one, both buttons dead.
