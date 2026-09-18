@@ -17,12 +17,6 @@ from enum import Enum
 from pathlib import Path
 from typing import Callable, Optional
 
-from src.app.confidence import (
-    DEFAULT_CONFIDENCE_READER,
-    ConfidenceReader,
-    ConfidenceReading,
-)
-from src.app.record import WeightedRecord, weighted_record
 from src.data.project_storage import ProjectStorage
 from src.models.export import build_export_rows
 from src.models.item import Item
@@ -39,6 +33,13 @@ from src.models.ranking import (
 )
 from src.models.settings import Settings
 from src.models.vote import Vote
+
+from .confidence import (
+    DEFAULT_CONFIDENCE_READER,
+    ConfidenceReader,
+    ConfidenceReading,
+)
+from .record import WeightedRecord, weighted_record
 
 
 # Rankings need at least this many items before the model is fitted at all.
