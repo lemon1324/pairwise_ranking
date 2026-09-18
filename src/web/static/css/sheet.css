@@ -371,7 +371,12 @@ html {
   display: flex;
 }
 
-.sheet-title h1 {
+/* Two elements, because the bar carries two different things. On a project's sheet it is the
+   project's name, and on phones - where the title block's TITLE cell is hidden - that is the
+   sheet's heading, so it is an <h1>. On the register it is the application's name at every width,
+   beside the title block's own <h1>, so it is a <p>: a brand mark rather than a second heading. */
+.sheet-title h1,
+.sheet-title .sheet-title-text {
   margin: 0;
   font-size: 1.125rem;
   font-weight: 600;
@@ -872,7 +877,8 @@ html {
     gap: var(--s-2);
   }
 
-  .sheet-title h1 {
+  .sheet-title h1,
+  .sheet-title .sheet-title-text {
     font-size: 1rem;
   }
 

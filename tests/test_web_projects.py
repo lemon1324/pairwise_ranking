@@ -435,6 +435,24 @@ class TestRegisterListing(RegisterTestCase):
         """Test that the script is on the page, and deferred."""
         self.assertRegex(self.body, r'<script src="[^"]*js/sheet\.js" defer></script>')
 
+    def test_the_sheet_has_one_heading_and_it_is_the_title_block_s(self):
+        """
+        Test that the app name in the bar is not a second <h1>.
+
+        Every other screen hides the bar's title on desktop and shows it on
+        phones, where the title block's TITLE cell is hidden, so exactly one of
+        the two is ever a heading. The register shows both at once - there is
+        no project, so `is-app` keeps the application's name up at every width
+        - and two <h1>s on one screen is two documents. The sheet's name stays
+        the heading; the bar carries a brand mark.
+        """
+        headings = re.findall(r"<h1[^>]*>(.*?)</h1>", self.body, re.S)
+
+        self.assertEqual(headings, ["Drawing register"])
+        self.assertIn(
+            '<p class="sheet-title-text">Pairwise Ranking</p>', self.body
+        )
+
     def test_the_boot_script_binds_its_listener_on_the_window(self):
         """
         Test that the row this page arrives on is selected from `window`.

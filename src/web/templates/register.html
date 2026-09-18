@@ -35,9 +35,17 @@
 
 {% block sheet_title %}
   {# `is-app` keeps this showing at every width, not only on phones: with no
-     project open there is nothing else for the bar to carry. #}
+     project open there is nothing else for the bar to carry.
+
+     Not an <h1>, unlike the mockup and unlike the project name every other
+     screen puts here. Those screens hide this bar on desktop and the title
+     block's own <h1> is the sheet's heading; the register shows both at once,
+     and two <h1>s on one screen is two documents. The app name in the bar is a
+     brand mark - it says which application this is, not what this sheet is -
+     so the heading stays in the title block, where `tb_title` puts it, and the
+     four screens that have not been written yet inherit that. #}
   <div class="sheet-title is-app">
-    <h1>Pairwise Ranking</h1>
+    <p class="sheet-title-text">Pairwise Ranking</p>
   </div>
 {% endblock %}
 
