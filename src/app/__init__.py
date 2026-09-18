@@ -12,13 +12,21 @@ from .confidence import (
     DEFAULT_CONFIDENCE_READER,
 )
 from .items import (
+    FIELD_IDENTIFIER,
+    FIELD_NAME,
     ItemFieldError,
     ItemForm,
     ItemFormVerdict,
     validate_item_form,
 )
-from .record import OpponentRecord, WeightedRecord, weighted_record
+from .record import (
+    UNKNOWN_OPPONENT_NAME,
+    OpponentRecord,
+    WeightedRecord,
+    weighted_record,
+)
 from .register import (
+    MAX_FILE_STEM_LENGTH,
     ProjectCondition,
     ProjectFileInfo,
     duplicate_project_file,
@@ -52,13 +60,17 @@ __all__ = [
     "ConfidenceReader",
     "ConfidenceReading",
     "DEFAULT_CONFIDENCE_READER",
+    "FIELD_IDENTIFIER",
+    "FIELD_NAME",
     "ItemFieldError",
     "ItemForm",
     "ItemFormVerdict",
     "validate_item_form",
+    "UNKNOWN_OPPONENT_NAME",
     "OpponentRecord",
     "WeightedRecord",
     "weighted_record",
+    "MAX_FILE_STEM_LENGTH",
     "ProjectCondition",
     "ProjectFileInfo",
     "duplicate_project_file",
