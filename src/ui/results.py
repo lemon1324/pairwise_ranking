@@ -303,9 +303,14 @@ class ResultsWidget(QWidget):
 
         return details
 
-    def _weight_by_name(self, records: list[OpponentRecord]) -> dict[str, float]:
+    @staticmethod
+    def _weight_by_name(records: list[OpponentRecord]) -> dict[str, float]:
         """
         Total the raw weight of a record's entries by opponent name.
+
+        The name comes from the record itself: the core resolved it from the
+        same item list this tab passed in, including the fallback for an
+        opponent the project no longer holds.
 
         Args:
             records: The wins or the losses of one item.
@@ -316,24 +321,8 @@ class ResultsWidget(QWidget):
         """
         totals: dict[str, float] = {}
         for record in records:
-            name = self._get_item_name(record.opponent_id)
-            totals[name] = totals.get(name, 0.0) + record.weight_raw
+            totals[record.name] = totals.get(record.name, 0.0) + record.weight_raw
         return totals
-
-    def _get_item_name(self, item_id: str) -> str:
-        """
-        Get item name by ID.
-
-        Args:
-            item_id: The item ID.
-
-        Returns:
-            str: Item name or "Unknown" if not found.
-        """
-        for result in self._rankings:
-            if result.item.id == item_id:
-                return result.item.name
-        return "Unknown"
 
     def _on_export_clicked(self) -> None:
         """Handle export button click."""
