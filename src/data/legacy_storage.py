@@ -7,11 +7,15 @@ older versions; it deliberately provides no write operations.
 
 import csv
 import json
+import logging
 from pathlib import Path
 
 from src.models.item import Item
 from src.models.vote import Vote
 from src.models.settings import Settings
+
+
+logger = logging.getLogger(__name__)
 
 
 class LegacyCsvStorage:
@@ -73,8 +77,12 @@ class LegacyCsvStorage:
                 try:
                     items.append(Item.from_dict(row))
                 except (KeyError, ValueError) as e:
-                    # Skip invalid rows but continue loading
-                    print(f"Warning: Skipping invalid item row: {e}")
+                    # Skipped rather than refused, and logged rather than
+                    # printed: the web frontend migrates the data directory as
+                    # it starts, and it is a server process whose stdout
+                    # nobody is watching. A row that was dropped from someone's
+                    # data is exactly what they go looking for in a log.
+                    logger.warning("Skipping invalid item row: %s", e)
         return items
 
     def load_votes(self) -> list[Vote]:
@@ -101,8 +109,8 @@ class LegacyCsvStorage:
                     }
                     votes.append(Vote.from_dict(vote_data))
                 except (KeyError, ValueError) as e:
-                    # Skip invalid rows but continue loading
-                    print(f"Warning: Skipping invalid vote row: {e}")
+                    # Skipped and logged, as above.
+                    logger.warning("Skipping invalid vote row: %s", e)
         return votes
 
     def load_settings(self) -> Settings:
@@ -120,5 +128,5 @@ class LegacyCsvStorage:
                 data = json.load(f)
                 return Settings.from_dict(data)
         except (json.JSONDecodeError, ValueError) as e:
-            print(f"Warning: Error loading settings, using defaults: {e}")
+            logger.warning("Could not read legacy settings, using defaults: %s", e)
             return Settings()

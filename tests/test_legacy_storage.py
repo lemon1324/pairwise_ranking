@@ -149,6 +149,25 @@ class TestLegacyCsvStorageItems(LegacyStorageTestCase):
         self.assertEqual(loaded[0].name, 'Item with "quotes" and, commas')
         self.assertEqual(loaded[0].description, "Line 1\nLine 2")
 
+    def test_load_items_skips_invalid_rows_and_says_so(self):
+        """
+        Test that a row with no name is skipped, and logged rather than printed.
+
+        The web frontend runs this migration as the server starts, so a row
+        dropped from someone's data has to land somewhere it can be found
+        afterwards. Stdout is not that place.
+        """
+        self.storage.items_file.write_text(
+            "id,name,identifier,description\n" "i1,,,\n" "i2,Item 2,,\n",
+            encoding="utf-8",
+        )
+
+        with self.assertLogs("src.data.legacy_storage", "WARNING") as logged:
+            loaded = self.storage.load_items()
+
+        self.assertEqual([item.name for item in loaded], ["Item 2"])
+        self.assertIn("Skipping invalid item row", logged.output[0])
+
     def test_load_items_gets_default_category(self):
         """Test that legacy rows without a category get the default category."""
         self._write_items_csv([
@@ -216,9 +235,16 @@ class TestLegacyCsvStorageVotes(LegacyStorageTestCase):
              "timestamp": "2024-01-02T00:00:00", "weight": "2.0"},
         ])
 
-        loaded = self.storage.load_votes()
+        # The skip goes through logging rather than to stdout, because the web
+        # frontend runs this migration as it starts and is a server process
+        # whose stdout nobody reads. Asserting on it here is what keeps it from
+        # quietly going back.
+        with self.assertLogs("src.data.legacy_storage", "WARNING") as logged:
+            loaded = self.storage.load_votes()
+
         self.assertEqual(len(loaded), 1)
         self.assertEqual(loaded[0].id, "v2")
+        self.assertIn("Skipping invalid vote row", logged.output[0])
 
 
 class TestLegacyCsvStorageSettings(LegacyStorageTestCase):
@@ -258,9 +284,13 @@ class TestLegacyCsvStorageSettings(LegacyStorageTestCase):
         """Test loading settings with invalid JSON returns defaults."""
         self.storage.settings_file.write_text("not valid json {", encoding="utf-8")
 
-        settings = self.storage.load_settings()
+        with self.assertLogs("src.data.legacy_storage", "WARNING") as logged:
+            settings = self.storage.load_settings()
+
         default = Settings()
         self.assertEqual(settings.weight_uncertainty, default.weight_uncertainty)
+        self.assertIn("using defaults", logged.output[0])
+
 
 
 if __name__ == "__main__":

@@ -515,6 +515,22 @@ class TestScanDirectory(RegisterTestCase):
 
         self.assertEqual([row.file_name for row in rows], ["real.pairrank"])
 
+    def test_a_differently_cased_extension_is_not_listed(self):
+        """
+        Test that the register lists only what can actually be opened.
+
+        The glob behind this is case-insensitive on Windows and on an SMB
+        share, so it finds TASTING.PAIRRANK; ``ProjectStorage.load`` and
+        ``resolve_project_path`` both refuse that name, so listing it would
+        draw a row every action on which answers "not found".
+        """
+        write_project(self.temp_dir / "real.pairrank")
+        write_project(self.temp_dir / "shouty.PAIRRANK")
+
+        rows = scan_directory(self.temp_dir)
+
+        self.assertEqual([row.file_name for row in rows], ["real.pairrank"])
+
     def test_ordering_is_deterministic(self):
         """Test that rows come back in a stable, case-insensitive name order."""
         for name in ["zeta", "Alpha", "middle"]:
@@ -709,6 +725,20 @@ class TestResolveProjectPath(RegisterTestCase):
     def test_only_project_files_are_addressable(self):
         """Test that the boundary also pins the extension."""
         for file_name in ["project.json", "project", "project.pairrank.bak"]:
+            with self.subTest(file_name=file_name):
+                with self.assertRaises(ValueError):
+                    resolve_project_path(self.temp_dir, file_name)
+
+    def test_a_differently_cased_extension_is_not_a_project_file(self):
+        """
+        Test that listing and addressing agree about the extension's case.
+
+        ``ProjectStorage.load`` refuses a differently-cased extension, so such
+        a file cannot be opened by the desktop app either. Addressing it is
+        refused here and :func:`scan_directory` leaves it out of the register,
+        rather than the register drawing a row nothing can act on.
+        """
+        for file_name in ["Project.PAIRRANK", "Project.PairRank"]:
             with self.subTest(file_name=file_name):
                 with self.assertRaises(ValueError):
                     resolve_project_path(self.temp_dir, file_name)
