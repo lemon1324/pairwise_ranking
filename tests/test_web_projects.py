@@ -685,6 +685,31 @@ class TestNewProject(RegisterTestCase):
         self.assertIn('action="/projects/new"', body)
         self.assertNotIn("hx-post", body)
 
+    def test_the_form_declares_both_of_the_keys_it_draws(self):
+        """
+        Test that Save takes Enter as surely as Cancel takes Esc.
+
+        Enter submitted this form by itself only while the caret was in the
+        name field - the browser's implicit submission - and the engine leaves
+        clicks inside `#row-callout` alone on purpose, so clicking anywhere in
+        the popover that is not the input took the caret out and left the ↵ on
+        the button drawing a key nothing pressed. Nothing in sheet.js makes
+        Enter mean Save; it has to be declared, the way Escape is.
+        """
+        for url in (
+            "/projects/new/callout",
+            "/projects/Alpha.pairrank/duplicate",
+        ):
+            with self.subTest(url=url):
+                body = self.client.get(url).text
+                save = re.search(r"<button[^>]*is-primary[^>]*>", body, re.S)
+                cancel = re.search(r"<a[^>]*data-sheet-key=\"Escape\"[^>]*>", body)
+
+                self.assertIsNotNone(save)
+                self.assertIn('data-sheet-key="Enter"', save.group(0))
+                self.assertIn('aria-keyshortcuts="Enter"', save.group(0))
+                self.assertIsNotNone(cancel)
+
     def test_creating_writes_the_file_and_comes_back_to_it(self):
         """Test that a new project is on disk and selected when the page returns."""
         response = self.post("/projects/new", data={"name": "Keyswitches"})
