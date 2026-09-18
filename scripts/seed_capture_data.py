@@ -299,6 +299,59 @@ def seed(directory: Path, filler: int = len(FILLER_SUBJECTS)) -> int:
     return written
 
 
+def is_seeded(path: Path) -> bool:
+    """
+    Say whether a file is one this script wrote.
+
+    Args:
+        path: The file to judge.
+
+    Returns:
+        bool: True for a project file or a migration backup, which is
+        everything :func:`seed` ever puts in a directory.
+    """
+    return path.is_file() and (
+        path.suffix == ".pairrank"
+        or ".pairrank." in path.name
+        or path.name == NOT_A_PROJECT
+    )
+
+
+def refuse_to_empty(empty: Path, directory: Path) -> str:
+    """
+    Say why a directory must not be removed and rebuilt, if it must not be.
+
+    ``--empty-dir`` names a directory this script deletes outright, so it is a
+    path a mistyped command line turns into an ``rm -rf``: ``--empty-dir``
+    pointed at a checkout removes the checkout. Nothing about the name says
+    what it is for, so the directory itself has to.
+
+    Args:
+        empty: The directory that would be removed.
+        directory: The data directory being seeded.
+
+    Returns:
+        str: The reason, or an empty string when it is safe to remove.
+    """
+    if empty == directory or empty in directory.parents:
+        return f"{empty} holds the data directory being seeded"
+    if empty.parent == empty:
+        return f"{empty} is the root of a filesystem"
+    if not empty.exists():
+        return ""
+    if not empty.is_dir():
+        return f"{empty} is not a directory"
+    strays = sorted(
+        path.name for path in empty.iterdir() if not is_seeded(path)
+    )
+    if strays:
+        return (
+            f"{empty} holds {len(strays)} file(s) this script did not write, "
+            f"starting with {strays[0]!r}"
+        )
+    return ""
+
+
 def main(argv: list) -> int:
     """
     Seed a capture data directory and an empty one beside it.
@@ -333,13 +386,20 @@ def main(argv: list) -> int:
     # which is the same crossing capture_web.py makes; the translation is
     # borrowed from it rather than written twice.
     directory = Path(windows_path(args.directory)).resolve()
-    written = seed(directory, args.filler)
 
     empty = (
         Path(windows_path(args.empty_dir)).resolve()
         if args.empty_dir
         else directory.parent / f"{directory.name}-empty"
     )
+    # Checked before anything is written, so a refusal costs nothing and leaves
+    # nothing half-seeded behind it.
+    refusal = refuse_to_empty(empty, directory)
+    if refusal:
+        print(f"{PROGRAM}: refusing to remove {empty}: {refusal}", file=sys.stderr)
+        return 1
+
+    written = seed(directory, args.filler)
     if empty.exists():
         shutil.rmtree(empty)
     empty.mkdir(parents=True)
