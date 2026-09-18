@@ -38,23 +38,33 @@
 {%- endmacro %}
 
 {#
-  parts_row(id, selected=false, retired=false, is_new=false)
+  parts_row(id, selected=false, retired=false, is_new=false, callout_url=none)
 
-    id        the item, ranking or project the row stands for; the folding
-              engine and every row action address the row by it.
-    selected  true for the row the callout is tied to.
-    retired   true for a retired item, which also carries a RETIRED tag.
-    is_new    true for the ghost row of an item being added.
+    id           the item, ranking or project the row stands for; the folding
+                 engine and every row action address the row by it.
+    selected     true for the row the callout is tied to.
+    retired      true for a retired item, which also carries a RETIRED tag.
+    is_new       true for the ghost row of an item being added.
+    callout_url  where this row's callout comes from, when it has one.
 
   Called with {% call %}; the caller emits the cells.
 
   tabindex="-1" because selection moves with the arrow keys rather than Tab:
   the table is one stop, and the row that has the selection is the one that
   takes focus.
+
+  `callout_url` is the whole hookup between a row and its callout, written
+  once here rather than three times across Items, Rankings and the register:
+  the engine fires `sheet:select` on the row it has just selected, htmx hears
+  it, fetches the fragment and puts it in `#row-callout` - the host base.html
+  keeps outside every swapped region. A row without one is selectable and does
+  nothing else. Selecting clears the host first, so the callout on screen is
+  never the one that belonged to the row before.
 #}
-{% macro parts_row(id, selected=false, retired=false, is_new=false) -%}
+{% macro parts_row(id, selected=false, retired=false, is_new=false, callout_url=none) -%}
 <tr class="bom-row{% if selected %} is-selected{% endif %}{% if retired %} is-retired{% endif %}{% if is_new %} is-new{% endif %}"
-    data-id="{{ id }}" tabindex="-1" aria-selected="{{ 'true' if selected else 'false' }}">
+    data-id="{{ id }}" tabindex="-1" aria-selected="{{ 'true' if selected else 'false' }}"
+    {%- if callout_url %} hx-get="{{ callout_url }}" hx-target="#row-callout" hx-trigger="sheet:select"{% endif %}>
   {{ caller() }}
 </tr>
 {%- endmacro %}
