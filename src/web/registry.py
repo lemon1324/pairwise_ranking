@@ -192,18 +192,18 @@ class OpenProject:
         """
         return _stamp(self.path) != self._stamp
 
-    def reload_if_changed(self) -> bool:
+    def reload_if_changed(self) -> None:
         """
         Re-read the file if it has changed underneath this entry.
 
+        Deliberately answers with nothing. The reload is recorded as a pending
+        notice and :meth:`take_reload_notice` is the one way to learn about it,
+        because a caller that both read a returned flag and left the pending
+        one standing would report one event twice: once on the page it renders
+        and again on the next page anybody opens.
+
         Args:
             None.
-
-        Returns:
-            bool: True when the file had changed and the session was replaced.
-            Callers rendering a page in the same request use this; callers that
-            redirect use :meth:`take_reload_notice` from the request that
-            follows.
 
         Raises:
             ProjectNotFoundError: If the file has since been deleted.
@@ -213,12 +213,11 @@ class OpenProject:
                 be read.
         """
         if not self.changed_on_disk():
-            return False
+            return
 
         logger.info("Reloading %s: the file changed on disk", self.path.name)
         self.session = self._open_session(self.path)
         self.reloaded_from_disk = True
-        return True
 
     def take_reload_notice(self) -> bool:
         """
@@ -226,8 +225,10 @@ class OpenProject:
 
         A mutation that answers with a redirect cannot render the notice
         itself, so the fact is held until a request renders a page and takes
-        it. Taking it clears it, because the notice describes one event and
-        should not follow the user around the application.
+        it. A mutation that renders its own page takes it there and then,
+        through :meth:`Mutation.take_reload_notice`. Either way taking it
+        clears it: the notice describes one event and should be reported once,
+        rather than following the user around the application.
 
         Returns:
             bool: True when there was an unreported reload.
@@ -242,16 +243,36 @@ class Mutation:
     """
     The handle :meth:`ProjectRegistry.mutate` lends for the length of an edit.
 
+    There is no ``reloaded`` flag to read. Whether the file had changed on disk
+    before the edit began is asked for with :meth:`take_reload_notice`, and
+    asking consumes it: a route that could see the fact without consuming it
+    would render the notice on its own page and leave it pending for the next
+    page as well, which is the same event reported twice.
+
     Attributes:
         session: The session to edit. Valid only inside the ``with`` block
             that produced it; outside it, nothing holds the file's lock.
-        reloaded: Whether the file had changed on disk and was re-read before
-            the edit began, meaning the user is about to act on a project that
-            is not quite the one the page was drawn from.
+        entry: The open project being edited, for the routes that need the
+            entry itself rather than the session.
     """
 
     session: ProjectSession
-    reloaded: bool
+    entry: OpenProject
+
+    def take_reload_notice(self) -> bool:
+        """
+        Read and clear the "changed on disk" notice, for a page rendered here.
+
+        A route that renders its own answer calls this and draws the notice; a
+        route that redirects does not, and the request that follows finds the
+        notice still pending and draws it there.
+
+        Returns:
+            bool: True when the file had changed on disk and was re-read before
+            this edit began, meaning the user has just acted on a project that
+            is not quite the one the page was drawn from.
+        """
+        return self.entry.take_reload_notice()
 
 
 class ProjectRegistry:
@@ -427,7 +448,8 @@ class ProjectRegistry:
             project_id: The project's file name.
 
         Yields:
-            Mutation: The session to edit and whether a reload preceded it.
+            Mutation: The session to edit, and the notice-taking a route that
+            renders its own page needs.
 
         Raises:
             ProjectNotFoundError: If the id names no project in the directory.
@@ -437,8 +459,10 @@ class ProjectRegistry:
         path = self.resolve(project_id)
         with self.locked(path):
             entry = self.open(project_id)
-            reloaded = entry.reload_if_changed()
-            yield Mutation(session=entry.session, reloaded=reloaded)
+            entry.reload_if_changed()
+            # The session is read off the entry after the reload, because a
+            # reload replaces it wholesale.
+            yield Mutation(session=entry.session, entry=entry)
 
     def forget(self, project_id: str) -> None:
         """

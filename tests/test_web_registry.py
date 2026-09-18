@@ -342,7 +342,7 @@ class TestRegistryMutation(RegistryTestCase):
         self.registry.open(self.project_id)
 
         with self.registry.mutate(self.project_id) as mutation:
-            self.assertFalse(mutation.reloaded)
+            self.assertFalse(mutation.take_reload_notice())
 
     def test_a_file_changed_on_disk_is_reloaded(self):
         """Test that an edit from outside the process replaces the session."""
@@ -352,7 +352,7 @@ class TestRegistryMutation(RegistryTestCase):
         self.rewrite_with_name("Tasting, revised elsewhere")
 
         with self.registry.mutate(self.project_id) as mutation:
-            self.assertTrue(mutation.reloaded)
+            self.assertTrue(mutation.take_reload_notice())
             self.assertEqual(
                 mutation.session.project.name, "Tasting, revised elsewhere"
             )
@@ -362,24 +362,13 @@ class TestRegistryMutation(RegistryTestCase):
         self.assertIs(self.registry.open(self.project_id), first)
         self.assertIs(first.session, mutation.session)
 
-    def test_the_reload_notice_is_taken_once(self):
-        """Test that the notice is cleared by whoever renders it."""
-        entry = self.registry.open(self.project_id)
-        self.rewrite_with_name("Changed")
-
-        with self.registry.mutate(self.project_id):
-            pass
-
-        self.assertTrue(entry.take_reload_notice())
-        self.assertFalse(entry.take_reload_notice())
-
     def test_the_registrys_own_save_is_not_a_change_on_disk(self):
         """Test that saving does not make the next mutation reload."""
         with self.registry.mutate(self.project_id) as mutation:
             mutation.session.rename("Tasting, renamed")
 
         with self.registry.mutate(self.project_id) as mutation:
-            self.assertFalse(mutation.reloaded)
+            self.assertFalse(mutation.take_reload_notice())
             self.assertEqual(mutation.session.project.name, "Tasting, renamed")
 
     def test_an_opening_migration_is_not_a_change_on_disk(self):
@@ -397,7 +386,7 @@ class TestRegistryMutation(RegistryTestCase):
         self.registry.open("Legacy.pairrank")
 
         with self.registry.mutate("Legacy.pairrank") as mutation:
-            self.assertFalse(mutation.reloaded)
+            self.assertFalse(mutation.take_reload_notice())
 
     def test_a_mutation_is_written_to_the_file(self):
         """Test that the session's save reaches disk inside the lock."""
@@ -406,6 +395,55 @@ class TestRegistryMutation(RegistryTestCase):
 
         data = json.loads(self.path.read_text(encoding="utf-8"))
         self.assertEqual(data["name"], "Tasting, saved")
+
+    def test_a_redirecting_route_leaves_the_notice_for_the_next_page(self):
+        """Test that the notice survives a mutation that renders nothing."""
+        entry = self.registry.open(self.project_id)
+        self.rewrite_with_name("Changed")
+
+        with self.registry.mutate(self.project_id):
+            pass
+
+        self.assertTrue(entry.take_reload_notice())
+        self.assertFalse(entry.take_reload_notice())
+
+    def test_a_route_that_renders_inline_takes_the_notice_with_it(self):
+        """
+        Test that a notice drawn on the mutation's own page is not drawn again.
+
+        Compare answers a vote with a page rather than a redirect, so it takes
+        the notice inside the mutation. If that left the pending notice
+        standing, the next page anybody opened would announce the same reload a
+        second time.
+        """
+        entry = self.registry.open(self.project_id)
+        self.rewrite_with_name("Changed")
+
+        with self.registry.mutate(self.project_id) as mutation:
+            self.assertTrue(mutation.take_reload_notice())
+
+        self.assertFalse(entry.take_reload_notice())
+
+    def test_the_notice_belongs_to_one_taker(self):
+        """Test that two readers of one reload do not both report it."""
+        entry = self.registry.open(self.project_id)
+        self.rewrite_with_name("Changed")
+
+        with self.registry.mutate(self.project_id) as mutation:
+            first = mutation.take_reload_notice()
+            second = mutation.take_reload_notice()
+
+        self.assertTrue(first)
+        self.assertFalse(second)
+        self.assertFalse(entry.take_reload_notice())
+
+    def test_a_mutation_hands_over_the_entry_it_edited(self):
+        """Test that a route can reach the open project, not just its session."""
+        entry = self.registry.open(self.project_id)
+
+        with self.registry.mutate(self.project_id) as mutation:
+            self.assertIs(mutation.entry, entry)
+            self.assertIs(mutation.session, entry.session)
 
     def test_mutate_refuses_a_traversal_id(self):
         """Test that the mutation path shares the one traversal boundary."""
