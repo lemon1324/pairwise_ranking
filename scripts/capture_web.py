@@ -53,6 +53,25 @@ sets the layout viewport directly and is not clamped. The read-back is there so
 that if a future Chrome clamps that too, the run stops instead of quietly
 filing a 500 px screenshot as a phone.
 
+Two more things it refuses to file, both found in phase 5c.
+
+**A sheet with no callout.** Every screen in this set fetches the selected
+row's callout *after* the load event: sheet.js selects on ``DOMContentLoaded``,
+htmx hears ``sheet:select`` and does an XHR. So ``readyState === "complete"``
+is reached with the fragment still in the air - 8-22 ms early on loopback, and
+nothing about that margin is promised. The shutter therefore waits until the
+page has no request in flight, and then refuses outright if a selected row asks
+for a callout and ``#row-callout`` is still empty. A capture missing its
+callout looks exactly like an ordinary sheet, which is why this is a hard
+failure and not a warning.
+
+**A page with no focus.** A headless window is not the focused window, so
+``document.hasFocus()`` is false, nothing matches ``:focus`` or
+``:focus-visible``, and no capture can show a focus ring - including on the
+field a form callout has just put the caret in. CDP's
+``Emulation.setFocusEmulationEnabled`` makes the renderer treat the page as
+focused, which is the state the person looking at the screen is in.
+
 ``.impeccable/review/web-frame.html`` does the same job by hand for a human
 with a real browser open: it iframes an arbitrary app URL at a fixed size.
 
@@ -122,7 +141,62 @@ PAGE_POLL_INTERVAL_S = 0.05
 # is never caught halfway.
 SETTLE_S = 0.25
 
+# How long a page may keep a request in flight after it has otherwise gone
+# quiet. See QUIET_PROBE: the screens fetch their callouts *after* the load
+# event, so "ready" is not the same thing as "finished".
+QUIET_TIMEOUT_S = 10.0
+
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+
+# Installed before any of the page's own scripts run, so it sees the first
+# request the page makes.
+#
+# Every screen in this set fetches the selected row's callout *after* the load
+# event - sheet.js selects on DOMContentLoaded, htmx hears `sheet:select` and
+# does an XHR - so `readyState === "complete"` is reached with the callout
+# still in the air. Measured on loopback, it lands 8-22 ms after complete,
+# which SETTLE_S covered by luck rather than by design: nothing here waited for
+# it and nothing checked it had arrived, so a slower machine would have filed a
+# sheet with no callout on it and no one would have known. This counts requests
+# instead, and the shutter waits for the count to reach zero.
+QUIET_PROBE = """
+(() => {
+  window.__capturePending = 0;
+  const send = XMLHttpRequest.prototype.send;
+  XMLHttpRequest.prototype.send = function (...args) {
+    window.__capturePending += 1;
+    this.addEventListener(
+      "loadend",
+      () => { window.__capturePending -= 1; },
+      { once: true }
+    );
+    return send.apply(this, args);
+  };
+  const fetch0 = window.fetch;
+  if (fetch0) {
+    window.fetch = function (...args) {
+      window.__capturePending += 1;
+      return fetch0.apply(this, args).finally(() => {
+        window.__capturePending -= 1;
+      });
+    };
+  }
+})();
+"""
+
+# The one thing a screenshot of this design set can be silently wrong about.
+# A row the engine has selected carries `hx-get` (the parts_row contract), and
+# its callout belongs in `#row-callout`; an empty host next to a selected row
+# means the fragment never arrived, which looks like a perfectly ordinary
+# sheet. Checked after the wait, so the failure is loud.
+CALLOUT_CHECK = """
+(() => {
+  const row = document.querySelector('.bom-row[aria-selected="true"][hx-get]');
+  const host = document.getElementById("row-callout");
+  if (!row || !host) return "";
+  return host.children.length ? "" : (row.dataset.id || "(unnamed row)");
+})()
+"""
 
 
 class CaptureError(Exception):
@@ -636,7 +710,23 @@ def start_chrome(profile_dir: str) -> tuple:
                 if t.get("type") == "page" and t.get("webSocketDebuggerUrl")
             ]
             if pages:
-                return process, DevTools(pages[0]["webSocketDebuggerUrl"])
+                devtools = DevTools(pages[0]["webSocketDebuggerUrl"])
+                # Page has to be enabled before a new-document script sticks.
+                devtools.call("Page.enable")
+                devtools.call(
+                    "Page.addScriptToEvaluateOnNewDocument",
+                    {"source": QUIET_PROBE},
+                )
+                # A headless window is not the focused window, so
+                # document.hasFocus() is false, nothing matches :focus, and no
+                # capture can show a focus ring - including the ring on the
+                # field a callout has just put the caret in. This tells the
+                # renderer to treat the page as focused, which is the state a
+                # person looking at this screen would be in.
+                devtools.call(
+                    "Emulation.setFocusEmulationEnabled", {"enabled": True}
+                )
+                return process, devtools
         except (urllib.error.URLError, OSError, ValueError):
             pass
         time.sleep(SERVER_POLL_INTERVAL_S)
@@ -739,7 +829,31 @@ def capture(devtools: DevTools, url: str, width: int, height: int) -> tuple:
                 f"{url} was not ready within {PAGE_READY_TIMEOUT_S:.0f}s"
             )
         time.sleep(PAGE_POLL_INTERVAL_S)
+
+    # Ready is not finished: the callout is fetched after the load event. The
+    # counter is asserted rather than read defensively, because a missing one
+    # would silently put the shutter back on the luck it was taken off.
+    if devtools.evaluate("typeof window.__capturePending") != "number":
+        raise CaptureError(
+            f"the in-flight request counter never installed at {url}; without "
+            "it a capture cannot be trusted to have its callout in it"
+        )
+    deadline = time.monotonic() + QUIET_TIMEOUT_S
+    while devtools.evaluate("window.__capturePending"):
+        if time.monotonic() > deadline:
+            raise CaptureError(
+                f"{url} still had a request in flight after "
+                f"{QUIET_TIMEOUT_S:.0f}s"
+            )
+        time.sleep(PAGE_POLL_INTERVAL_S)
     time.sleep(SETTLE_S)
+
+    missing = devtools.evaluate(CALLOUT_CHECK)
+    if missing:
+        raise CaptureError(
+            f"no callout at {url}: the row {missing} is selected and asks for "
+            "one, but #row-callout is empty"
+        )
 
     actual = devtools.evaluate("window.innerWidth")
     if actual != width:
