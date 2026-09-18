@@ -803,6 +803,20 @@ textarea.input {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  /* An odd number of actions - the register's Open, Duplicate, Download - leaves the second half
+     of the last row empty, and the strip paints its background in ink so that the gaps between
+     cells read as rules. The empty cell therefore comes out as a solid black rectangle beside the
+     last action. Giving an odd last action the whole row ends the strip on a cell instead of on a
+     void. Found by the phase 5c capture pass and brought back here from the application's own
+     stylesheet, so that the next capture compares against a mockup that agrees.
+
+     `:last-child:nth-child(odd)` assumes the action cells are the only children of
+     `.strip-actions`; put anything else in there and the count it is counting is not the one
+     this rule means. */
+  .strip-action:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+
   .strip-action {
     min-height: 2.75rem;
   }
