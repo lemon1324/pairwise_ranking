@@ -497,7 +497,12 @@
       const scopes = [host, document.getElementById("sheet")].filter(Boolean);
       for (const scope of scopes) {
         for (const el of scope.querySelectorAll("[data-sheet-key]")) {
-          if (el.disabled || el.hidden || el.offsetParent === null) continue;
+          // getClientRects(), not offsetParent: offsetParent is null for every element in a
+          // fixed-position subtree, visible or not, so a key declared on a phone tab bar or on
+          // anything a later screen pins would be silently unpressable. Both answer "nothing is
+          // drawn here" for display:none, which is the case this is really asking about - a row
+          // folded onto a continuation sheet that is not the one on screen.
+          if (el.disabled || el.hidden || !el.getClientRects().length) continue;
           const keys = el.dataset.sheetKey.split(/\s+/);
           if (keys.some((k) => (k.length === 1 ? k.toLowerCase() : k) === wanted)) return el;
         }

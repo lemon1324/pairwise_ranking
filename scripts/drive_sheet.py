@@ -50,6 +50,11 @@ What is checked, and why each one is here:
     keystroke replaces the draft - but a field carrying a name that was just
     refused is not, because those are the words the person typed.
 
+``key-on-fixed``
+    A verb declared on a `position: fixed` element - a phone tab bar, anything
+    a later screen pins - can still be pressed, while one on a `display: none`
+    element cannot.
+
 ``short-window``
     A window too short for the title block to sit under the last column. The
     fold must degrade to fewer rows a sheet, not to one row a sheet - which is
@@ -583,6 +588,49 @@ def check_autofocus_select(devtools: DevTools, base: str) -> str:
     )
 
 
+def check_key_on_fixed(devtools: DevTools, base: str) -> str:
+    """
+    Check that a verb declared on a pinned element can still be pressed.
+
+    Args:
+        devtools: The CDP session.
+        base: The server's base URL.
+
+    Returns:
+        str: What was measured, for the log.
+    """
+    open_page(devtools, f"{base}/", *PHONE)
+    devtools.evaluate(
+        """
+        (() => {
+          window.__pressed = [];
+          const make = (key, css) => {
+            const b = document.createElement("button");
+            b.type = "button";
+            b.dataset.sheetKey = key;
+            b.textContent = key;
+            b.style.cssText = css;
+            b.addEventListener("click", () => window.__pressed.push(key));
+            document.getElementById("sheet").append(b);
+          };
+          // What a phone tab bar is, and what nothing on the sheet may be.
+          make("Q", "position:fixed;left:0;bottom:0");
+          make("W", "position:static");
+          make("E", "display:none");
+          return true;
+        })()
+        """
+    )
+    for key in ("q", "w", "e"):
+        press(devtools, key)
+    pressed = devtools.evaluate("window.__pressed")
+
+    expect("Q" in pressed, "a key declared on a fixed element was not pressed")
+    expect("W" in pressed, "a key declared on an ordinary element was not pressed")
+    expect("E" not in pressed, "a key declared on a hidden element was pressed")
+    return f"pressed {pressed} of Q (fixed), W (in flow), E (display:none)"
+
+
 def check_short_window(devtools: DevTools, base: str) -> str:
     """
     Check the fold in a window too short for the title block to clear.
@@ -626,6 +674,7 @@ CHECKS = {
     "page-then-arrow": check_page_then_arrow,
     "escape-in-field": check_escape_in_field,
     "autofocus-select": check_autofocus_select,
+    "key-on-fixed": check_key_on_fixed,
     "short-window": check_short_window,
 }
 
