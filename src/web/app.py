@@ -29,6 +29,7 @@ from src.data.errors import NewerFormatError, ProjectFormatError
 
 from .config import WebConfig, load_config
 from .registry import ProjectNotFoundError, ProjectRegistry, ProjectUnreadableError
+from .routes import placeholder
 
 
 logger = logging.getLogger(__name__)
@@ -193,6 +194,10 @@ def create_app(config: Optional[WebConfig] = None) -> FastAPI:
     )
 
     _install_error_handlers(app)
+
+    # After the handlers, so a route that raises on its first request is
+    # already answered by a page rather than by a bare traceback.
+    app.include_router(placeholder.router)
 
     @app.get("/healthz", include_in_schema=False)
     async def healthz() -> JSONResponse:

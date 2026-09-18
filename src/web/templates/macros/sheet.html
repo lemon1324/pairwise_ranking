@@ -1,0 +1,78 @@
+{#
+  The small drafting marks every sheet uses: icons, key legends, tags and item
+  balloons. Screens import these rather than writing the markup out, because
+  each of them carries an accessibility decision that should be made once.
+#}
+
+{#
+  icon(name, extra_class="")
+
+  One line icon from the sprite in base.html.
+
+    name         the symbol id without the "i-" prefix, e.g. "warn", "plus".
+    extra_class  extra classes on the <svg>, e.g. a sizing class.
+
+  Always decorative: an icon here repeats something the words beside it already
+  say, so it is hidden from assistive technology rather than labelled.
+#}
+{% macro icon(name, extra_class="") -%}
+<svg class="icon{% if extra_class %} {{ extra_class }}{% endif %}" aria-hidden="true"><use href="#i-{{ name }}"/></svg>
+{%- endmacro %}
+
+{#
+  key(*legends)
+
+  A keyboard shortcut drawn as a ruled mono cell. Several arguments give
+  several cells side by side, as the up/down pair does.
+
+    legends  the text in each cell, e.g. "N", "Del", "Pg↑↓".
+
+  Not marked up as a <kbd>: this is the drawing's legend for a key, and the
+  element that actually owns the shortcut carries aria-keyshortcuts, which is
+  what assistive technology reads. Left unhidden so it can still be read aloud
+  in the keys block, where the legend *is* the content.
+#}
+{% macro key() -%}
+{% for legend in varargs %}<span class="key">{{ legend }}</span>{% endfor %}
+{%- endmacro %}
+
+{#
+  tag(text)
+
+  A ruled condensed label: RETIRED, NO SLOT, NEW, or a file's condition on the
+  register. The non-colour twin of a row state, so it is real text and never
+  truncates - see .bom-nameline in bom.css for how it survives a long name.
+
+    text  the words in the tag.
+#}
+{% macro tag(text) -%}
+<span class="tag">{{ text }}</span>
+{%- endmacro %}
+
+{#
+  balloon(short, full=none, extra_class="")
+
+  The circled slot identifier of a parts list.
+
+    short        the short label, at most 2 characters (src.app.slots).
+    full         the slot's full name, when it differs from the short label.
+    extra_class  extra classes, e.g. a size variant on a blinded view.
+
+  The visible glyph is hidden from assistive technology and the full name is
+  given as visually hidden text beside it, so a screen reader says "Slot
+  Apostrophe" where the sheet shows "'". The mockups used aria-label on a bare
+  <span>, which many screen readers ignore because the span has no role;
+  DESIGN.md's open issues call that out as a thing to fix here. The title
+  attribute stays for the mouse, as the Short Label Rule asks.
+
+  With no slot the balloon is a dashed empty ring, hidden outright: a NO SLOT
+  tag in the status column says it in words, and two announcements of the same
+  fact is one too many.
+#}
+{% macro balloon(short, full=none, extra_class="") -%}
+{%- if short -%}
+<span class="balloon{% if extra_class %} {{ extra_class }}{% endif %}" title="Slot {{ full or short }}"><span aria-hidden="true">{{ short }}</span><span class="visually-hidden">Slot {{ full or short }}</span></span>
+{%- else -%}
+<span class="balloon is-empty{% if extra_class %} {{ extra_class }}{% endif %}" aria-hidden="true">&ndash;</span>
+{%- endif -%}
+{%- endmacro %}
