@@ -751,12 +751,37 @@ class TestRowCallout(RegisterTestCase):
         self.assertIn('aria-keyshortcuts="Enter"', action.group(0))
 
     def test_an_old_format_file_keeps_every_action_and_says_what_opening_does(self):
-        """Test that the upgrade is stated before it happens, not after."""
+        """
+        Test that the upgrade is stated before it happens, not after.
+
+        And that the file it leaves behind is named. Migration writes the
+        original to the project's own name with the version in the suffix, so
+        the name is derivable from the row and there is no reason to say "a
+        backup" and leave someone hunting for it. The desktop path's shared
+        `reason` still says "a backup", which is all it can say.
+        """
         body = self.callout("Beta.pairrank")
 
         self.assertIn('href="/projects/Beta.pairrank/open"', body)
         self.assertIn('hx-get="/projects/Beta.pairrank/duplicate"', body)
-        self.assertIn("backup", body)
+        self.assertIn(f"version {CURRENT_FORMAT_VERSION}", body)
+        self.assertIn("Beta.pairrank.v1.bak", body)
+
+    def test_the_backup_the_callout_names_is_the_one_opening_writes(self):
+        """
+        Test that the two sentences about the same file agree.
+
+        The callout derives the backup's name from the row; the migration
+        writes it from the path. Nothing but this test holds the two together,
+        and a callout naming a file that never appears is worse than one that
+        says "a backup".
+        """
+        named = re.search(r"(\S+\.pairrank\.v\d+\.bak)", self.callout("Beta.pairrank"))
+        self.assertIsNotNone(named)
+
+        self.client.get("/projects/Beta.pairrank/open", follow_redirects=False)
+
+        self.assertIn(named.group(1), {p.name for p in self.data_dir.iterdir()})
 
     def test_a_newer_format_file_offers_only_download(self):
         """Test that nothing is offered that this application cannot do."""

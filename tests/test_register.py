@@ -134,6 +134,40 @@ class TestProbeProjectFile(RegisterTestCase):
                 self.assertEqual(info.condition, ProjectCondition.OLD_FORMAT)
                 self.assertIn("upgrade", info.reason)
 
+    def test_an_old_file_names_the_backup_migrating_it_would_leave(self):
+        """
+        Test that the row can say what the original will be called.
+
+        `reason` can only say "a backup", because it is shared with paths that
+        have nothing to name. The name itself is derivable - migration writes
+        the original to the file's own name with the version in the suffix -
+        so a screen offering to open an old file can say where the original
+        goes, which is the difference between a reassurance and a sentence.
+        """
+        for version in [1, 2]:
+            with self.subTest(version=version):
+                path = self.temp_dir / f"old-{version}.pairrank"
+                write_project(path, version=version)
+
+                info = probe_project_file(path)
+
+                self.assertEqual(info.format_version, version)
+                self.assertEqual(
+                    info.backup_name, f"old-{version}.pairrank.v{version}.bak"
+                )
+
+    def test_only_an_old_file_names_a_backup(self):
+        """Test that a file no migration will run on names no backup."""
+        for version, condition in (
+            (CURRENT_FORMAT_VERSION, "current"),
+            (FUTURE_VERSION, "newer"),
+        ):
+            with self.subTest(condition=condition):
+                path = self.temp_dir / f"{condition}.pairrank"
+                write_project(path, version=version)
+
+                self.assertEqual(probe_project_file(path).backup_name, "")
+
     def test_newer_file_is_tagged_newer_format(self):
         """Test that a file from a newer application is tagged, not rejected."""
         path = self.temp_dir / "future.pairrank"

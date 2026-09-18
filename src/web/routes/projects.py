@@ -59,6 +59,7 @@ from src.app.register import (
     unique_file_name,
 )
 from src.data.errors import ProjectFormatError
+from src.data.format_version import CURRENT_FORMAT_VERSION
 from src.data.project_storage import ProjectStorage
 
 from ..config import WebConfig
@@ -127,6 +128,19 @@ DONE_NOTES = {
 STANDING_NOTE = (
     "Every .pairrank file in {directory} is listed. Copy projects from the "
     "desktop app into the appdata share to see them here."
+)
+
+# What the old-format callout says opening the file will do.
+#
+# Not `info.reason`, which says "keeps a backup of the original beside it" and
+# is shared with the desktop path, where nothing is in a position to name the
+# file. Here the name is derivable - migration writes the original to the
+# project's own name with the version in the suffix, so Foo.pairrank leaves
+# Foo.pairrank.v1.bak - and naming it is what the mockup does, because "a
+# backup" is only reassuring if you can find it afterwards.
+UPGRADE_NOTE = (
+    "The file is in format version {version}. Opening it upgrades it to "
+    "version {current} and keeps the original beside it as {backup}."
 )
 
 # How the register writes a timestamp. No seconds: this is when a project was
@@ -789,6 +803,15 @@ async def project_callout(
         "old_format": info.condition is ProjectCondition.OLD_FORMAT,
         "newer_format": info.condition is ProjectCondition.NEWER_FORMAT,
         "unreadable": info.condition is ProjectCondition.UNREADABLE,
+        "upgrade_note": (
+            UPGRADE_NOTE.format(
+                version=info.format_version,
+                current=CURRENT_FORMAT_VERSION,
+                backup=info.backup_name,
+            )
+            if info.condition is ProjectCondition.OLD_FORMAT
+            else ""
+        ),
         "open_url": project_url(request, info.file_name, "open"),
         "duplicate_url": project_url(request, info.file_name, "duplicate"),
         "download_url": project_url(request, info.file_name, "download"),
