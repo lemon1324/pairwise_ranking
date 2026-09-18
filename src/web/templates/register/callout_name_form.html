@@ -36,7 +36,16 @@
       </div>
       {% if detail %}<p class="field-hint field-wide">{{ detail }}</p>{% endif %}
       <div class="strip-buttons">
-        <button class="cell-button is-primary" type="submit">{{ submit_label }} {{ key("↵") }}</button>
+        {# Declared, not inherited. Enter submits this form by itself only
+           while the caret is in the name field - the browser's implicit
+           submission - and the engine deliberately leaves clicks inside
+           `#row-callout` alone, so clicking anywhere in the popover that is
+           not the input takes the caret out and kills the key the legend is
+           still drawing. Nothing in sheet.js makes Enter mean Save: it
+           presses whatever carries `data-sheet-key`, which the callout is
+           searched for before the sheet. #}
+        <button class="cell-button is-primary" type="submit"
+                data-sheet-key="Enter" aria-keyshortcuts="Enter">{{ submit_label }} {{ key("↵") }}</button>
         {# Escape belongs to the engine unless something claims it, and a form
            with unsaved words in it is exactly what should claim it. #}
         <a class="cell-button" href="{{ cancel_url }}" data-sheet-key="Escape"
