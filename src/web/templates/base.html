@@ -1,0 +1,153 @@
+{#
+  The sheet shell every screen is drawn on.
+
+  One sheet of one drawing set: a top bar with tabs, an optional notice strip,
+  then the zoned drawing frame that fills the rest of the viewport. A screen
+  fills `sheet_body` with what goes inside the frame, and that is nearly all
+  there is to overriding this.
+
+  Blocks, in the order they appear:
+
+    title          the <title>, before " - Pairwise Ranking".
+    body_class     extra classes on <body> (the error pages use `error-page`).
+    styles         stylesheets after sheet.css: bom.css, compare.css, settings.css.
+    head_extra     anything else in <head>.
+    icons          the SVG sprite. Overridden only to add symbols, by calling
+                   super() first; every `#i-` id the mockups use is here.
+    topbar         the whole top bar. Screens override `sheet_title`, `tabs` and
+                   `project_menu` rather than this.
+    sheet_title    the project name, shown in the bar on phones only (the
+                   register overrides it to show the app name at every width).
+    tabs           the four sheet tabs, in the bar and again in the phone bar.
+    project_menu   the Project cell at the far right of the bar.
+    notice         the notice strip under the bar (file changed on disk).
+    frame_class    extra classes on .frame-inner: `bom-sheet`, `spec-sheet`.
+    sheet_body     what is drawn inside the frame. Every screen fills this.
+    bottom_tabs    the sticky phone tab bar.
+    popover        the one row-callout host. See below before moving it.
+    scripts        page scripts, after htmx.
+
+  The popover host sits outside .sheet on purpose. Items, Rankings and the
+  register swap their parts list through HTMX as rows change, and a callout
+  inside the swapped region would be destroyed mid-edit along with the focus in
+  it. Phase 5a's folding engine owns this element: it fills it, positions it
+  beside the selected row and clears it. Nothing else may swap it away.
+#}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{% endblock %} &middot; Pairwise Ranking</title>
+
+  {# Theme. The stylesheet already follows prefers-color-scheme on its own, so
+     this only has to handle the two ways of overriding it: a remembered choice,
+     and ?theme= in the URL, which is how the capture harness asks for a sheet
+     in a named theme without driving the browser's own emulation. Inline and
+     before the stylesheet so the page is never painted in the wrong theme
+     first. #}
+  <script>
+    (function () {
+      try {
+        var q = new URLSearchParams(location.search).get("theme");
+        var t = q || localStorage.getItem("pairrank-theme");
+        if (t === "light" || t === "dark") {
+          document.documentElement.dataset.theme = t;
+        }
+      } catch (e) {
+        /* Private browsing refuses localStorage; the system theme is a fine answer. */
+      }
+    })();
+  </script>
+
+  {# Preloaded because the sheet is mostly figures and condensed caps: these two
+     faces are on screen before anything else is, and swapping them in late
+     reflows every ruled cell.
+
+     Every static URL here is url_for(...).path rather than url_for(...) itself.
+     Both carry a reverse proxy's prefix, which is the point of asking the
+     router at all, but url_for returns an absolute URL built from the request's
+     scheme and host: get one of those wrong - a proxy without --proxy-headers,
+     TLS terminated upstream - and the page loads with no stylesheet and no
+     fonts at all. The path alone cannot be wrong that way. #}
+  <link rel="preload" href="{{ url_for('static', path='fonts/barlow-400-latin.woff2').path }}" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="{{ url_for('static', path='fonts/jetbrains-mono-latin.woff2').path }}" as="font" type="font/woff2" crossorigin>
+
+  <link rel="stylesheet" href="{{ url_for('static', path='css/sheet.css').path }}">
+  {% block styles %}{% endblock %}
+  {% block head_extra %}{% endblock %}
+</head>
+<body class="{% block body_class %}{% endblock %}">
+  {# Line icons, drawn at the same 1.5 stroke as everything else on a sheet.
+     Inline rather than a sprite file so a fragment swapped in by HTMX can use
+     any of them without a second request. #}
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    {% block icons %}
+    <symbol id="i-arrow" viewBox="0 0 16 16"><path d="M3 8h10"/><path d="M9 4l4 4-4 4"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 16 16"><path d="M4 6l4 4 4-4"/></symbol>
+    <symbol id="i-download" viewBox="0 0 16 16"><path d="M8 2.5v8"/><path d="M4.5 7L8 10.5 11.5 7"/><path d="M2.5 13.5h11"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 16 16"><path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/></symbol>
+    <symbol id="i-eye-off" viewBox="0 0 16 16"><path d="M6.2 3.8A6.6 6.6 0 018 3.5C12 3.5 14.5 8 14.5 8a11.6 11.6 0 01-1.9 2.4M4.2 4.9A11 11 0 001.5 8S4 12.5 8 12.5a6.3 6.3 0 003.4-1"/><path d="M6.6 6.6a2 2 0 002.8 2.8"/><path d="M2 2l12 12"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3v10"/><path d="M3 8h10"/></symbol>
+    <symbol id="i-reload" viewBox="0 0 16 16"><path d="M13.5 8A5.5 5.5 0 113 5"/><path d="M2.5 1.8V5.3H6"/></symbol>
+    <symbol id="i-reset" viewBox="0 0 16 16"><path d="M2.5 8a5.5 5.5 0 105.5-5.5H5"/><path d="M6.5 1l-2 1.5L6.5 4"/></symbol>
+    <symbol id="i-rev" viewBox="0 0 14 14"><path d="M7 1.5L13 12.5H1z" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"/></symbol>
+    <symbol id="i-save" viewBox="0 0 16 16"><path d="M3 2.5h8l2 2v9H3z"/><path d="M5.5 2.5v3h5v-3"/><path d="M5.5 13.5v-4h5v4"/></symbol>
+    <symbol id="i-search" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></symbol>
+    <symbol id="i-skip" viewBox="0 0 16 16"><path d="M3 3.5l5 4.5-5 4.5"/><path d="M12.5 3.5v9"/></symbol>
+    <symbol id="i-undo" viewBox="0 0 16 16"><path d="M5.5 3.5L2.5 6.5l3 3"/><path d="M2.5 6.5h7a4 4 0 010 8h-3"/></symbol>
+    <symbol id="i-up" viewBox="0 0 16 16"><path d="M4 10l4-4 4 4"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 16 16"><path d="M8 10.5v-8"/><path d="M4.5 6L8 2.5 11.5 6"/><path d="M2.5 13.5h11"/></symbol>
+    <symbol id="i-warn" viewBox="0 0 16 16"><path d="M8 2L1.5 13.5h13z"/><path d="M8 6.5v3.2"/><path d="M8 11.6v.1"/></symbol>
+    {% endblock %}
+  </svg>
+
+  <div class="sheet" id="sheet">
+    {% block topbar %}
+    <header class="sheet-head">
+      {% block sheet_title %}
+        {% if project_name %}
+          {# Shown in the bar on phones only; wider sheets carry the name in the
+             title block's TITLE cell instead. #}
+          <div class="sheet-title">
+            <h1>{{ project_name }}</h1>
+          </div>
+        {% endif %}
+      {% endblock %}
+
+      {% block tabs %}{% endblock %}
+
+      {% block project_menu %}{% endblock %}
+    </header>
+    {% endblock %}
+
+    {% block notice %}{% endblock %}
+
+    <main class="frame" id="frame">
+      {# Zones per ASME Y14.1: numbers right to left, letters bottom to top, so
+         zone A1 is the lower-right corner. Numbers are listed high to low
+         because the stylesheet hides them from the left as the sheet narrows,
+         giving the 8 / 6 / 4 counts by frame width. #}
+      <ol class="zones zones-top" aria-hidden="true"><li>8</li><li>7</li><li>6</li><li>5</li><li>4</li><li>3</li><li>2</li><li>1</li></ol>
+      <ol class="zones zones-bottom" aria-hidden="true"><li>8</li><li>7</li><li>6</li><li>5</li><li>4</li><li>3</li><li>2</li><li>1</li></ol>
+      <ol class="zones zones-left" aria-hidden="true"><li>D</li><li>C</li><li>B</li><li>A</li></ol>
+      <ol class="zones zones-right" aria-hidden="true"><li>D</li><li>C</li><li>B</li><li>A</li></ol>
+
+      <div class="frame-inner{% block frame_class %}{% endblock %}">
+        {% block sheet_body %}{% endblock %}
+      </div>
+    </main>
+
+    {% block bottom_tabs %}{% endblock %}
+  </div>
+
+  {# The row callout's host: outside .sheet, and outside every region HTMX
+     swaps, so an open form survives the rows beneath it being replaced. Phase
+     5a fills, places and clears it. #}
+  {% block popover %}
+  <div id="row-callout" hidden></div>
+  {% endblock %}
+
+  <script src="{{ url_for('static', path='js/htmx.min.js').path }}" defer></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

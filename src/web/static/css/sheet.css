@@ -363,6 +363,14 @@ html {
   align-content: center;
 }
 
+/* A sheet with no project open - the register, an error page - has nothing to put in the title
+   block's TITLE cell, so its top bar carries the app name at every width instead. Moved here
+   from the mockups' bom.css: it belongs to the shell, and an error page draws the shell without
+   loading a parts list. */
+.sheet-title.is-app {
+  display: flex;
+}
+
 .sheet-title h1 {
   margin: 0;
   font-size: 1.125rem;

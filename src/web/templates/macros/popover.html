@@ -1,0 +1,98 @@
+{#
+  The row callout: the selected row's actions, form, confirmation or detail,
+  drawn as the one popover on the sheet.
+
+  These macros emit the callout itself, which routes return as a fragment
+  targeted at #row-callout - the empty host base.html keeps outside every
+  swapped region. Phase 5a's engine positions it beside the find-number column
+  and draws its leader; nothing here knows where on the sheet it will land.
+#}
+{% from "macros/sheet.html" import key, icon %}
+
+{#
+  popover(label, extra_class="")
+
+    label        the accessible name of the callout, e.g. the item's name.
+    extra_class  extra classes on the callout element.
+
+  Called with {% call %}; the caller emits one of the bodies below.
+
+  role="group" rather than "dialog": the callout does not trap focus, the sheet
+  behind it stays live, and Esc closes it the way clicking the selected row
+  again does. Calling it a dialog would promise modality the design refuses.
+#}
+{% macro popover(label, extra_class="") -%}
+<div class="bom-callout strip{% if extra_class %} {{ extra_class }}{% endif %}"
+     role="group" aria-label="{{ label }}">
+  {{ caller() }}
+</div>
+{%- endmacro %}
+
+{#
+  popover_actions(actions)
+
+    actions  a sequence of mappings, each with:
+               action  the name posted back, e.g. "retire".
+               label   the words on the cell.
+               key     the shortcut's legend, e.g. "R", "Del", "↵".
+               url     optional; an hx-get for the fragment this action opens.
+
+  A strip of equal cells sharing 1px ink gaps. The shortcut is declared with
+  aria-keyshortcuts as well as drawn, so the legend is a picture of something
+  assistive technology has actually been told about.
+#}
+{% macro popover_actions(actions) -%}
+<div class="strip-actions">
+  {% for action in actions %}
+  <button class="strip-action" type="button" data-action="{{ action.action }}"
+          {% if action.key %}aria-keyshortcuts="{{ action.key }}"{% endif %}
+          {% if action.url %}hx-get="{{ action.url }}" hx-target="#row-callout"{% endif %}>
+    {{ action.label }}{% if action.key %}{{ key(action.key) }}{% endif %}
+  </button>
+  {% endfor %}
+</div>
+{%- endmacro %}
+
+{#
+  popover_body(title=none, subtitle=none)
+
+    title     the title line of a form or detail.
+    subtitle  what follows it, e.g. an item's rank or category.
+
+  Called with {% call %}; the caller emits the form or the detail.
+#}
+{% macro popover_body(title=none, subtitle=none) -%}
+<div class="strip-body">
+  {% if title %}
+  <p class="strip-title">{{ title }}{% if subtitle %}<span class="label">{{ subtitle }}</span>{% endif %}</p>
+  {% endif %}
+  {{ caller() }}
+</div>
+{%- endmacro %}
+
+{#
+  popover_confirm(question, consequence, alternative=none)
+
+    question     the bold warn-coloured question, e.g. "Delete Gateron Oil King?"
+    consequence  what is lost, in words.
+    alternative  the gentler thing to do instead, when there is one.
+
+  Called with {% call %}; the caller emits the destructive and cancel buttons.
+
+  The warning box replaces the actions rather than stacking over them, and it
+  states the consequence in words: warn orange never carries the meaning by
+  itself.
+#}
+{% macro popover_confirm(question, consequence, alternative=none) -%}
+<div class="strip-confirm" role="alertdialog" aria-labelledby="confirm-question">
+  {{ icon("warn") }}
+  <div>
+    <p id="confirm-question"><strong>{{ question }}</strong></p>
+    <p>{{ consequence }}</p>
+    {% if alternative %}<p>{{ alternative }}</p>{% endif %}
+    <div class="strip-buttons">
+      {{ caller() }}
+    </div>
+  </div>
+</div>
+{%- endmacro %}

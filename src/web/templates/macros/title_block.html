@@ -1,0 +1,124 @@
+{#
+  The standard title block, which closes the lower-right corner of every sheet
+  in the set.
+
+  DESIGN.md fixes its grammar: 40rem wide, a full-height KEYS block at the left
+  edge, TITLE and FILE across the top, SHEET n OF N in the bottom-right cell,
+  and everything else placed into a six-column grid by spans alone. A new sheet
+  composes cells inside `title_block`; it does not invent a status panel of its
+  own.
+#}
+{% from "macros/sheet.html" import key, icon %}
+
+{#
+  title_block(rows, with_keys=true, label="Title and controls", extra_class="")
+
+    rows         how many grid rows the block has. The keys block spans them
+                 all, so it has to be told, and CSS cannot count them.
+    with_keys    false only for a sheet with no keys at all; every sheet in the
+                 set has some, so this is nearly always left alone.
+    label        the accessible name of the region.
+    extra_class  extra classes, e.g. a sheet-specific modifier.
+
+  Called with {% call %}; the caller emits the cells.
+#}
+{% macro title_block(rows, with_keys=true, label="Title and controls", extra_class="") -%}
+<section class="titleblock{% if with_keys %} tb-with-keys{% endif %}{% if extra_class %} {{ extra_class }}{% endif %}"
+         aria-label="{{ label }}" style="--tb-rows: {{ rows }}">
+  {{ caller() }}
+</section>
+{%- endmacro %}
+
+{#
+  keys_block(keys, caption="Keys")
+
+    keys     a sequence of (legends, verb) pairs, where legends is a list of key
+             legends shown together: [(["↑", "↓"], "select"), (["N"], "new")].
+    caption  the cell's drafting label.
+
+  Sits at the left edge of the title block and runs its full height, the way a
+  standard-tolerance block sits in a drawing's. Keys live here on every sheet,
+  Compare included; notes are for caveats, not shortcuts.
+#}
+{% macro keys_block(keys, caption="Keys") -%}
+<div class="tb-cell tb-keyblock">
+  <span class="label">{{ caption }}</span>
+  <ul class="tb-keylist">
+    {% for legends, verb in keys %}
+    <li><span>{% for legend in legends %}{{ key(legend) }}{% endfor %}</span> {{ verb }}</li>
+    {% endfor %}
+  </ul>
+</div>
+{%- endmacro %}
+
+{#
+  tb_title(title, caption="Title")
+
+    title    the project's name, or "Drawing register" on the picker.
+    caption  the cell's drafting label.
+
+  The first cell of the first row on every sheet. It carries the <h1>: the
+  sheet's name belongs to the drawing, not to the top bar, which only shows it
+  on phones where this cell is hidden.
+#}
+{% macro tb_title(title, caption="Title") -%}
+<div class="tb-cell tb-title span-3">
+  <span class="label">{{ caption }}</span>
+  <h1 class="tb-title-text">{{ title }}</h1>
+</div>
+{%- endmacro %}
+
+{#
+  tb_file(text, caption="File", warn=false)
+
+    text     the file name, or the data directory on the register.
+    caption  the cell's drafting label.
+    warn     true when the name itself is the problem being reported.
+#}
+{% macro tb_file(text, caption="File", warn=false) -%}
+<div class="tb-cell tb-file span-3">
+  <span class="label">{{ caption }}</span>
+  <span class="tb-file-text{% if warn %} is-warn{% endif %}">{% if warn %}{{ icon("warn") }}{% endif %}{{ text }}</span>
+</div>
+{%- endmacro %}
+
+{#
+  tb_sheet(current, total, paged=false, caption="Sheet")
+
+    current  the sheet on screen, from 1.
+    total    how many sheets the rows fold into.
+    paged    true to draw the previous and next cell buttons, which a sheet
+             that has only ever one page does not need.
+    caption  the cell's drafting label.
+
+  Always the bottom-right cell of the title block, as on a drawing.
+#}
+{% macro tb_sheet(current, total, paged=false, caption="Sheet") -%}
+<div class="tb-cell tb-sheet span-2">
+  <span class="label">{{ caption }}</span>
+  <div class="tb-pager">
+    <span class="num" id="sheet-no">{{ current }} of {{ total }}</span>
+    {% if paged %}
+    <button class="cell-button" type="button" id="page-prev" aria-label="Previous sheet" aria-keyshortcuts="PageUp">{{ icon("up") }}</button>
+    <button class="cell-button" type="button" id="page-next" aria-label="Next sheet" aria-keyshortcuts="PageDown">{{ icon("chevron") }}</button>
+    {% endif %}
+  </div>
+</div>
+{%- endmacro %}
+
+{#
+  tb_cell(caption, span=2, extra_class="", phone_wide=false)
+
+    caption      the cell's drafting label, or none for a cell with no caption.
+    span         how many of the six columns the cell takes.
+    extra_class  extra classes, e.g. tb-press for an action cell.
+    phone_wide   true for a cell that takes the full width of the phone grid.
+
+  Called with {% call %}; the caller emits the cell's content under the label.
+#}
+{% macro tb_cell(caption, span=2, extra_class="", phone_wide=false) -%}
+<div class="tb-cell span-{{ span }}{% if phone_wide %} phone-wide{% endif %}{% if extra_class %} {{ extra_class }}{% endif %}">
+  {% if caption %}<span class="label">{{ caption }}</span>{% endif %}
+  {{ caller() }}
+</div>
+{%- endmacro %}

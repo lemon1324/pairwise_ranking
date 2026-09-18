@@ -1,23 +1,35 @@
 {#
   The shell every error page shares.
 
-  Deliberately plain: phase 4b brings in the sheet shell, the stylesheets and
-  the self-hosted fonts, and this becomes `{% extends "base.html" %}` with the
-  message dropped into the sheet body. Keeping the markup semantic and the
-  class names in the sheet's vocabulary is what makes that a swap rather than a
-  rewrite, so please add structure here rather than styling.
-#}<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Error{% endblock %} &middot; Pairwise Ranking</title>
-</head>
-<body class="error-page">
-  <main class="error-sheet">
+  A sheet of the same set as every other screen, so that something going wrong
+  does not look like it happened in a different application: the frame and its
+  zones are drawn as usual and the message sits in the drawing area as a dashed
+  ghost box, the device an empty parts list already uses.
+
+  There are no sheet tabs and no title block. An error page is reached without
+  an open project - often without knowing which project was meant - so there is
+  nothing for the tabs to switch between and nothing to put in a TITLE cell.
+
+  `home_url` comes from `_render_error` in src/web/app.py rather than from
+  url_for, because the picker route it points at does not exist until phase 5
+  and an error page that errors while rendering is no use to anybody.
+#}
+{% extends "base.html" %}
+
+{% block title %}Error{% endblock %}
+
+{% block body_class %}error-page{% endblock %}
+
+{% block sheet_title %}
+  <div class="sheet-title is-app">
+    <h1>Pairwise Ranking</h1>
+  </div>
+{% endblock %}
+
+{% block sheet_body %}
+  <div class="error-sheet">
     <h1>{% block heading %}{{ self.title() }}{% endblock %}</h1>
     {% block body %}{% endblock %}
     <p class="error-actions"><a href="{{ home_url }}">Back to the drawing register</a></p>
-  </main>
-</body>
-</html>
+  </div>
+{% endblock %}
