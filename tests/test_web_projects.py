@@ -34,10 +34,12 @@ from src.data.project_storage import ProjectStorage
 from src.web.app import DAMAGED_STATUS, NEWER_FORMAT_STATUS, create_app
 from src.web.config import WebConfig
 from src.web.routes.projects import (
+    DONE_NOTES,
     GHOST_ROW_ID,
     IMPORT_ERRORS,
     MAX_IMPORT_BYTES,
     NO_FIGURE,
+    STANDING_NOTE,
 )
 from src.web.urls import DEFAULT_SHEET
 
@@ -155,6 +157,25 @@ def row_of(body: str, project_id: str) -> str:
         re.S,
     )
     return match.group(0) if match else ""
+
+
+def note_of(body: str) -> str:
+    """
+    Read the sentence in the title block's Note cell.
+
+    Args:
+        body: The rendered page.
+
+    Returns:
+        str: The note, whitespace collapsed, or an empty string when the sheet
+        drew no Note cell at all.
+    """
+    match = re.search(
+        r'<span class="label">Note</span>\s*<p class="tb-text">(.*?)</p>',
+        body,
+        re.S,
+    )
+    return re.sub(r"\s+", " ", match.group(1)).strip() if match else ""
 
 
 class RegisterTestCase(unittest.TestCase):
@@ -513,6 +534,137 @@ class TestEmptyRegister(RegisterTestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertNotIn(f'data-id="{GHOST_ROW_ID}"', response.text)
+
+
+class TestRegisterNote(RegisterTestCase):
+    """
+    Test cases for the Note cell, the one place the register reports itself.
+
+    Every mutation redirects with ``done=`` and ``selected=`` on the query, and
+    this cell is the only thing on the sheet that reads them: it is how someone
+    who has just pressed Create learns that a file appeared and what it was
+    called. The rest of the suite asserts the redirect and stops there, so
+    until these were written the whole of ``_note`` could have rendered nothing
+    and every other test would still have passed - the same shape of mistake as
+    the `row.items` bug, which also rendered silently and wrongly.
+
+    The file name in a note comes from the register's own scan and never from
+    the query, so a browser cannot put words on the sheet; the two fallback
+    cases below are what enforce that.
+    """
+
+    def seed(self):
+        """Put one project on the register to act on."""
+        self.write_project("Alpha.pairrank", name="Alpha", items=3, votes=2)
+
+    def standing(self) -> str:
+        """
+        Build the note the register carries when nothing has just happened.
+
+        Returns:
+            str: The sentence, as the template would have rendered it.
+        """
+        return STANDING_NOTE.format(directory=self.data_dir)
+
+    def note(self, query: str = "") -> str:
+        """
+        Fetch the register and read its Note cell.
+
+        Args:
+            query: A query string to fetch it with, "?done=..." and all.
+
+        Returns:
+            str: The note.
+        """
+        return note_of(self.client.get(f"/{query}").text)
+
+    def test_the_standing_note_says_what_the_register_lists(self):
+        """Test that the resting state names the directory and the way in."""
+        self.assertEqual(self.note(), self.standing())
+        self.assertIn(str(self.data_dir), self.note())
+
+    def test_creating_says_so_on_the_sheet_it_returns_to(self):
+        """Test that the redirect's done= reaches the cell as a sentence."""
+        response = self.client.post(
+            "/projects/new", data={"name": "Keyswitches"}, follow_redirects=True
+        )
+
+        self.assertEqual(note_of(response.text), "Created Keyswitches.pairrank.")
+
+    def test_duplicating_says_what_it_did_not_copy(self):
+        """Test that the copy's note names the file and the votes it dropped."""
+        response = self.client.post(
+            "/projects/Alpha.pairrank/duplicate",
+            data={"name": "Alpha copy"},
+            follow_redirects=True,
+        )
+
+        self.assertEqual(
+            note_of(response.text), "Duplicated Alpha copy.pairrank, without votes."
+        )
+
+    def test_importing_says_the_name_the_file_actually_landed_under(self):
+        """
+        Test that the note reports the written name, not the uploaded one.
+
+        An import of a name already on the register is suffixed rather than
+        overwritten, so the sentence has to come from the file that appeared.
+        """
+        raw = json.dumps(project_data(name="Alpha", items=1, votes=0)).encode()
+
+        response = self.client.post(
+            "/projects/import",
+            files={"file": ("Alpha.pairrank", raw, "application/json")},
+            follow_redirects=True,
+        )
+
+        self.assertEqual(note_of(response.text), "Imported Alpha (2).pairrank.")
+
+    def test_every_mutation_has_a_sentence_of_its_own(self):
+        """Test that no two mutations report themselves the same way."""
+        notes = {
+            done: note_of(
+                self.client.get(f"/?done={done}&selected=Alpha.pairrank").text
+            )
+            for done in DONE_NOTES
+        }
+
+        self.assertEqual(len(set(notes.values())), len(DONE_NOTES))
+        for done, sentence in notes.items():
+            with self.subTest(done=done):
+                self.assertIn("Alpha.pairrank", sentence)
+                self.assertNotEqual(sentence, self.standing())
+
+    def test_a_done_for_a_file_that_is_not_listed_falls_back(self):
+        """
+        Test that a note is only drawn about a file the register can see.
+
+        The name is taken from the row, so a query naming a file that is not
+        there has nothing to name and the standing note is the honest answer.
+        """
+        self.assertEqual(
+            self.note("?done=created&selected=Ghost.pairrank"), self.standing()
+        )
+
+    def test_a_done_nothing_writes_falls_back(self):
+        """Test that an invented code draws the standing note, not an error."""
+        self.assertEqual(
+            self.note("?done=deleted&selected=Alpha.pairrank"), self.standing()
+        )
+
+    def test_the_note_never_repeats_what_the_query_said(self):
+        """
+        Test that nothing a browser sends is echoed into the cell.
+
+        `selected` is a file name from the query and the note is a sentence on
+        the sheet; the only thing joining them is a lookup in the register's
+        own scan, which is what keeps the second from being written by the
+        first.
+        """
+        note = self.note("?done=created&selected=%3Cb%3Eoops%3C%2Fb%3E")
+
+        self.assertEqual(note, self.standing())
+        self.assertNotIn("oops", note)
 
 
 class TestRowCallout(RegisterTestCase):
