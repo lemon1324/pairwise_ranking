@@ -1,0 +1,21 @@
+{% extends "errors/_layout.html" %}
+
+{% block title %}This project needs a newer version{% endblock %}
+
+{% block body %}
+  <p>
+    This project file was written by a newer version of Pairwise Ranking than
+    the one running here. Nothing is wrong with the file, and nothing here can
+    read it: it holds data this version has never heard of.
+  </p>
+  {% if file_version and supported_version %}
+    <p class="error-detail">
+      The file is in format version {{ file_version }}. This version of the
+      application understands version {{ supported_version }}.
+    </p>
+  {% endif %}
+  <p>
+    Update the application and open the project again. Opening it with an older
+    version could only be done by throwing away what it does not understand.
+  </p>
+{% endblock %}

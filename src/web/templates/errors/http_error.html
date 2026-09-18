@@ -1,0 +1,12 @@
+{% extends "errors/_layout.html" %}
+
+{% block title %}Request refused{% endblock %}
+
+{% block heading %}{{ status_code }} &middot; request refused{% endblock %}
+
+{% block body %}
+  <p>That request could not be served.</p>
+  {% if detail %}
+    <p class="error-detail">{{ detail }}</p>
+  {% endif %}
+{% endblock %}
