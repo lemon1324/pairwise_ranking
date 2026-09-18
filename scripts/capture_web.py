@@ -8,9 +8,13 @@ per width per theme into ``.impeccable/review/``.
 
 Usage (from WSL, with the Windows venv - see "Why the Windows venv" below)::
 
+    mkdir -p ../capture-data
     ./.venv/Scripts/python.exe scripts/capture_web.py \\
-        --data-dir /tmp/capture-data \\
+        --data-dir ../capture-data \\
         /_sheet items=/projects/demo/items
+
+The data directory has to live somewhere Windows can see - under ``/mnt/...``,
+not in WSL's own filesystem, which the server process cannot reach at all.
 
 Each positional argument is an app path, optionally prefixed with ``label=`` to
 name the files. Without a label the path is slugified: ``/_sheet`` becomes
@@ -682,7 +686,7 @@ def png_size(data: bytes) -> tuple:
     return width, height
 
 
-def capture(devtools: DevTools, url: str, width: int, height: int) -> bytes:
+def capture(devtools: DevTools, url: str, width: int, height: int) -> tuple:
     """
     Load one URL at one viewport and photograph it.
 
@@ -693,7 +697,9 @@ def capture(devtools: DevTools, url: str, width: int, height: int) -> bytes:
         height: The CSS pixel height.
 
     Returns:
-        bytes: The PNG.
+        tuple: ``(png_bytes, measured_width)``. The measured width is handed
+        back rather than assumed so the log line quotes what the page actually
+        did, not what it was told to do.
 
     Raises:
         CaptureError: If the page never became ready, or laid out at a width
@@ -751,7 +757,7 @@ def capture(devtools: DevTools, url: str, width: int, height: int) -> bytes:
             f"screenshot size mismatch at {url}: asked for {width}x{height}, "
             f"got {shot_width}x{shot_height}"
         )
-    return data
+    return data, actual
 
 
 def run(args: argparse.Namespace) -> int:
@@ -786,7 +792,11 @@ def run(args: argparse.Namespace) -> int:
         else:
             data_dir = windows_path(args.data_dir)
             if not Path(data_dir).is_dir():
-                raise CaptureError(f"no such data directory: {data_dir}")
+                raise CaptureError(
+                    f"no such data directory: {data_dir} (it has to be under "
+                    "/mnt/... - the server is a Windows process and cannot see "
+                    "WSL's own filesystem)"
+                )
             server = start_server(data_dir, args.port)
             base_url = f"http://127.0.0.1:{args.port}"
             print(f"{PROGRAM}: serving {data_dir} at {base_url}")
@@ -797,12 +807,13 @@ def run(args: argparse.Namespace) -> int:
             for width, height in args.sizes:
                 for theme in args.themes:
                     url = with_theme(base_url + path, theme)
-                    data = capture(devtools, url, width, height)
+                    data, measured = capture(devtools, url, width, height)
                     destination = out_dir / f"web-{label}-{width}-{theme}.png"
                     destination.write_bytes(data)
                     print(
                         f"{PROGRAM}: {destination.name} "
-                        f"({width}x{height}, innerWidth {width}, {len(data)} bytes)"
+                        f"({width}x{height}, innerWidth {measured}, "
+                        f"{len(data)} bytes)"
                     )
         return 0
     finally:
