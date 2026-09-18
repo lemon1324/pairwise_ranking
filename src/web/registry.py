@@ -13,15 +13,18 @@ Two things make that safe.
 touches, so two requests cannot interleave a vote and a retire over the same
 in-memory project or race each other to write the file. Locks are per path
 rather than global because a request about one project has no business waiting
-on a request about another.
+on a request about another. A lock lives for as long as anyone holds it, waits
+for it or has the project open, and is discarded afterwards: see
+:meth:`ProjectRegistry.locked`, which is the only way to take one.
 
 **An mtime check before every mutation.** The whole point of ``.pairrank``
 files is that the desktop app and the web app share them, which means the file
 under a loaded project can change while the server is holding it - typically
 the desktop app saving over SMB. Mutating the stale copy and saving it would
 silently throw the other edit away, so the registry compares the file's stamp
-to the one it loaded, reloads when they differ, and flags the reload so the
-screen can tell the user their view was replaced. The check is on the mutation
+to the one it loaded, reloads when they differ, and leaves a notice for the
+screen to tell the user their view was replaced. Exactly one screen takes that
+notice, and taking it is the only way to read it. The check is on the mutation
 path only: a read that shows a slightly stale ranking is harmless, while a
 write over a changed file is not, and re-stat'ing on every read would make the
 notice appear on pages that have nothing to say about it.
