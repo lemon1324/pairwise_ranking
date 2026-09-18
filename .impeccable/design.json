@@ -532,7 +532,8 @@
       "Deferred: the picker's PROJECTS title-block cell wraps.",
       "Deferred: on phones the picker's row callout covers a Votes figure.",
       "Deferred: the apostrophe short label (') is a thin mark that reads weakly inside a filled slot-board balloon.",
-      "Open product decision: collisions between auto short labels (two named slots sharing their first two characters).",
+      "Open product decision: collisions between auto short labels (two named slots sharing their first two characters). Answered by webapp-conversion-plan.md 12.1: the file format carries an optional slot_labels map, so a collision is resolved by giving a slot an explicit label; src/app/slots.py label_collisions() reports the collisions that remain so a screen can warn.",
+      "Superseded: DESIGN.md:427 has the slot textarea accept 'Name = x' for an explicit short label. webapp-conversion-plan.md 12.1 supersedes that - the slot line parses names only (src/app/slots.py parse_slot_list), and a proper label editor (not free-text syntax) is a phase 8 design task.",
       "Real app, accessibility: short slot labels in lists use a plain span (items.js balloons and slot summary) or a role-less li (settings.js board) with title and aria-label; many screen readers ignore aria-label on role-less elements, so the real app should expose the full slot name with visually hidden text or an abbr element. Mockup code left unchanged."
     ]
   },

@@ -14,6 +14,7 @@ serialization that writes it, and is re-exported here for convenience.
 import copy
 from typing import Callable
 
+from src.data.errors import NewerFormatError, UnsupportedUpgradeError
 from src.models.item import DEFAULT_CATEGORY, STATUS_ACTIVE
 from src.models.project import CURRENT_FORMAT_VERSION
 
@@ -94,9 +95,29 @@ def _v1_to_v2(data: dict) -> dict:
     return data
 
 
+def _v2_to_v3(data: dict) -> dict:
+    """
+    Upgrade a version 2 project dictionary to version 3.
+
+    Version 3 adds the optional ``slot_labels`` map holding an explicit short
+    label for a slot. Nothing else changes, so every version 2 file is already
+    a valid version 3 file once the key is there.
+
+    Args:
+        data: A version 2 project dictionary. Modified in place.
+
+    Returns:
+        dict: The same dictionary, now in version 3 shape.
+    """
+    data[FORMAT_VERSION_KEY] = 3
+    data.setdefault("slot_labels", {})
+    return data
+
+
 # Upgrade steps keyed by the version they upgrade from
 _UPGRADE_STEPS: dict[int, Callable[[dict], dict]] = {
     1: _v1_to_v2,
+    2: _v2_to_v3,
 }
 
 
@@ -113,16 +134,23 @@ def upgrade(data: dict) -> tuple[dict, int]:
         unchanged and the starting version equals CURRENT_FORMAT_VERSION.
 
     Raises:
-        ValueError: If the file's version is newer than this code understands,
-            or if no upgrade step is registered for an intermediate version.
+        NewerFormatError: If the file's version is newer than this code
+            understands.
+        UnsupportedUpgradeError: If no upgrade step is registered for an
+            intermediate version.
+        ValueError: If the version key itself is unreadable. Both errors above
+            are ValueError subclasses too, so a caller that only wants to know
+            that the file is unusable can still catch ValueError alone.
     """
     started_at = detect_version(data)
 
     if started_at > CURRENT_FORMAT_VERSION:
-        raise ValueError(
+        raise NewerFormatError(
             f"Project file format version {started_at} is newer than this "
             f"application supports (version {CURRENT_FORMAT_VERSION}). "
-            "Please update the application."
+            "Please update the application.",
+            file_version=started_at,
+            supported_version=CURRENT_FORMAT_VERSION,
         )
 
     upgraded = copy.deepcopy(data)
@@ -130,8 +158,9 @@ def upgrade(data: dict) -> tuple[dict, int]:
     while version < CURRENT_FORMAT_VERSION:
         step = _UPGRADE_STEPS.get(version)
         if step is None:
-            raise ValueError(
-                f"No upgrade path from project file format version {version}"
+            raise UnsupportedUpgradeError(
+                f"No upgrade path from project file format version {version}",
+                file_version=version,
             )
         upgraded = step(upgraded)
         version += 1
