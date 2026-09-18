@@ -76,11 +76,25 @@
      * A folded column's table is marked, so this finds only markup the server produced: the first
      * render, and every HTMX swap that replaces the rows.
      *
+     * A swap can also land no table at all - a filter that matches nothing renders the empty state
+     * and nothing else - and then the rows this engine was holding have gone out of the page with
+     * the markup they were folded into. They are forgotten here, because otherwise render() would
+     * take them for the current list, wipe the server's empty state and draw the previous rows back
+     * over it, selectable, as though the filter had never run. The engine's own folded columns are
+     * the test: if they are still in the drawing area, the swap was of something else inside the
+     * field and the rows it built stand.
+     *
      * @returns {boolean} True if a new table was adopted.
      */
     function adopt() {
       const table = field.querySelector("table.bom:not([data-sheet-column])");
-      if (!table) return false;
+      if (!table) {
+        if (!field.querySelector("[data-sheet-column]")) {
+          source = null;
+          rows = [];
+        }
+        return false;
+      }
       source = table;
       label = table.getAttribute("aria-label") || field.getAttribute("aria-label") || label;
       rows = Array.from(table.tBodies[0] ? table.tBodies[0].rows : []);
