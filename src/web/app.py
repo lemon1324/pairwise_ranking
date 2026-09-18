@@ -71,7 +71,16 @@ def _render_error(
     # Every error page offers a way back to the register, and it has to carry
     # the reverse proxy's prefix. url_for would do that, but the picker route
     # does not exist until phase 5 and an error page that errors is no use.
-    context = {"home_url": f"{request.scope.get('root_path', '')}/", **context}
+    #
+    # The status goes into the context here rather than at each call site: a
+    # caller passing it as a keyword as well as positionally is a TypeError
+    # raised from inside an exception handler, which is the worst place in the
+    # application to raise anything.
+    context = {
+        "home_url": f"{request.scope.get('root_path', '')}/",
+        "status_code": status_code,
+        **context,
+    }
     return templates.TemplateResponse(
         request, f"errors/{template}", context, status_code=status_code
     )
@@ -118,11 +127,7 @@ def _install_error_handlers(app: FastAPI) -> None:
         if exc.status_code == 404:
             return await not_found(request, exc)
         return _render_error(
-            request,
-            "http_error.html",
-            exc.status_code,
-            status_code=exc.status_code,
-            detail=exc.detail,
+            request, "http_error.html", exc.status_code, detail=exc.detail
         )
 
     async def unhandled(request: Request, exc: Exception) -> Response:
