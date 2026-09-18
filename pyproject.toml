@@ -8,8 +8,25 @@ packages = [{include = "src"}]
 
 [tool.poetry.dependencies]
 python = "^3.10"
-PyQt6 = "^6.6.0"
 numpy = "^1.26.0"
+
+[tool.poetry.group.desktop.dependencies]
+PyQt6 = "^6.6.0"
+
+[tool.poetry.group.web.dependencies]
+fastapi = "^0.141.0"
+# Pinned explicitly although fastapi already depends on it: fastapi sets no
+# upper bound, so without this a relock could carry starlette across a major
+# version on its own. 1.x is the line that carries the DoS fixes.
+starlette = "^1.6.0"
+uvicorn = {extras = ["standard"], version = "^0.53.0"}
+jinja2 = "^3.1.0"
+# Not a caret: under Poetry's 0.0.x rule "^0.0.32" would mean <0.0.33, which
+# pins this below every future fix. The advisories against 0.0.12 (DoS via a
+# deformed multipart boundary, fixed in 0.0.18) are what this upload path
+# would have shipped with.
+python-multipart = ">=0.0.32,<1.0"
+itsdangerous = "^2.2.0"
 
 [tool.poetry.group.dev.dependencies]
 # No additional dev dependencies needed - using built-in unittest

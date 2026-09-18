@@ -10,6 +10,7 @@ from src.models.project import (
     active_identifiers,
     free_slots,
     identifier_in_use,
+    normalize_slot_labels,
 )
 from src.models.item import Item
 from src.models.vote import Vote
@@ -536,6 +537,14 @@ class TestProjectFromDictValidation(unittest.TestCase):
         """Test that a non-string slot entry raises ValueError."""
         self.assert_rejects({"name": "x", "slots": [1, 2]}, "slots")
 
+    def test_slot_labels_must_be_an_object(self):
+        """Test that a list 'slot_labels' value raises ValueError."""
+        self.assert_rejects({"name": "x", "slot_labels": ["a"]}, "slot_labels")
+
+    def test_slot_labels_must_hold_strings(self):
+        """Test that a non-string slot label raises ValueError."""
+        self.assert_rejects({"name": "x", "slot_labels": {"A": 1}}, "slot_labels")
+
     def test_name_must_be_a_non_empty_string(self):
         """Test that an empty or non-string name raises ValueError."""
         self.assert_rejects({"name": ""}, "name")
@@ -551,7 +560,134 @@ class TestProjectFromDictValidation(unittest.TestCase):
         self.assertEqual(project.items, [])
         self.assertEqual(project.votes, [])
         self.assertEqual(project.slots, [])
+        self.assertEqual(project.slot_labels, {})
         self.assertEqual(project.settings, Settings())
+
+
+class TestProjectSlotLabels(unittest.TestCase):
+    """Test cases for the optional short label attached to a slot."""
+
+    def test_normalize_strips_keys_and_values(self):
+        """Test that surrounding whitespace is removed from both sides."""
+        labels = normalize_slot_labels({" A ": " x "}, ["A"])
+        self.assertEqual(labels, {"A": "x"})
+
+    def test_normalize_truncates_to_two_characters(self):
+        """Test that a long label is cut down to two characters."""
+        labels = normalize_slot_labels({"A": "abcd"}, ["A"])
+        self.assertEqual(labels, {"A": "ab"})
+
+    def test_normalize_drops_empty_values(self):
+        """Test that a blank label is dropped rather than stored empty."""
+        labels = normalize_slot_labels({"A": "", "B": "   "}, ["A", "B"])
+        self.assertEqual(labels, {})
+
+    def test_normalize_drops_keys_that_are_not_slots(self):
+        """Test that a label for an unknown slot is dropped."""
+        labels = normalize_slot_labels({"A": "a", "Z": "z"}, ["A"])
+        self.assertEqual(labels, {"A": "a"})
+
+    def test_normalize_orders_labels_by_slot_order(self):
+        """Test that the labels come back in the order the slots are defined."""
+        labels = normalize_slot_labels({"B": "b", "A": "a"}, ["A", "B"])
+        self.assertEqual(list(labels), ["A", "B"])
+
+    def test_normalize_of_empty_input(self):
+        """Test that None and an empty map both normalize to an empty map."""
+        for raw in [None, {}]:
+            with self.subTest(raw=raw):
+                self.assertEqual(normalize_slot_labels(raw, ["A"]), {})
+
+    def test_constructor_normalizes_labels(self):
+        """Test that labels passed to the constructor are normalized."""
+        project = Project(
+            name="P",
+            slots=["Apostrophe", "Apex"],
+            slot_labels={"Apostrophe": " '' ", "Gone": "g"},
+        )
+        self.assertEqual(project.slot_labels, {"Apostrophe": "''"})
+
+    def test_set_slots_drops_the_label_of_a_dropped_slot(self):
+        """Test that removing a slot removes its short label too."""
+        project = Project(
+            name="P",
+            slots=["A", "B"],
+            slot_labels={"A": "a", "B": "b"},
+        )
+
+        project.set_slots(["A"])
+
+        self.assertEqual(project.slot_labels, {"A": "a"})
+
+    def test_set_slots_keeps_the_labels_of_kept_slots(self):
+        """Test that reordering the slot list leaves the labels in place."""
+        project = Project(
+            name="P",
+            slots=["A", "B"],
+            slot_labels={"A": "a", "B": "b"},
+        )
+
+        project.set_slots(["B", "A"])
+
+        self.assertEqual(project.slot_labels, {"B": "b", "A": "a"})
+
+    def test_set_slot_labels_replaces_the_map(self):
+        """Test that set_slot_labels normalizes against the current slots."""
+        project = Project(name="P", slots=["A", "B"])
+
+        project.set_slot_labels({"A": "aa", "B": "", "Z": "z"})
+
+        self.assertEqual(project.slot_labels, {"A": "aa"})
+
+    def test_to_dict_carries_the_labels(self):
+        """Test that the labels are serialized beside the slots."""
+        project = Project(name="P", slots=["A"], slot_labels={"A": "a"})
+        self.assertEqual(project.to_dict()["slot_labels"], {"A": "a"})
+
+    def test_round_trip_through_dict(self):
+        """Test that the labels survive to_dict and from_dict."""
+        project = Project(
+            name="P",
+            slots=["Apostrophe", "Apex"],
+            slot_labels={"Apostrophe": "'", "Apex": "Ax"},
+        )
+
+        restored = Project.from_dict(project.to_dict())
+
+        self.assertEqual(
+            restored.slot_labels, {"Apostrophe": "'", "Apex": "Ax"}
+        )
+
+    def test_from_dict_drops_labels_for_unknown_slots(self):
+        """Test that a file naming a slot it does not define loses the label."""
+        restored = Project.from_dict(
+            {"name": "P", "slots": ["A"], "slot_labels": {"A": "a", "Z": "z"}}
+        )
+        self.assertEqual(restored.slot_labels, {"A": "a"})
+
+    def test_from_dict_truncates_a_long_label(self):
+        """Test that a file holding an over-long label is trimmed on load."""
+        restored = Project.from_dict(
+            {"name": "P", "slots": ["A"], "slot_labels": {"A": "long"}}
+        )
+        self.assertEqual(restored.slot_labels, {"A": "lo"})
+
+    def test_copy_without_votes_carries_the_labels(self):
+        """Test that a vote-free copy keeps the slot labels."""
+        project = Project(name="P", slots=["A"], slot_labels={"A": "a"})
+
+        copy = project.copy_without_votes("Copy")
+
+        self.assertEqual(copy.slot_labels, {"A": "a"})
+
+    def test_copy_without_votes_labels_are_independent(self):
+        """Test that editing a copy's labels leaves the original alone."""
+        project = Project(name="P", slots=["A"], slot_labels={"A": "a"})
+
+        copy = project.copy_without_votes("Copy")
+        copy.set_slot_labels({"A": "b"})
+
+        self.assertEqual(project.slot_labels, {"A": "a"})
 
 
 class TestSlotModuleFunctions(unittest.TestCase):
@@ -688,6 +824,118 @@ class TestProjectPopLastVote(unittest.TestCase):
         self.project.pop_last_vote()
 
         self.assertEqual(self.project.items, [self.a, self.b])
+
+
+class TestProjectMutators(unittest.TestCase):
+    """Test cases for the item and vote mutators."""
+
+    def setUp(self):
+        """Build a project with three items and three votes."""
+        self.a = Item(name="A", id="a")
+        self.b = Item(name="B", id="b")
+        self.c = Item(name="C", id="c")
+        self.ab = Vote(winner_id="a", loser_id="b", weight=1.0, id="ab")
+        self.bc = Vote(winner_id="b", loser_id="c", weight=2.0, id="bc")
+        self.ca = Vote(winner_id="c", loser_id="a", weight=3.0, id="ca")
+        self.project = Project(
+            name="P",
+            items=[self.a, self.b, self.c],
+            votes=[self.ab, self.bc, self.ca],
+        )
+
+    def test_find_item_returns_the_item(self):
+        """Test that find_item returns the item holding the id."""
+        self.assertIs(self.project.find_item("b"), self.b)
+
+    def test_find_item_returns_none_for_unknown_id(self):
+        """Test that find_item tolerates an id the project does not hold."""
+        self.assertIsNone(self.project.find_item("missing"))
+
+    def test_find_item_sees_retired_items(self):
+        """Test that find_item does not filter by lifecycle status."""
+        self.b.retire()
+        self.assertIs(self.project.find_item("b"), self.b)
+
+    def test_add_item_appends(self):
+        """Test that a new item goes to the end of the list."""
+        d = Item(name="D", id="d")
+
+        returned = self.project.add_item(d)
+
+        self.assertIs(returned, d)
+        self.assertEqual([item.id for item in self.project.items], ["a", "b", "c", "d"])
+
+    def test_add_vote_appends(self):
+        """Test that a new vote goes to the end of the list."""
+        vote = Vote(winner_id="a", loser_id="c", weight=1.0, id="ac")
+
+        returned = self.project.add_vote(vote)
+
+        self.assertIs(returned, vote)
+        self.assertEqual([v.id for v in self.project.votes], ["ab", "bc", "ca", "ac"])
+
+    def test_add_vote_is_undone_by_pop_last_vote(self):
+        """Test that the added vote is the one pop_last_vote returns."""
+        vote = Vote(winner_id="a", loser_id="c", weight=1.0, id="ac")
+        self.project.add_vote(vote)
+
+        self.assertIs(self.project.pop_last_vote(), vote)
+
+    def test_remove_item_returns_the_removed_item(self):
+        """Test that remove_item hands back what it removed."""
+        self.assertIs(self.project.remove_item("b"), self.b)
+
+    def test_remove_item_drops_the_item(self):
+        """Test that the item is gone from the project."""
+        self.project.remove_item("b")
+
+        self.assertEqual([item.id for item in self.project.items], ["a", "c"])
+
+    def test_remove_item_cascades_votes(self):
+        """Test that every vote involving the item goes with it."""
+        self.project.remove_item("b")
+
+        self.assertEqual([v.id for v in self.project.votes], ["ca"])
+
+    def test_remove_unknown_item_keeps_the_items(self):
+        """Test that removing an id the project does not hold removes no item."""
+        returned = self.project.remove_item("missing")
+
+        self.assertIsNone(returned)
+        self.assertEqual(len(self.project.items), 3)
+        self.assertEqual(len(self.project.votes), 3)
+
+    def test_remove_purges_orphan_votes_of_a_missing_item(self):
+        """Test that the cascade runs even when the item is already gone."""
+        orphan = Vote(winner_id="a", loser_id="ghost", weight=1.0, id="orphan")
+        self.project.add_vote(orphan)
+
+        returned = self.project.remove_item("ghost")
+
+        self.assertIsNone(returned)
+        self.assertEqual([v.id for v in self.project.votes], ["ab", "bc", "ca"])
+
+    def test_remove_item_mutates_the_shared_lists(self):
+        """Test that a caller holding the lists sees the removal."""
+        items = self.project.items
+        votes = self.project.votes
+
+        self.project.remove_item("a")
+
+        self.assertIs(self.project.items, items)
+        self.assertIs(self.project.votes, votes)
+        self.assertEqual([item.id for item in items], ["b", "c"])
+        self.assertEqual([v.id for v in votes], ["bc"])
+
+    def test_mutators_survive_a_round_trip(self):
+        """Test that mutated projects still serialize and deserialize."""
+        self.project.add_item(Item(name="D", id="d"))
+        self.project.remove_item("a")
+
+        restored = Project.from_dict(self.project.to_dict())
+
+        self.assertEqual([item.id for item in restored.items], ["b", "c", "d"])
+        self.assertEqual([v.id for v in restored.votes], ["bc"])
 
 
 if __name__ == "__main__":

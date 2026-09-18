@@ -14,7 +14,12 @@ from src.models.settings import Settings
 # Version of the .pairrank file format written by this code. It lives here,
 # next to the serialization that writes it, so that the data layer (which
 # already imports the models) can read it without creating an import cycle.
-CURRENT_FORMAT_VERSION = 2
+CURRENT_FORMAT_VERSION = 3
+
+# How many characters an explicit slot short label may hold. Short labels are
+# drawn in the tight spaces of a board, so they are hard-capped rather than
+# elided.
+SLOT_LABEL_MAX_LENGTH = 2
 
 
 def normalize_slots(raw: list[str]) -> list[str]:
@@ -39,6 +44,39 @@ def normalize_slots(raw: list[str]) -> list[str]:
         seen.add(slot)
         slots.append(slot)
     return slots
+
+
+def normalize_slot_labels(raw: dict, slots: list[str]) -> dict[str, str]:
+    """
+    Clean up a raw map of slot short labels.
+
+    Keys and values are stripped, values are truncated to
+    SLOT_LABEL_MAX_LENGTH characters and entries with an empty value are
+    dropped. A label only means something next to the slot it belongs to, so
+    keys that name no slot in ``slots`` are dropped too: that is what makes
+    dropping or renaming a slot drop its label with it.
+
+    Args:
+        raw: Slot name to short label, as entered or as read from a project
+            file.
+        slots: The already-normalized slot list the labels belong to.
+
+    Returns:
+        dict[str, str]: The normalized labels, in the order the slots are
+        defined.
+    """
+    if not raw:
+        return {}
+
+    cleaned: dict[str, str] = {}
+    for key, value in raw.items():
+        slot = str(key).strip()
+        label = str(value).strip()[:SLOT_LABEL_MAX_LENGTH]
+        if not slot or not label:
+            continue
+        cleaned[slot] = label
+
+    return {slot: cleaned[slot] for slot in slots if slot in cleaned}
 
 
 def active_identifiers(items: list[Item]) -> set[str]:
@@ -147,6 +185,10 @@ class Project:
         settings: Algorithm and display settings.
         slots: Optional list of slot labels available in this project. When
             empty, identifiers are free text.
+        slot_labels: Optional short label per slot, for the places a screen has
+            room for two characters and no more. Slots without an entry fall
+            back to a label derived from the slot name; see
+            :func:`src.app.slots.short_label`.
         file_path: Path to the .pairrank file, or None if not yet saved.
     """
 
@@ -157,6 +199,7 @@ class Project:
     votes: list[Vote] = field(default_factory=list)
     settings: Settings = field(default_factory=Settings)
     slots: list[str] = field(default_factory=list)
+    slot_labels: dict[str, str] = field(default_factory=dict)
     file_path: Optional[Path] = None
 
     def __post_init__(self):
@@ -165,6 +208,7 @@ class Project:
             raise ValueError("Project name cannot be empty")
         self.name = self.name.strip()
         self.slots = normalize_slots(self.slots)
+        self.slot_labels = normalize_slot_labels(self.slot_labels, self.slots)
 
     def rename(self, name: str) -> None:
         """
@@ -215,6 +259,7 @@ class Project:
             votes=[],
             settings=copy.deepcopy(self.settings),
             slots=list(self.slots),
+            slot_labels=dict(self.slot_labels),
             file_path=None,
         )
 
@@ -226,6 +271,77 @@ class Project:
             list[Item]: Items whose status is active, in project order.
         """
         return [item for item in self.items if item.is_active()]
+
+    def find_item(self, item_id: str) -> Optional[Item]:
+        """
+        Look an item up by id.
+
+        Args:
+            item_id: The id to find.
+
+        Returns:
+            Optional[Item]: The item, or None if the project has no item with
+            that id.
+        """
+        for item in self.items:
+            if item.id == item_id:
+                return item
+        return None
+
+    def add_item(self, item: Item) -> Item:
+        """
+        Add an item to the project.
+
+        Args:
+            item: The item to add. It is appended, so the project keeps the
+                order items were created in.
+
+        Returns:
+            Item: The item that was added.
+        """
+        self.items.append(item)
+        return item
+
+    def remove_item(self, item_id: str) -> Optional[Item]:
+        """
+        Remove an item and every vote it took part in.
+
+        Deleting an item discards its history; retiring it is the way to keep
+        the history. The vote cascade runs whether or not the item was there:
+        a file written elsewhere may hold votes naming an item the project has
+        already lost, and those orphans have to go too or the ranking model
+        keeps being fed them.
+
+        Args:
+            item_id: Id of the item to remove.
+
+        Returns:
+            Optional[Item]: The removed item, or None if there was no such
+            item. The cascade has run in either case.
+        """
+        removed = self.find_item(item_id)
+
+        if removed is not None:
+            self.items[:] = [item for item in self.items if item.id != item_id]
+        self.votes[:] = [
+            vote for vote in self.votes if not vote.involves_item(item_id)
+        ]
+        return removed
+
+    def add_vote(self, vote: Vote) -> Vote:
+        """
+        Record a vote.
+
+        Args:
+            vote: The vote to record. It is appended, so the votes stay in the
+                order they were cast and :meth:`pop_last_vote` undoes the most
+                recent one.
+
+        Returns:
+            Vote: The vote that was recorded.
+        """
+        self.votes.append(vote)
+        return vote
 
     def active_identifiers(self) -> set[str]:
         """
@@ -269,11 +385,25 @@ class Project:
         """
         Replace the project's slot list.
 
+        Any short label belonging to a slot that is no longer in the list goes
+        with it, so a slot never keeps a label the project cannot reach.
+
         Args:
             raw: Slot labels; stripped, with empty entries dropped and
                 duplicates removed while preserving order.
         """
         self.slots = normalize_slots(raw)
+        self.slot_labels = normalize_slot_labels(self.slot_labels, self.slots)
+
+    def set_slot_labels(self, raw: dict) -> None:
+        """
+        Replace the project's short labels for its slots.
+
+        Args:
+            raw: Slot name to short label. Entries are stripped and truncated,
+                and entries naming no current slot are dropped.
+        """
+        self.slot_labels = normalize_slot_labels(raw, self.slots)
 
     def pop_last_vote(self) -> Optional[Vote]:
         """
@@ -306,6 +436,7 @@ class Project:
             "votes": [vote.to_dict() for vote in self.votes],
             "settings": self.settings.to_dict(),
             "slots": list(self.slots),
+            "slot_labels": dict(self.slot_labels),
         }
 
     @classmethod
@@ -322,8 +453,8 @@ class Project:
 
         Raises:
             ValueError: If data is not a dictionary, if the required 'name'
-                key is missing or empty, or if 'items', 'votes', 'settings'
-                or 'slots' have the wrong shape.
+                key is missing or empty, or if 'items', 'votes', 'settings',
+                'slots' or 'slot_labels' have the wrong shape.
             KeyError: If nested item or vote entries are missing required keys.
         """
         if not isinstance(data, dict):
@@ -362,6 +493,18 @@ class Project:
                 f"got {type(slot_entries).__name__}"
             )
 
+        label_entries = data.get("slot_labels")
+        if label_entries is None:
+            label_entries = {}
+        elif not isinstance(label_entries, dict) or not all(
+            isinstance(key, str) and isinstance(value, str)
+            for key, value in label_entries.items()
+        ):
+            raise ValueError(
+                f"Project data key 'slot_labels' must be an object of strings, "
+                f"got {type(label_entries).__name__}"
+            )
+
         created = data.get("created")
         if isinstance(created, str):
             created = datetime.fromisoformat(created)
@@ -378,6 +521,7 @@ class Project:
         votes = [Vote.from_dict(vote_data) for vote_data in vote_entries]
         settings = Settings.from_dict(settings_data)
         slots = normalize_slots(slot_entries)
+        slot_labels = normalize_slot_labels(label_entries, slots)
 
         return cls(
             name=name,
@@ -387,5 +531,6 @@ class Project:
             votes=votes,
             settings=settings,
             slots=slots,
+            slot_labels=slot_labels,
             file_path=file_path,
         )
