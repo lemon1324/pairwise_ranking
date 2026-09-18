@@ -1,0 +1,46 @@
+{#
+  Import a project file from the desktop app.
+
+  A fragment for `#row-callout`, hung on the sheet's ghost row.
+
+  The drop zone is a <label> around a hidden file input, which is what makes
+  the whole dashed box a click target and a drop target without a line of
+  script. Choosing a file posts it to the preview, which answers with the
+  detail area below - the project's name and figures, or why the file is not
+  one. Nothing is kept between that and Import: the file is uploaded again when
+  the form is posted, which costs a second copy of a few kilobytes and saves a
+  scratch file with an owner and a lifetime.
+
+  The preview's swap lands inside this callout, and the folding engine places
+  the callout again when it does, so the popover grows against its row rather
+  than over it. It never touches the host itself.
+
+  Import stays pressable before a file has been described, unlike the mockup,
+  where parsing was instant and local. Here it is a round trip, and a form
+  whose only live control is Cancel until an invisible request comes back reads
+  as broken - and with no JavaScript at all the preview never arrives, which
+  would leave no way to import anything.
+#}
+{% from "macros/popover.html" import popover, popover_body %}
+{% from "macros/sheet.html" import key %}
+
+{% call popover("Import a project file") %}
+  {% call popover_body("Import a project file") %}
+    <form class="strip-form" method="post" action="{{ action }}"
+          enctype="multipart/form-data" hx-encoding="multipart/form-data">
+      <label class="field field-wide bom-empty" style="max-width:none;padding:var(--s-4);cursor:pointer">
+        <span class="lead" style="font-size:1rem">Drop a .pairrank file</span>
+        <span class="cell-button">Choose file</span>
+        <input class="visually-hidden" type="file" name="file" accept=".pairrank" required
+               hx-post="{{ preview_url }}" hx-trigger="change"
+               hx-target="#import-detail" hx-swap="outerHTML">
+      </label>
+      {% include "register/import_detail.html" %}
+      <div class="strip-buttons">
+        <button class="cell-button is-primary" type="submit">Import {{ key("↵") }}</button>
+        <a class="cell-button" href="{{ cancel_url }}" data-sheet-key="Escape"
+           aria-keyshortcuts="Escape">Cancel {{ key("Esc") }}</a>
+      </div>
+    </form>
+  {% endcall %}
+{% endcall %}

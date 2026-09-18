@@ -26,10 +26,12 @@ from starlette.middleware.sessions import SessionMiddleware
 from starlette.staticfiles import StaticFiles
 
 from src.data.errors import NewerFormatError, ProjectFormatError
+from src.data.migration import StorageMigration
 
 from .config import WebConfig, load_config
 from .registry import ProjectNotFoundError, ProjectRegistry, ProjectUnreadableError
-from .routes import placeholder
+from .routes import placeholder, projects
+from .urls import SHEET_TABS, project_url, register_url
 
 
 logger = logging.getLogger(__name__)
@@ -155,6 +157,44 @@ def _install_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(Exception, unhandled)
 
 
+def migrate_legacy_data(data_dir: Path) -> None:
+    """
+    Turn a directory of the old CSV files into a project file, once.
+
+    The desktop app has done this at startup since the ``.pairrank`` format
+    arrived, and the web app points at the same directory - often the very
+    same one, over a share - so it has to do it too. Otherwise a user who moved
+    to the web frontend would open the register and find nothing at all, with
+    their items and votes sitting in ``items.csv`` beside it, unlisted because
+    the register only lists project files.
+
+    It runs once and then never again:
+    :meth:`~src.data.migration.StorageMigration.needs_migration` is false as
+    soon as any project file exists in the directory. The old files are left
+    where they are rather than cleaned up, because this process is not the only
+    thing that may be reading them.
+
+    A failure is logged and swallowed. A server that refuses to start because
+    one stray ``settings.json`` will not parse is a server that has taken
+    every other project in the directory down with it.
+
+    Args:
+        data_dir: The directory the application serves projects from.
+    """
+    try:
+        if not StorageMigration.needs_migration(data_dir):
+            return
+        project = StorageMigration.migrate(data_dir)
+    except (OSError, ValueError) as e:
+        logger.warning("Could not migrate the legacy data in %s: %s", data_dir, e)
+        return
+    logger.info(
+        "Migrated the legacy CSV data in %s into %s",
+        data_dir,
+        project.file_path.name,
+    )
+
+
 def create_app(config: Optional[WebConfig] = None) -> FastAPI:
     """
     Build the web application.
@@ -184,6 +224,23 @@ def create_app(config: Optional[WebConfig] = None) -> FastAPI:
     app.state.registry = ProjectRegistry(config.data_dir)
     app.state.templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
+    # Addresses the templates build for themselves. They are globals rather
+    # than context values because the macros that need them - the sheet tabs -
+    # are shared by five screens, and a macro cannot see its caller's context.
+    # url_for is no use for these: three of the four screens the tabs link to
+    # are built in later chunks, and url_for cannot name a route that does not
+    # exist yet. See src/web/urls.py for the paths they have to be served at.
+    app.state.templates.env.globals.update(
+        project_url=project_url,
+        register_url=register_url,
+        sheet_tabs=SHEET_TABS,
+    )
+
+    # Before anything is served: a data directory still holding the old CSV
+    # files has one project in it that the register cannot see until this has
+    # run. It runs once and is a no-op every time after that.
+    migrate_legacy_data(config.data_dir)
+
     # Server-side session state behind a signed cookie: the frontend keeps
     # nothing it cannot afford to lose, but the signing is what makes the
     # cookie safe to trust once there is an authenticated user in it.
@@ -205,6 +262,9 @@ def create_app(config: Optional[WebConfig] = None) -> FastAPI:
 
     # After the handlers, so a route that raises on its first request is
     # already answered by a page rather than by a bare traceback.
+    app.include_router(projects.router)
+    # Phase 5a's scaffolding sheet, still mounted: chunk 5b was cut short
+    # before it could be deleted and its tests retargeted at the register.
     app.include_router(placeholder.router)
 
     @app.get("/healthz", include_in_schema=False)

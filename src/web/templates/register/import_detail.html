@@ -1,0 +1,31 @@
+{#
+  What the chosen file turned out to be: the import form's detail area.
+
+  Rendered twice over: once inside the form when the callout is drawn, and
+  again on its own when the preview answers, which is why it carries its own id
+  and is swapped by outerHTML. Nothing outside this element changes, so the
+  file input keeps the file the browser has already chosen and pressing Import
+  sends that same file.
+
+  The error is stated in words beside the warning icon. Orange is never the
+  signal here, and the sentence says what to do about it - the CSV case in
+  particular, which is the desktop app's job and not this screen's.
+#}
+{% from "macros/sheet.html" import icon %}
+
+<div class="field field-wide" id="import-detail">
+  {% if detail and detail.error %}
+    <p class="field-error">{{ icon("warn") }}<span>{{ detail.error }}</span></p>
+  {% elif detail %}
+    <p class="tb-text" style="margin:0">
+      <strong>{{ detail.name }}</strong> &middot;
+      <span class="num">{{ detail.file_name }}</span> &middot;
+      <span class="num">{{ detail.items }}</span> items &middot;
+      <span class="num">{{ detail.votes }}</span> votes
+      {%- if detail.tag %} &middot; <span class="tag">{{ detail.tag }}</span>{% endif %}
+    </p>
+    <p class="field-hint" style="margin:0">Saves as <span class="num">{{ directory }}/{{ detail.target }}</span>.</p>
+  {% else %}
+    <p class="field-hint">Choose a .pairrank file from the desktop app, or drop it here.</p>
+  {% endif %}
+</div>
