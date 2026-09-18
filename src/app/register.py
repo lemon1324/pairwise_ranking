@@ -445,6 +445,27 @@ def _info_from_bytes(
     )
 
 
+def probe_project_bytes(path: Path, raw: bytes) -> ProjectFileInfo:
+    """
+    Read a register row out of bytes that are not on disk yet.
+
+    The counterpart of :func:`probe_project_file` for a file that has been
+    uploaded but not taken in: the picker describes what is in it - the name,
+    the counts, whether it is in a format this application can read - before
+    anything is written anywhere. Nothing here touches the filesystem.
+
+    Args:
+        path: The path the bytes would be written to. Only its name is used,
+            and it need not exist.
+        raw: The file's contents.
+
+    Returns:
+        ProjectFileInfo: The row they would produce, with no modified time,
+        because bytes in flight have none. Never raises.
+    """
+    return _info_from_bytes(path, None, raw)
+
+
 def scan_directory(data_dir: Path) -> list[ProjectFileInfo]:
     """
     List every project file in a directory, without modifying any of them.
@@ -497,6 +518,25 @@ def _file_stem(name: str) -> str:
     return stem or DEFAULT_FILE_STEM
 
 
+def default_file_name(name: str) -> str:
+    """
+    Name the file a project name maps to, before collisions are considered.
+
+    :func:`unique_file_name` answers "a name nothing is using", which is what a
+    copy or an import wants. A screen offering to *create* a project wants the
+    other question - "the name this would take" - so that it can say that the
+    file already exists and let the user choose another, rather than quietly
+    saving Tasting (2) under a name they did not ask for.
+
+    Args:
+        name: The project name.
+
+    Returns:
+        str: A safe, non-empty, length-capped file name, extension included.
+    """
+    return ensure_pairrank_suffix(Path(_file_stem(name))).name
+
+
 def unique_file_name(data_dir: Path, name: str) -> str:
     """
     Choose a file name for a project that nothing in the directory holds yet.
@@ -528,7 +568,7 @@ def unique_file_name(data_dir: Path, name: str) -> str:
     except OSError:
         taken = set()
 
-    candidate = ensure_pairrank_suffix(Path(stem)).name
+    candidate = default_file_name(name)
     if candidate.casefold() not in taken:
         return candidate
 
