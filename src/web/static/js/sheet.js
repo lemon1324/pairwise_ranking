@@ -242,6 +242,12 @@
       pendingFocusId = null;
 
       rowPage.clear();
+      // A row the server has just taken away - deleted, retired out of the filter - cannot go on
+      // being the selection, and its callout has nothing left to point at.
+      if (selectedId != null && !rows.some((tr) => tr.dataset.id === String(selectedId))) {
+        selectedId = null;
+        clearCallout();
+      }
       if (!source || !rows.length) {
         // Nothing to fold: the server's empty state is already in the drawing area, and the title
         // block falls back to the width the stylesheet gives it.
@@ -316,7 +322,11 @@
       const tr = findRow(selectedId);
       // offsetParent is null on a row folded onto a sheet that is not the one being shown.
       if (!callout || !tr || tr.offsetParent === null) {
-        host.hidden = !callout;
+        // A callout with no row under it stays hidden rather than being drawn wherever the last
+        // one happened to sit. A screen that wants a callout for something that is not a row yet
+        // - Items adding an item, the register importing a project - renders a ghost row for it
+        // and selects that, the way the mockups do; then there is something to point the leader at.
+        host.hidden = true;
         if (!callout) placedNode = null;
         return;
       }
