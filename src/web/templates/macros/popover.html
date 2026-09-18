@@ -32,20 +32,30 @@
   popover_actions(actions)
 
     actions  a sequence of mappings, each with:
-               action  the name posted back, e.g. "retire".
-               label   the words on the cell.
-               key     the shortcut's legend, e.g. "R", "Del", "↵".
-               url     optional; an hx-get for the fragment this action opens.
+               action    the name posted back, e.g. "retire".
+               label     the words on the cell.
+               key       the shortcut's legend, as drawn: "R", "Del", "↵".
+               shortcut  the same shortcut written as UI Events key values:
+                         "R", "Delete", "Enter", "PageUp PageDown". Wanted
+                         whenever the legend is a glyph or an abbreviation,
+                         which is most of them.
+               url       optional; an hx-get for the fragment this action opens.
 
   A strip of equal cells sharing 1px ink gaps. The shortcut is declared with
   aria-keyshortcuts as well as drawn, so the legend is a picture of something
-  assistive technology has actually been told about.
+  assistive technology has actually been told about - but the two are different
+  strings. ARIA reads key *values*, and "↵" or "Del" names no key at all, so
+  the legend and the declaration are separate arguments. A legend that is
+  already a key value - a bare letter or digit - stands for both; anything else
+  without a `shortcut` is drawn and left undeclared rather than declared wrong.
+  `tb_sheet` in title_block.html spells its own the same way.
 #}
 {% macro popover_actions(actions) -%}
 <div class="strip-actions">
   {% for action in actions %}
+  {% set shortcut = action.shortcut or (action.key if action.key is string and action.key|length == 1 and action.key.isalnum()) %}
   <button class="strip-action" type="button" data-action="{{ action.action }}"
-          {% if action.key %}aria-keyshortcuts="{{ action.key }}"{% endif %}
+          {% if shortcut %}aria-keyshortcuts="{{ shortcut }}"{% endif %}
           {% if action.url %}hx-get="{{ action.url }}" hx-target="#row-callout"{% endif %}>
     {{ action.label }}{% if action.key %}{{ key(action.key) }}{% endif %}
   </button>

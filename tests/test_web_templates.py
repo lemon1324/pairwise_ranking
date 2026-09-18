@@ -387,6 +387,57 @@ class TestSheetMacros(TemplateTestCase):
         self.assertIn('aria-label="Gateron Oil King"', markup)
         self.assertIn("bom-callout", markup)
 
+    def test_a_shortcut_is_declared_as_a_key_value_not_as_its_legend(self):
+        """
+        Test that aria-keyshortcuts names keys rather than drawing them.
+
+        The attribute takes UI Events key values, so "Del" and "↵" declare
+        nothing: an assistive technology looking for the Delete key does not
+        find it, and announces a shortcut that does not exist. The legend the
+        sheet draws is a different string from the one the machine reads, and
+        four screens inherit this macro.
+        """
+        markup = self.render(
+            '{% from "macros/popover.html" import popover_actions %}'
+            "{{ popover_actions(actions) }}",
+            actions=[
+                {"action": "edit", "label": "Edit", "key": "↵", "shortcut": "Enter"},
+                {"action": "retire", "label": "Retire", "key": "R"},
+                {
+                    "action": "delete",
+                    "label": "Delete",
+                    "key": "Del",
+                    "shortcut": "Delete",
+                },
+            ],
+        )
+
+        declared = re.findall(r'aria-keyshortcuts="([^"]*)"', markup)
+        self.assertEqual(declared, ["Enter", "R", "Delete"])
+        for value in declared:
+            with self.subTest(shortcut=value):
+                for name in value.split(" "):
+                    self.assertRegex(name, r"^([A-Za-z0-9]+\+)*[A-Za-z0-9]+$")
+        # The legends are still drawn as the glyphs the mockups use.
+        self.assertIn('<span class="key">↵</span>', markup)
+        self.assertIn('<span class="key">Del</span>', markup)
+
+    def test_a_legend_with_no_key_value_is_drawn_but_not_declared(self):
+        """
+        Test that a glyph nobody translated is left out of the attribute.
+
+        Declaring the legend was the bug; declaring nothing is merely a missing
+        shortcut, which the visible legend still tells a sighted user about.
+        """
+        markup = self.render(
+            '{% from "macros/popover.html" import popover_actions %}'
+            "{{ popover_actions(actions) }}",
+            actions=[{"action": "page", "label": "Sheet", "key": "Pg↑↓"}],
+        )
+
+        self.assertNotIn("aria-keyshortcuts", markup)
+        self.assertIn('<span class="key">Pg↑↓</span>', markup)
+
 
 class TestErrorPagesOnTheShell(TemplateTestCase):
     """Test cases for the error pages now that they are drawn as sheets."""
