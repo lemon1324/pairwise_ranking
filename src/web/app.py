@@ -143,9 +143,12 @@ def _install_error_handlers(app: FastAPI) -> None:
 
     app.add_exception_handler(ProjectNotFoundError, not_found)
     app.add_exception_handler(NewerFormatError, newer_format)
-    # Registered after NewerFormatError so the more specific handler wins; the
-    # base class is what UnsupportedUpgradeError arrives as, and a gap in the
-    # upgrade chain reads as damage from the user's side of the screen.
+    # The base class catches what is left of the hierarchy, which in practice
+    # is UnsupportedUpgradeError: a gap in the upgrade chain reads as damage
+    # from the user's side of the screen. The order these are registered in
+    # does not matter - Starlette walks the raised exception's MRO and takes
+    # the first handler it finds, so NewerFormatError reaches its own handler
+    # before ever reaching this one, wherever the two lines sit.
     app.add_exception_handler(ProjectFormatError, damaged)
     app.add_exception_handler(ProjectUnreadableError, damaged)
     app.add_exception_handler(StarletteHTTPException, http_error)

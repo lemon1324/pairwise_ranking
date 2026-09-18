@@ -15,6 +15,7 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import PlainTextResponse
@@ -24,12 +25,12 @@ from fastapi.testclient import TestClient
 from uvicorn.config import LOG_LEVELS
 
 from src.app.session import ProjectSession
+from src.data import format_version
 from src.data.format_version import CURRENT_FORMAT_VERSION, FORMAT_VERSION_KEY
 from src.data.project_storage import ProjectStorage
 from src.web.app import (
     DAMAGED_STATUS,
     NEWER_FORMAT_STATUS,
-    STATIC_DIR,
     STATIC_MOUNT,
     create_app,
 )
@@ -252,6 +253,28 @@ class TestProjectFormatErrorPages(WebAppTestCase):
         self.assertIn(str(CURRENT_FORMAT_VERSION + 1), response.text)
         self.assertNotIn("damaged", response.text)
 
+    def test_a_gap_in_the_upgrade_chain_is_damage_rather_than_a_newer_file(self):
+        """
+        Test that the other ProjectFormatError lands on the damaged page.
+
+        Two subclasses, two pages, and only one of them was ever exercised
+        through a route. UnsupportedUpgradeError arrives as the base class, and
+        a handler registered for the base class is exactly what a later reorder
+        of these lines could take away.
+        """
+        data = self.project_data()
+        data[FORMAT_VERSION_KEY] = 1
+        self.write_raw("Old.pairrank", data)
+
+        # The gap is manufactured: every version this application has ever
+        # written does have an upgrade step, which is the point of the chain.
+        with patch.dict(format_version._UPGRADE_STEPS, clear=True):
+            response = self.client.get("/probe/Old.pairrank")
+
+        self.assertEqual(response.status_code, DAMAGED_STATUS)
+        self.assertIn("damaged", response.text)
+        self.assertNotIn("newer version", response.text)
+
     def test_a_corrupt_file_is_damaged(self):
         """Test that JSON that will not parse gets the other page."""
         self.write_raw("Broken.pairrank", "{ not json at all")
@@ -335,15 +358,18 @@ class TestAppWiring(WebAppTestCase):
         self.assertEqual(LOCAL_PRINCIPAL.display_name, "Local user")
 
     def test_static_files_are_mounted(self):
-        """Test that the mount phase 4b fills is already answering."""
-        (STATIC_DIR / "probe.txt").write_text("mounted", encoding="utf-8")
-        try:
-            response = self.client.get(f"{STATIC_MOUNT}/probe.txt")
-        finally:
-            (STATIC_DIR / "probe.txt").unlink(missing_ok=True)
+        """
+        Test that the mount phase 4b filled is answering.
+
+        Asked for over a file the application ships rather than one written for
+        the occasion: writing into the source tree fails on a read-only
+        checkout, and a run killed mid-test leaves the probe behind.
+        """
+        response = self.client.get(f"{STATIC_MOUNT}/css/sheet.css")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.text, "mounted")
+        self.assertGreater(len(response.content), 0)
+        self.assertIn("css", response.headers["content-type"])
 
 
 class TestConfig(unittest.TestCase):
