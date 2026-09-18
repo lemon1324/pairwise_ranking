@@ -1,0 +1,72 @@
+{#
+  The sheet tabs: how one project's four sheets are moved between.
+
+  The same four links appear twice on every screen - in the top bar at desk
+  widths, and in a sticky bar at the bottom of the phone layout, where the top
+  bar has room for the project's name and nothing else. The stylesheet does the
+  switching; both copies are always in the page. They are written once here
+  rather than four times across Items, Compare, Rankings and Settings, because
+  the part that is easy to get wrong is the same in all four: the current tab
+  has to be marked with aria-current, and it has to be marked in *both* copies.
+
+  There is a fifth state, and it is the one this file exists to be careful
+  about: the drawing register has no project open. There is nothing to switch
+  between and no project for the menu to be about, so `tabs` and `project_menu`
+  draw nothing at all and the register's top bar carries the app name instead.
+  Passing project_id=none is the way to say that.
+
+  The addresses come from src.web.urls, not from url_for: three of the four
+  screens are built in later chunks and url_for cannot name a route that does
+  not exist yet. See that module for the paths they have to be served at.
+#}
+{% from "macros/sheet.html" import icon %}
+
+{#
+  tabs(request, project_id, current=none, bottom=false)
+
+    request     the incoming request, for the proxy prefix on every link.
+    project_id  the open project's file name, or none when none is open.
+    current     the slug of the sheet being drawn: "items", "compare",
+                "rankings" or "settings". None on a sheet that is not one of
+                them, which marks no tab rather than guessing.
+    bottom      true for the sticky phone bar, false for the top bar.
+
+  Both copies are the same list of links. They differ only in the <nav> around
+  them, which is what the stylesheet shows one of and hides the other by.
+#}
+{% macro tabs(request, project_id, current=none, bottom=false) -%}
+{% if project_id %}
+<nav{% if bottom %} class="bottom-tabs"{% endif %} aria-label="Project sheets">
+  <ul class="sheet-tabs">
+    {% for slug, label in sheet_tabs %}
+    <li><a href="{{ project_url(request, project_id, slug) }}"{% if slug == current %} aria-current="page"{% endif %}>{{ label }}</a></li>
+    {% endfor %}
+  </ul>
+</nav>
+{% endif %}
+{%- endmacro %}
+
+{#
+  project_menu(request, project_id)
+
+    request     the incoming request, for the proxy prefix.
+    project_id  the open project's file name, or none when none is open.
+
+  The cell at the far right of the top bar, drawn in the tabs' own style. It is
+  about the project as a whole - closing it, exporting it - rather than about
+  the sheet on screen, which is why it sits outside the tab list.
+
+  **It has no menu yet.** The mockups draw the cell and never open anything
+  from it, and DESIGN.md says where it sits without saying what is in it. The
+  markup here is the mockups', declaration included, so that the first screen
+  with something to put in the menu writes the menu and not the cell - and that
+  screen owes it a list to open. Until then no screen calls this, because a
+  control that does nothing when pressed is worse than one fewer control.
+#}
+{% macro project_menu(request, project_id) -%}
+{% if project_id %}
+<button class="sheet-menu" type="button" aria-haspopup="menu" aria-expanded="false">
+  Project {{ icon("chevron") }}
+</button>
+{% endif %}
+{%- endmacro %}

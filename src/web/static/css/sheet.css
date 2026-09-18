@@ -452,6 +452,11 @@ html {
   margin-right: auto;
 }
 
+/* A cell button is sometimes a link: Download hands back a file and Open goes
+   to another sheet, and a button that navigates has no middle click, no "open
+   in new tab" and nothing in the status bar. The mockups already spell one
+   that way (`<a class="cell-button">` in the register's warning box) without
+   taking the link underline back off it, which is the one line added here. */
 .cell-button {
   display: inline-flex;
   align-items: center;
@@ -460,11 +465,13 @@ html {
   padding: 0 var(--s-3);
   border: var(--w-cell) solid var(--ink);
   background: transparent;
+  color: var(--ink);
   font-family: var(--font-label);
   font-weight: 600;
   font-size: 0.875rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+  text-decoration: none;
   cursor: pointer;
 }
 

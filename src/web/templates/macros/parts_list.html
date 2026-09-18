@@ -70,21 +70,24 @@
 {%- endmacro %}
 
 {#
-  name_cell(name, description=none, tags=())
+  name_cell(name, description=none, tags=(), description_class="")
 
-    name         the item or project name; the only part that truncates.
-    description  the second line, in ink 2: an item's description, or the file
-                 name on the register.
-    tags         tags drawn after the name, e.g. ("Retired",).
+    name               the item or project name; the only part that truncates.
+    description        the second line, in ink 2: an item's description, or the
+                       file name on the register.
+    tags               tags drawn after the name, e.g. ("Retired",).
+    description_class  extra classes on that second line - "num" on the
+                       register, where the second line is a file name and every
+                       file name in the set is set in mono.
 
   The tags are siblings of the name rather than inside it, so the ellipsis that
   cuts a long name can never cut a tag off with it. That matters because the
   tag is the non-colour half of the retired signal, and ink 3 on its own is not
   a signal the primary user can see.
 #}
-{% macro name_cell(name, description=none, tags=()) -%}
+{% macro name_cell(name, description=none, tags=(), description_class="") -%}
 <span class="bom-nameline"><span class="bom-name">{{ name }}</span>{% for text in tags %}{{ tag_macro(text) }}{% endfor %}</span>
-{%- if description %}<span class="bom-desc">{{ description }}</span>{% endif %}
+{%- if description %}<span class="bom-desc{% if description_class %} {{ description_class }}{% endif %}">{{ description }}</span>{% endif %}
 {%- endmacro %}
 
 {#
