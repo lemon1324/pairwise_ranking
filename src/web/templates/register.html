@@ -116,7 +116,17 @@
     // or the project a mutation has just produced. The engine boots from a
     // deferred script, which has run by the time DOMContentLoaded fires, and
     // selecting is what fetches the row's callout and puts the focus in it.
-    addEventListener("DOMContentLoaded", function () {
+    //
+    // Bound on `window`, and that is not a detail. htmx wires every hx-trigger
+    // in a listener it binds on `document`, registered when its own deferred
+    // script runs - which is before this script is even parsed. DOMContentLoaded
+    // is fired at the document and bubbles, so a window listener runs in the
+    // bubble phase, strictly after every document listener: a guarantee of the
+    // spec rather than of registration order. Bind this on `document` instead
+    // and it becomes a race this side can lose - sheet:select fires before the
+    // row has an hx-trigger to hear it, htmx never asks for the callout, and
+    // the sheet comes up with the form missing. Silently, on every page load.
+    window.addEventListener("DOMContentLoaded", function () {
       if (window.sheet) window.sheet.select({{ selected|tojson }});
     });
   </script>
