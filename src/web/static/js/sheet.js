@@ -48,7 +48,11 @@
    */
   function createSheet(startField) {
     let field = startField;
-    let titleblock = document.querySelector(".bom-sheet > .titleblock");
+    // Every sheet in the set closes with a title block, and the fold is measured against this one.
+    // A detached stand-in keeps a sheet that somehow has none from taking the engine, and with it
+    // the whole list, down.
+    let titleblock =
+      document.querySelector(".bom-sheet > .titleblock") || document.createElement("div");
     const host = document.getElementById("row-callout");
 
     let source = null; // the server's table, held detached while the sheet is folded
@@ -169,7 +173,9 @@
       const widthFor = (i) => (i === columns - 1 ? tbWidth : otherWidth);
 
       titleblock.style.width = `${tbWidth}px`;
-      const tbTop = titleblock.getBoundingClientRect().top - field.getBoundingClientRect().top;
+      const tbTop = titleblock.isConnected
+        ? titleblock.getBoundingClientRect().top - field.getBoundingClientRect().top
+        : height;
       const lastCol = columns - 1;
       const lastColBottom = tbTop - CLEARANCE_REM * rem();
       limits = { bottom: height, lastColBottom };
