@@ -98,6 +98,7 @@ class PairOffer:
         if self.stats is not None:
             object.__setattr__(self, "stats", dict(self.stats))
 
+    @property
     def has_pair(self) -> bool:
         """
         Check whether the offer carries a pair.

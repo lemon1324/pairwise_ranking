@@ -245,7 +245,7 @@ class MainWindow(QMainWindow):
             offer: The offer to show. The session reports why it has no pair;
                 the wording of that is this window's business.
         """
-        if offer.has_pair():
+        if offer.has_pair:
             self.comparison_widget.set_pair(
                 offer.pair[0],
                 offer.pair[1],

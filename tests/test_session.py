@@ -291,7 +291,7 @@ class TestProjectSessionPairOffer(unittest.TestCase):
 
         offer = session.next_pair()
 
-        self.assertTrue(offer.has_pair())
+        self.assertTrue(offer.has_pair)
         self.assertIsNone(offer.reason)
         self.assertEqual(offer.stats["total_items"], 2)
         self.assertFalse(offer.blinded)
@@ -304,7 +304,7 @@ class TestProjectSessionPairOffer(unittest.TestCase):
 
                 offer = session.next_pair()
 
-                self.assertFalse(offer.has_pair())
+                self.assertFalse(offer.has_pair)
                 self.assertEqual(offer.reason, NoPairReason.TOO_FEW_ITEMS)
                 self.assertIsNone(offer.stats)
 
@@ -458,7 +458,7 @@ class TestProjectSessionVoting(unittest.TestCase):
         offer = self.session.skip()
 
         self.assertEqual(self.session.project.votes, [])
-        self.assertTrue(offer.has_pair())
+        self.assertTrue(offer.has_pair)
 
     def test_undo_without_votes_returns_none(self):
         """Test that undoing with nothing to undo is a no-op."""
@@ -506,7 +506,7 @@ class TestProjectSessionVoting(unittest.TestCase):
 
         result = self.session.undo()
 
-        self.assertTrue(result.offer.has_pair())
+        self.assertTrue(result.offer.has_pair)
 
     def test_undo_of_the_only_vote_leaves_no_votes(self):
         """Test that undoing empties the project's votes when there was one."""
@@ -532,7 +532,7 @@ class TestProjectSessionUndoEligibility(unittest.TestCase):
         result = self.session.undo()
 
         self.assertIsNone(result.pair)
-        self.assertTrue(result.offer.has_pair())
+        self.assertTrue(result.offer.has_pair)
 
     def test_deleting_an_item_takes_its_votes_with_it(self):
         """Test that a deleted item leaves no vote of its own to undo."""
