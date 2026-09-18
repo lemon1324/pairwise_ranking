@@ -8,8 +8,17 @@ packages = [{include = "src"}]
 
 [tool.poetry.dependencies]
 python = "^3.10"
-PyQt6 = "^6.6.0"
 numpy = "^1.26.0"
+
+[tool.poetry.group.desktop.dependencies]
+PyQt6 = "^6.6.0"
+
+[tool.poetry.group.web.dependencies]
+fastapi = "^0.115.0"
+uvicorn = {extras = ["standard"], version = "^0.32.0"}
+jinja2 = "^3.1.0"
+python-multipart = "^0.0.12"
+itsdangerous = "^2.2.0"
 
 [tool.poetry.group.dev.dependencies]
 # No additional dev dependencies needed - using built-in unittest
