@@ -19,6 +19,9 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import PlainTextResponse
 from fastapi.testclient import TestClient
+# uvicorn's own table, read rather than restated: the point of the log-level
+# test is that the two agree, which a copy of the list here could not show.
+from uvicorn.config import LOG_LEVELS
 
 from src.app.session import ProjectSession
 from src.data.format_version import CURRENT_FORMAT_VERSION, FORMAT_VERSION_KEY
@@ -34,10 +37,13 @@ from src.web.config import (
     AUTH_MODE_VAR,
     DATA_DIR_VAR,
     DEFAULT_DATA_DIR,
+    DEFAULT_LOG_LEVEL,
     DEFAULT_PORT,
+    LOG_LEVEL_VAR,
     PORT_VAR,
     ROOT_PATH_VAR,
     SECRET_KEY_VAR,
+    UVICORN_LOG_LEVELS,
     WebConfig,
     load_config,
 )
@@ -407,6 +413,58 @@ class TestConfig(unittest.TestCase):
         """Test that a misspelt mode is not read as no authentication."""
         with self.assertRaises(ValueError):
             load_config({AUTH_MODE_VAR: "proxy"})
+
+    def test_every_log_level_is_one_uvicorn_will_accept(self):
+        """
+        Test that no configured level can crash the server as it starts.
+
+        web_main hands the level straight to uvicorn, which looks it up in a
+        dict: a name this module forgave but uvicorn has not heard of - WARN,
+        say, which the standard library answers to - was a KeyError out of
+        uvicorn's startup instead of a readable message.
+        """
+        for raw in ("DEBUG", "info", " warning ", "WARN", "FATAL", "TRACE", "", "loud"):
+            with self.subTest(raw=raw):
+                level = load_config({LOG_LEVEL_VAR: raw}).log_level
+
+                self.assertIn(level.lower(), UVICORN_LOG_LEVELS)
+                self.assertIn(level.lower(), LOG_LEVELS)
+
+    def test_a_standard_library_synonym_keeps_its_meaning(self):
+        """Test that WARN is read as WARNING rather than thrown away."""
+        self.assertEqual(load_config({LOG_LEVEL_VAR: "warn"}).log_level, "WARNING")
+        self.assertEqual(load_config({LOG_LEVEL_VAR: "fatal"}).log_level, "CRITICAL")
+
+    def test_an_unrecognized_log_level_falls_back_with_a_warning(self):
+        """Test that a typo costs a warning rather than the whole log."""
+        # A key is configured so the only warning in the log is the one under
+        # test, rather than the generated-key warning as well.
+        env = {LOG_LEVEL_VAR: "chatty", SECRET_KEY_VAR: "a-real-key"}
+        with self.assertLogs("src.web.config", "WARNING") as logged:
+            config = load_config(env)
+
+        self.assertEqual(config.log_level, DEFAULT_LOG_LEVEL)
+        self.assertIn(LOG_LEVEL_VAR, logged.output[0])
+
+    def test_the_settled_level_means_the_same_to_the_standard_library(self):
+        """
+        Test that the name uvicorn is given is also the level logging applies.
+
+        configure_logging resolves the name with getattr, so this is the other
+        half of the agreement: WARN must arrive as WARNING rather than as the
+        INFO fallback. TRACE is uvicorn's own level and has no standard-library
+        equivalent, so it logs everything INFO and above - which is more than
+        was asked for, never less.
+        """
+        for raw, expected in (
+            ("warn", logging.WARNING),
+            ("error", logging.ERROR),
+            ("trace", logging.INFO),
+        ):
+            with self.subTest(raw=raw):
+                level = load_config({LOG_LEVEL_VAR: raw}).log_level
+
+                self.assertEqual(getattr(logging, level, logging.INFO), expected)
 
 
 if __name__ == "__main__":

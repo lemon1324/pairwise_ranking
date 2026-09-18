@@ -40,6 +40,21 @@ PLANNED_AUTH_MODES = ("proxy", "oidc")
 
 DEFAULT_LOG_LEVEL = "INFO"
 
+# The level names uvicorn will accept. It looks the name up in a plain dict, so
+# a name this module tolerated but uvicorn has never heard of is not a chatty
+# log - it is a KeyError out of the server's own startup, which is the one
+# failure the readable "Cannot start" message in :mod:`web_main` cannot report.
+# TRACE is uvicorn's own and is finer than DEBUG; the standard library has no
+# such level and simply logs more than asked.
+UVICORN_LOG_LEVELS = frozenset(
+    {"critical", "error", "warning", "info", "debug", "trace"}
+)
+
+# Names an operator plausibly writes that the standard library answers to and
+# uvicorn does not. Mapped rather than refused, because a container that
+# printed nothing over a synonym would be worse than one that logs.
+LOG_LEVEL_ALIASES = {"WARN": "WARNING", "FATAL": "CRITICAL"}
+
 # One line per record, with the logger name, because a server's log is read
 # after the fact by someone who was not watching: they need to know which part
 # of the process spoke and when, which a bare message does not say.
@@ -66,7 +81,9 @@ class WebConfig:
             rather than only warned about once.
         auth_mode: How users are identified. Only :data:`AUTH_MODE_NONE` is
             implemented; :mod:`src.web.deps` is the seam the others plug into.
-        log_level: The root log level name.
+        log_level: The root log level name, always upper case and always one
+            :data:`UVICORN_LOG_LEVELS` holds, so it can be handed to either
+            logger without a second opinion about what it means.
     """
 
     data_dir: Path
@@ -146,6 +163,37 @@ def _auth_mode(raw: str) -> str:
     return mode
 
 
+def _log_level(raw: str) -> str:
+    """
+    Read the log level, settling on a name both loggers answer to.
+
+    An unrecognized level is forgiven rather than refused - losing the log is a
+    worse way to learn about a typo than a slightly chatty log - but the
+    forgiving has to happen *here*, once. Handing the raw name on to uvicorn as
+    well would leave the two disagreeing, and uvicorn's disagreement is a
+    KeyError during startup rather than a verbose log.
+
+    Args:
+        raw: The configured value.
+
+    Returns:
+        str: An upper-case level name from :data:`UVICORN_LOG_LEVELS`.
+    """
+    level = raw.strip().upper()
+    level = LOG_LEVEL_ALIASES.get(level, level)
+    if level.lower() not in UVICORN_LOG_LEVELS:
+        known = ", ".join(sorted(name.upper() for name in UVICORN_LOG_LEVELS))
+        logger.warning(
+            "%s=%r is not a log level; using %s. The levels are: %s.",
+            LOG_LEVEL_VAR,
+            raw,
+            DEFAULT_LOG_LEVEL,
+            known,
+        )
+        return DEFAULT_LOG_LEVEL
+    return level
+
+
 def load_config(env: dict = None) -> WebConfig:
     """
     Read the configuration out of the environment.
@@ -180,7 +228,7 @@ def load_config(env: dict = None) -> WebConfig:
         secret_key=secret_key,
         secret_key_generated=generated,
         auth_mode=_auth_mode(source.get(AUTH_MODE_VAR) or ""),
-        log_level=(source.get(LOG_LEVEL_VAR) or DEFAULT_LOG_LEVEL).strip().upper(),
+        log_level=_log_level(source.get(LOG_LEVEL_VAR) or DEFAULT_LOG_LEVEL),
     )
 
 
