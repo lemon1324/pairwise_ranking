@@ -451,6 +451,22 @@ class TestEmptyRegister(RegisterTestCase):
         self.assertIn('href="/?form=new"', empty.group(0))
         self.assertIn('href="/?form=import"', empty.group(0))
 
+    def test_the_empty_state_names_the_two_shortcuts(self):
+        """
+        Test that the empty state draws N and I on its buttons.
+
+        The keys work whether or not there are rows - they are declared on the
+        title block's cells, and sheet.js presses them from the document. An
+        empty directory is exactly where someone has not yet learned them, so
+        the legends are on the buttons here as they are in the mockup.
+        """
+        body = self.client.get("/").text
+        empty = re.search(r'<div class="bom-empty">.*?</div>\s*</div>', body, re.S)
+
+        self.assertIsNotNone(empty)
+        self.assertIn('New project <span class="key">N</span>', empty.group(0))
+        self.assertIn('Import <span class="key">I</span>', empty.group(0))
+
     def test_a_directory_that_does_not_exist_is_still_the_empty_state(self):
         """
         Test that a missing bind mount draws the empty sheet, not an error.

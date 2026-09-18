@@ -25,6 +25,7 @@
 {% from "macros/title_block.html" import title_block, keys_block, tb_title, tb_file, tb_sheet, tb_cell, tb_press_cell %}
 {% from "macros/parts_list.html" import parts_list, parts_row, name_cell, empty_state %}
 {% from "macros/tabs.html" import tabs %}
+{% from "macros/sheet.html" import key %}
 
 {% block title %}Projects{% endblock %}
 
@@ -73,9 +74,12 @@
       {% call empty_state(
           "No projects in " ~ data_dir ~ " yet.",
           "Start a new project, import a .pairrank file, or copy projects from the desktop app into the appdata share.") %}
+        {# The legends the title block draws are drawn here too: with no rows
+           there is nothing to select, but N and I still work, and this box is
+           where someone standing on an empty directory is looking. #}
         <div class="strip-buttons" style="justify-content:center">
-          <a class="cell-button" href="{{ new_url }}">New project</a>
-          <a class="cell-button" href="{{ import_url }}">Import</a>
+          <a class="cell-button" href="{{ new_url }}">New project {{ key("N") }}</a>
+          <a class="cell-button" href="{{ import_url }}">Import {{ key("I") }}</a>
         </div>
       {% endcall %}
     {% endif %}
