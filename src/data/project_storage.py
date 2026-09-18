@@ -1,6 +1,7 @@
 """Project file storage for the pairwise ranking application."""
 
 import json
+import logging
 import os
 import shutil
 from datetime import datetime
@@ -9,6 +10,9 @@ from pathlib import Path
 from src.data.format_version import CURRENT_FORMAT_VERSION, upgrade
 from src.models.project import Project
 from src.models.settings import Settings
+
+
+logger = logging.getLogger(__name__)
 
 
 class ProjectStorage:
@@ -98,7 +102,7 @@ class ProjectStorage:
         keeps the file's original modified timestamp and writes no
         ``.pairrank.bak``, so reading a file never looks like an edit. If the
         backup or the re-save cannot be written the upgraded project is still
-        returned and a warning is printed. Loading a file that is already
+        returned and a warning is logged. Loading a file that is already
         current writes nothing.
 
         Args:
@@ -174,9 +178,15 @@ class ProjectStorage:
                 project, file_path, touch_modified=False, backup=False
             )
         except OSError as e:
-            print(
-                f"Warning: could not migrate {file_path} to format version "
-                f"{CURRENT_FORMAT_VERSION}: {e}"
+            # Logged rather than printed: the web frontend is a server process
+            # whose stdout nobody is watching, and a warning about a project
+            # that would not migrate is exactly the sort of thing someone goes
+            # looking for in a log afterwards.
+            logger.warning(
+                "Could not migrate %s to format version %s: %s",
+                file_path,
+                CURRENT_FORMAT_VERSION,
+                e,
             )
 
     @staticmethod

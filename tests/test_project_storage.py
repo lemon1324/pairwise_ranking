@@ -544,9 +544,14 @@ class TestProjectStorageMigration(unittest.TestCase):
         def deny(*args, **kwargs):
             raise PermissionError("simulated read-only project file")
 
+        # The warning goes through logging rather than to stdout, because the
+        # web frontend is a server process whose stdout nobody reads. Asserting
+        # on it here is what keeps it from quietly going back.
         with patch.object(ProjectStorage, "save", side_effect=deny):
-            project = ProjectStorage.load(self.test_file)
+            with self.assertLogs("src.data.project_storage", "WARNING") as logged:
+                project = ProjectStorage.load(self.test_file)
 
+        self.assertIn("simulated read-only project file", logged.output[0])
         self.assertEqual(project.name, "Legacy Project")
         self.assertEqual(project.to_dict()[FORMAT_VERSION_KEY], CURRENT_FORMAT_VERSION)
         self.assertEqual(len(project.active_items()), 2)
@@ -559,8 +564,10 @@ class TestProjectStorageMigration(unittest.TestCase):
             raise PermissionError("simulated read-only directory")
 
         with patch.object(Path, "write_bytes", side_effect=deny):
-            project = ProjectStorage.load(self.test_file)
+            with self.assertLogs("src.data.project_storage", "WARNING") as logged:
+                project = ProjectStorage.load(self.test_file)
 
+        self.assertIn("simulated read-only directory", logged.output[0])
         self.assertEqual(project.to_dict()[FORMAT_VERSION_KEY], CURRENT_FORMAT_VERSION)
         self.assertFalse(self.v1_backup.exists())
 
