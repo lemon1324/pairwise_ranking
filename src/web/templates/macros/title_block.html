@@ -116,6 +116,45 @@
 {%- endmacro %}
 
 {#
+  tb_press_cell(caption, label, legend, icon_name, action, params={}, shortcut=none, span=2)
+
+    caption    the cell's drafting label, e.g. "New".
+    label      the words on the action line, e.g. "Project".
+    legend     the shortcut's legend, as drawn.
+    icon_name  the sprite symbol before the words, without the "i-" prefix.
+    action     where pressing the cell goes.
+    params     query parameters to carry there, as a mapping.
+    shortcut   the shortcut as a UI Events key value, when the legend is not
+               already one. See popover_actions for why the two are separate.
+    span       how many of the six columns the cell takes.
+
+  A whole title-block cell that is one big press: the register's New project
+  and Import, and whatever a later sheet puts beside them.
+
+  It is a GET form rather than a button with a script on it, because pressing
+  it *is* a navigation - the sheet it lands on is a state of the register with
+  its own address, which is what makes that state reloadable, linkable and
+  photographable. The form element carries the cell's own classes, because the
+  stylesheet rules the press by `.tb-press > button` and a wrapper between them
+  would take the cell apart.
+
+  `data-sheet-key` is written from the same value aria-keyshortcuts gets, so
+  the legend drawn on the cell, what assistive technology is told, and what the
+  key actually presses are one declaration. sheet.js clicks the button; the
+  browser submits the form.
+#}
+{% macro tb_press_cell(caption, label, legend, icon_name, action, params={}, shortcut=none, span=2) -%}
+{% set declared = shortcut or (legend if legend is string and legend|length == 1 and legend.isalnum()) %}
+<form class="tb-cell tb-press span-{{ span }}" method="get" action="{{ action }}">
+  {% for field, value in params.items() %}<input type="hidden" name="{{ field }}" value="{{ value }}">{% endfor %}
+  <button type="submit"{% if declared %} aria-keyshortcuts="{{ declared }}" data-sheet-key="{{ declared }}"{% endif %}>
+    <span class="label">{{ caption }}</span>
+    <span class="tb-act">{{ icon(icon_name) }}{{ label }}{% if legend %}{{ key(legend) }}{% endif %}</span>
+  </button>
+</form>
+{%- endmacro %}
+
+{#
   tb_cell(caption, span=2, extra_class="", phone_wide=false)
 
     caption      the cell's drafting label, or none for a cell with no caption.

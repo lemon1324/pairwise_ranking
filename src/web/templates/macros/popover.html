@@ -40,6 +40,12 @@
                          whenever the legend is a glyph or an abbreviation,
                          which is most of them.
                url       optional; an hx-get for the fragment this action opens.
+               href      optional; makes the cell a link to this address
+                         instead of a button. For an action that leaves the
+                         page - the register's Open and Download - because a
+                         button that navigates is one whose middle click, whose
+                         "open in new tab" and whose status bar all do nothing.
+                         An action has one or the other, never both.
 
   A strip of equal cells sharing 1px ink gaps. The shortcut is declared with
   aria-keyshortcuts as well as drawn, so the legend is a picture of something
@@ -60,11 +66,19 @@
 <div class="strip-actions">
   {% for action in actions %}
   {% set shortcut = action.shortcut or (action.key if action.key is string and action.key|length == 1 and action.key.isalnum()) %}
+  {% if action.href %}
+  <a class="strip-action" href="{{ action.href }}" data-action="{{ action.action }}"
+     {% if action.download %}download{% endif %}
+     {% if shortcut %}aria-keyshortcuts="{{ shortcut }}" data-sheet-key="{{ shortcut }}"{% endif %}>
+    {{ action.label }}{% if action.key %}{{ key(action.key) }}{% endif %}
+  </a>
+  {% else %}
   <button class="strip-action" type="button" data-action="{{ action.action }}"
           {% if shortcut %}aria-keyshortcuts="{{ shortcut }}" data-sheet-key="{{ shortcut }}"{% endif %}
           {% if action.url %}hx-get="{{ action.url }}" hx-target="#row-callout"{% endif %}>
     {{ action.label }}{% if action.key %}{{ key(action.key) }}{% endif %}
   </button>
+  {% endif %}
   {% endfor %}
 </div>
 {%- endmacro %}
@@ -83,6 +97,35 @@
   <p class="strip-title">{{ title }}{% if subtitle %}<span class="label">{{ subtitle }}</span>{% endif %}</p>
   {% endif %}
   {{ caller() }}
+</div>
+{%- endmacro %}
+
+{#
+  popover_warning(lead, label="Warning")
+
+    lead   the bold warn-coloured sentence, e.g. "Made by a newer version."
+    label  the accessible name of the box.
+
+  Called with {% call %}; the caller emits the rest of the words and any cell
+  buttons, inside the box.
+
+  The warning box of DESIGN.md, drawn in a callout: it replaces the actions it
+  concerns rather than stacking over them, and it says the cause and the
+  recovery in words beside the icon, because warn orange carries no meaning on
+  its own. The register uses it for the two file conditions that have no
+  actions - a file from a newer version, and one that will not read.
+
+  role="group" rather than the confirmation's "alertdialog": nothing is being
+  asked here. This is a statement about the row that is already selected, and
+  announcing it as a dialog would promise a decision that is not being offered.
+#}
+{% macro popover_warning(lead, label="Warning") -%}
+<div class="strip-confirm" role="group" aria-label="{{ label }}">
+  {{ icon("warn") }}
+  <div>
+    <p><strong>{{ lead }}</strong></p>
+    {{ caller() }}
+  </div>
 </div>
 {%- endmacro %}
 

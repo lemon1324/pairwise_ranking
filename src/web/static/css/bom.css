@@ -382,6 +382,8 @@ html.bom-fixed .bom-sheet > .titleblock {
   background: var(--ink);
 }
 
+/* An action cell is a link when it leaves the page - the register's Open and
+   Download - so the underline comes off here the way it does on .cell-button. */
 .strip-action {
   display: flex;
   align-items: center;
@@ -395,6 +397,7 @@ html.bom-fixed .bom-sheet > .titleblock {
   font-weight: 600;
   font-size: 0.9375rem;
   text-align: left;
+  text-decoration: none;
   cursor: pointer;
   white-space: nowrap;
 }
