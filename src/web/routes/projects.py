@@ -519,6 +519,19 @@ async def create_project(
 
     path = registry.resolve(file_name)
     with registry.locked(path):
+        # Asked again, inside the lock, because the answer above was given
+        # outside it and `ProjectStorage.create_new` writes through whatever is
+        # at the path. Both the other mutations already do this - `import_file`
+        # and `duplicate_project_file` each choose their free name inside the
+        # lock the route took - and this one was the exception, safe only for
+        # as long as nothing awaits between the check and the write on a single
+        # worker. That is a property of today's handler, not of the route.
+        if _name_taken(config.data_dir, file_name):
+            logger.info("Refused to create %s: the name was taken", file_name)
+            return RedirectResponse(
+                register_url(request, form=FORM_NEW, name=trimmed, submitted=1),
+                status_code=303,
+            )
         config.data_dir.mkdir(parents=True, exist_ok=True)
         ProjectStorage.create_new(trimmed, path)
     logger.info("Created %s", file_name)

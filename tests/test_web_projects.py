@@ -685,6 +685,31 @@ class TestNewProject(RegisterTestCase):
         self.assertIn('action="/projects/new"', body)
         self.assertNotIn("hx-post", body)
 
+    def test_a_name_taken_after_the_check_is_still_not_written_over(self):
+        """
+        Test that the collision check inside the lock is the one that counts.
+
+        The check that answers the form runs before the lock is taken, and
+        `ProjectStorage.create_new` writes through whatever is at the path, so
+        a file that appears in between would be destroyed by a create that had
+        already been told the name was free. The other two mutations each
+        choose their free name inside the lock; this one is held to the same
+        thing. Driven by disabling the outer check, which is the only way to
+        stand in the window it leaves.
+        """
+        original = self.snapshot()
+
+        with patch(
+            "src.web.routes.projects._draft",
+            return_value=("Alpha.pairrank", None),
+        ):
+            response = self.post("/projects/new", data={"name": "Alpha"})
+
+        path, query = self.redirect_of(response)
+        self.assertEqual(path, "/")
+        self.assertEqual(query, {"form": "new", "name": "Alpha", "submitted": "1"})
+        self.assertEqual(self.snapshot(), original)
+
     def test_the_form_declares_both_of_the_keys_it_draws(self):
         """
         Test that Save takes Enter as surely as Cancel takes Esc.
