@@ -1,0 +1,23 @@
+{#
+  The shell every error page shares.
+
+  Deliberately plain: phase 4b brings in the sheet shell, the stylesheets and
+  the self-hosted fonts, and this becomes `{% extends "base.html" %}` with the
+  message dropped into the sheet body. Keeping the markup semantic and the
+  class names in the sheet's vocabulary is what makes that a swap rather than a
+  rewrite, so please add structure here rather than styling.
+#}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Error{% endblock %} &middot; Pairwise Ranking</title>
+</head>
+<body class="error-page">
+  <main class="error-sheet">
+    <h1>{% block heading %}{{ self.title() }}{% endblock %}</h1>
+    {% block body %}{% endblock %}
+    <p class="error-actions"><a href="{{ home_url }}">Back to the drawing register</a></p>
+  </main>
+</body>
+</html>
