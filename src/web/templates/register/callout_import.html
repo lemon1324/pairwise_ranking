@@ -39,7 +39,15 @@
       </label>
       {% include "register/import_detail.html" %}
       <div class="strip-buttons">
-        <button class="cell-button is-primary" type="submit">Import {{ key("↵") }}</button>
+        {# The ↵ legend has to be wired by hand. Nothing in the engine makes
+           Enter mean Save: it presses whatever carries `data-sheet-key`, and
+           this form has no text field for the browser's own implicit
+           submission to work from - the only input in it is the file input,
+           which is hidden. Without this the legend drew a key nothing
+           pressed, and Enter fell through to a `sheet:open` no one listens
+           for. #}
+        <button class="cell-button is-primary" type="submit"
+                data-sheet-key="Enter" aria-keyshortcuts="Enter">Import {{ key("↵") }}</button>
         <a class="cell-button" href="{{ cancel_url }}" data-sheet-key="Escape"
            aria-keyshortcuts="Escape">Cancel {{ key("Esc") }}</a>
       </div>

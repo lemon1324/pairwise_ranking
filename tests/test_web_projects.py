@@ -1015,6 +1015,23 @@ class TestImportProject(RegisterTestCase):
         self.assertIn(f'data-id="{GHOST_ROW_ID}"', body)
         self.assertIn('hx-get="/projects/import/callout"', body)
 
+    def test_import_declares_the_key_its_legend_draws(self):
+        """
+        Test that the ↵ on the Import button is wired to the button.
+
+        Nothing in the engine makes Enter mean Save: it presses whatever
+        carries `data-sheet-key`, and this form has no text field for the
+        browser's own implicit submission to work from either - its one input
+        is the hidden file input. Undeclared, the legend drew a key nothing
+        pressed and Enter fell through to a `sheet:open` no one listens for.
+        """
+        body = self.client.get("/projects/import/callout").text
+        button = re.search(r"<button[^>]*is-primary[^>]*>", body, re.S)
+
+        self.assertIsNotNone(button)
+        self.assertIn('data-sheet-key="Enter"', button.group(0))
+        self.assertIn('aria-keyshortcuts="Enter"', button.group(0))
+
     def test_a_preview_describes_the_file_without_writing_it(self):
         """
         Test that choosing a file says what is in it and changes nothing.
