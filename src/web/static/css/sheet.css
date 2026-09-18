@@ -468,12 +468,6 @@ html {
   cursor: pointer;
 }
 
-/* An inline-flex button is not hidden by the `hidden` attribute on its own; the title block's
-   pager is drawn hidden and unhidden by the folding engine, so it has to be. */
-.cell-button[hidden] {
-  display: none;
-}
-
 .cell-button:hover:not(:disabled) {
   background: var(--paper-3);
 }

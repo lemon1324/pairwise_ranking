@@ -288,11 +288,8 @@
       if (count) count.textContent = `${page + 1} of ${pages}`;
       const prev = document.getElementById("page-prev");
       const next = document.getElementById("page-next");
-      // The buttons are rendered hidden, because without this engine there is only ever one sheet
-      // and a pager that cannot page is a lie. They appear when there is somewhere to go.
-      for (const button of [prev, next]) {
-        if (button) button.hidden = pages <= 1;
-      }
+      // The server draws both disabled, which is the truth until the rows have been folded: it
+      // cannot know how many sheets they come to at this width.
       if (prev) prev.disabled = page === 0;
       if (next) next.disabled = page >= pages - 1;
     }
