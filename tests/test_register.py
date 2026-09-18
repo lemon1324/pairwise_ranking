@@ -714,6 +714,40 @@ class TestUniqueFileName(RegisterTestCase):
             "Fresh.pairrank",
         )
 
+    def test_a_directory_that_cannot_be_listed_is_not_answered_as_empty(self):
+        """
+        Test that an unreadable directory is an error, not a free name.
+
+        A directory that is not there yet holds nothing, and the write that
+        follows will create it. A directory that is there and will not be read
+        is a different thing, and answering it as "nothing is in it" hands out
+        a name whose write then truncates whatever was really there.
+        ``Path.glob`` makes exactly that mistake - it returns an empty iterator
+        for a path that is not a directory - so the scan is done with
+        ``os.scandir``, which says so.
+        """
+        not_a_directory = self.temp_dir / "notes.txt"
+        not_a_directory.write_text("not a directory", encoding="utf-8")
+
+        with self.assertRaises(OSError):
+            unique_file_name(not_a_directory, "Fresh")
+
+    def test_a_differently_cased_extension_takes_the_name(self):
+        """
+        Test that .PAIRRANK and .pairrank are treated as one name.
+
+        Not a nicety: on the Windows share this application is actually run
+        from they are one file, so a name handed out beside an existing
+        ``Taken.PAIRRANK`` would be written straight over it. The check is the
+        same on every platform, because the dangerous answer is the one that
+        has to be right.
+        """
+        (self.temp_dir / "Taken.PAIRRANK").write_text("{}", encoding="utf-8")
+
+        self.assertEqual(
+            unique_file_name(self.temp_dir, "Taken"), "Taken (2).pairrank"
+        )
+
 
 class TestResolveProjectPath(RegisterTestCase):
     """Test cases for the boundary a file name from outside has to cross."""

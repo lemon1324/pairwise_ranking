@@ -52,6 +52,7 @@ from src.app.register import (
     default_file_name,
     duplicate_project_file,
     import_file,
+    name_is_taken,
     probe_project_bytes,
     probe_project_file,
     resolve_project_path,
@@ -267,30 +268,6 @@ def _note(rows: list, done: str, selected: str, directory: Path) -> str:
     return STANDING_NOTE.format(directory=directory)
 
 
-def _name_taken(data_dir: Path, file_name: str) -> bool:
-    """
-    Check whether a file name is already in use in the data directory.
-
-    Compared case-insensitively, because the filesystems this runs on are: two
-    names differing only in case are one file on a Windows share whatever this
-    answers.
-
-    Args:
-        data_dir: The directory to look in.
-        file_name: The candidate name.
-
-    Returns:
-        bool: True when something of that name is already there.
-    """
-    try:
-        return any(
-            path.name.casefold() == file_name.casefold()
-            for path in data_dir.glob(f"*{ProjectStorage.FILE_EXTENSION}")
-        )
-    except OSError:
-        return False
-
-
 def _draft(data_dir: Path, name: str, submitted: bool) -> tuple:
     """
     Work out what a drafted project name would be saved as, and what is wrong.
@@ -314,7 +291,7 @@ def _draft(data_dir: Path, name: str, submitted: bool) -> tuple:
         return "", ({"lead": "Enter a name.", "detail": ""} if submitted else None)
 
     file_name = default_file_name(trimmed)
-    if _name_taken(data_dir, file_name):
+    if name_is_taken(data_dir, file_name):
         # The path in full, as the mockup writes it: this line replaces the
         # hint that said where the project would be saved, so it has to say
         # where the file it clashes with already is.
@@ -541,7 +518,7 @@ async def create_project(
         # lock the route took - and this one was the exception, safe only for
         # as long as nothing awaits between the check and the write on a single
         # worker. That is a property of today's handler, not of the route.
-        if _name_taken(config.data_dir, file_name):
+        if name_is_taken(config.data_dir, file_name):
             logger.info("Refused to create %s: the name was taken", file_name)
             return RedirectResponse(
                 register_url(request, form=FORM_NEW, name=trimmed, submitted=1),
