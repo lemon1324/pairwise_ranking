@@ -49,13 +49,19 @@
   already a key value - a bare letter or digit - stands for both; anything else
   without a `shortcut` is drawn and left undeclared rather than declared wrong.
   `tb_sheet` in title_block.html spells its own the same way.
+
+  The same value goes on `data-sheet-key`, which is what actually makes the key
+  work: sheet.js presses the button when that key is pressed. So the legend on
+  the cell, what assistive technology is told, and what the key does are one
+  declaration, and a screen that draws a key it has not wired is not possible
+  here. A cell with no declarable shortcut gets neither attribute.
 #}
 {% macro popover_actions(actions) -%}
 <div class="strip-actions">
   {% for action in actions %}
   {% set shortcut = action.shortcut or (action.key if action.key is string and action.key|length == 1 and action.key.isalnum()) %}
   <button class="strip-action" type="button" data-action="{{ action.action }}"
-          {% if shortcut %}aria-keyshortcuts="{{ shortcut }}"{% endif %}
+          {% if shortcut %}aria-keyshortcuts="{{ shortcut }}" data-sheet-key="{{ shortcut }}"{% endif %}
           {% if action.url %}hx-get="{{ action.url }}" hx-target="#row-callout"{% endif %}>
     {{ action.label }}{% if action.key %}{{ key(action.key) }}{% endif %}
   </button>

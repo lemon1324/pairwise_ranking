@@ -291,9 +291,22 @@ html.bom-fixed .bom-sheet > .titleblock {
 
 /* ---------- Callout for the selected row ---------- */
 
+/* The callout's host. It sits outside .sheet (see base.html) so that swapping the rows cannot
+   take an open form with them, which leaves it with no drawing area to be positioned inside. So
+   sheet.js parks it, at zero size, on the drawing area's top-left corner, and the callout within
+   it is then placed in exactly the coordinates the folding code measures in. Zero size and no
+   z-index of its own: it is an anchor, not a layer, and the callout keeps its own stacking. */
+#row-callout {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+}
+
 /* A popover on the sheet, beside the find-number column and just off the selected row (or
    above it when there is no room below), so selecting never refolds the sheet. Positioned by
-   bom.js. It is set off by line weight, not shadow: a 2px frame-weight rule all round. */
+   sheet.js. It is set off by line weight, not shadow: a 2px frame-weight rule all round. */
 .bom-callout {
   --w-pop: var(--w-frame);
   position: absolute;
@@ -304,7 +317,7 @@ html.bom-fixed .bom-sheet > .titleblock {
 }
 
 /* Elbow leader: from a dot on the selected row's find number, down (or up) the gap and across
-   into the popover's side, like a balloon leader. bom.js sets --leader-dx and --gap. */
+   into the popover's side, like a balloon leader. sheet.js sets --leader-dx and --gap. */
 .bom-callout::before {
   content: "";
   position: absolute;

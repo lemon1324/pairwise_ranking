@@ -87,11 +87,19 @@
 
     current  the sheet on screen, from 1.
     total    how many sheets the rows fold into.
-    paged    true to draw the previous and next cell buttons, which a sheet
-             that has only ever one page does not need.
+    paged    true on a sheet whose rows fold, which is every parts list; false
+             for Compare and Settings, which are one sheet by construction.
     caption  the cell's drafting label.
 
   Always the bottom-right cell of the title block, as on a drawing.
+
+  The server always says "1 of 1", because only the folding engine knows how
+  many sheets the rows come to at this width - so the two buttons are drawn
+  hidden and sheet.js unhides them once there is a second sheet to turn to.
+  Drawn-then-unhidden rather than built by the engine, so that the markup and
+  its shortcuts live here with the rest of the title block; and hidden rather
+  than disabled, because with JavaScript off there is one long sheet and a
+  pager on it would be an offer the page cannot keep.
 #}
 {% macro tb_sheet(current, total, paged=false, caption="Sheet") -%}
 <div class="tb-cell tb-sheet span-2">
@@ -99,8 +107,8 @@
   <div class="tb-pager">
     <span class="num" id="sheet-no">{{ current }} of {{ total }}</span>
     {% if paged %}
-    <button class="cell-button" type="button" id="page-prev" aria-label="Previous sheet" aria-keyshortcuts="PageUp">{{ icon("up") }}</button>
-    <button class="cell-button" type="button" id="page-next" aria-label="Next sheet" aria-keyshortcuts="PageDown">{{ icon("chevron") }}</button>
+    <button class="cell-button" type="button" id="page-prev" aria-label="Previous sheet" aria-keyshortcuts="PageUp"{% if total <= 1 %} hidden{% endif %}>{{ icon("up") }}</button>
+    <button class="cell-button" type="button" id="page-next" aria-label="Next sheet" aria-keyshortcuts="PageDown"{% if total <= 1 %} hidden{% endif %}>{{ icon("chevron") }}</button>
     {% endif %}
   </div>
 </div>
