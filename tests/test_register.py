@@ -789,6 +789,24 @@ class TestImportFile(RegisterTestCase):
             (self.temp_dir / "incoming.pairrank").read_bytes(), original
         )
 
+    def test_a_free_name_is_used_exactly_as_it_was_given(self):
+        """
+        Test that a name nothing holds is not put through the sanitizer again.
+
+        The sanitizer is not idempotent over unique_file_name's own answer -
+        "incoming (2)" comes back "incoming _2_" - so a caller that has already
+        chosen a free name and shown it to someone, which is what the web
+        picker's import preview does, has to get that name and not a third one.
+        """
+        write_project(self.temp_dir / "incoming.pairrank", name="Original")
+        chosen = unique_file_name(self.temp_dir, "incoming")
+        raw = json.dumps(project_data(name="Incoming")).encode("utf-8")
+
+        info = import_file(self.temp_dir, chosen, raw)
+
+        self.assertEqual(chosen, "incoming (2).pairrank")
+        self.assertEqual(info.file_name, chosen)
+
     def test_directory_is_created(self):
         """Test that importing into a directory that is not there yet works."""
         target = self.temp_dir / "fresh"

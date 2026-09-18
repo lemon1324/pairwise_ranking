@@ -537,6 +537,29 @@ def default_file_name(name: str) -> str:
     return ensure_pairrank_suffix(Path(_file_stem(name))).name
 
 
+def _taken_names(data_dir: Path) -> set:
+    """
+    List the project file names a directory already holds.
+
+    Args:
+        data_dir: The directory to look in.
+
+    Returns:
+        set: Every ``.pairrank`` name in it, case-folded, because the
+        filesystems this runs on are case-insensitive and two names differing
+        only in case are one file on a Windows share. Empty when the directory
+        cannot be listed - the caller is choosing a name, and failing to read
+        the directory is the write's problem to report, not the naming's.
+    """
+    try:
+        return {
+            path.name.casefold()
+            for path in data_dir.glob(f"*{ProjectStorage.FILE_EXTENSION}")
+        }
+    except OSError:
+        return set()
+
+
 def unique_file_name(data_dir: Path, name: str) -> str:
     """
     Choose a file name for a project that nothing in the directory holds yet.
@@ -559,14 +582,7 @@ def unique_file_name(data_dir: Path, name: str) -> str:
         currently uses.
     """
     stem = _file_stem(name)
-
-    try:
-        taken = {
-            path.name.casefold()
-            for path in data_dir.glob(f"*{ProjectStorage.FILE_EXTENSION}")
-        }
-    except OSError:
-        taken = set()
+    taken = _taken_names(data_dir)
 
     candidate = default_file_name(name)
     if candidate.casefold() not in taken:
@@ -687,7 +703,15 @@ def import_file(data_dir: Path, file_name: str, raw_bytes: bytes) -> ProjectFile
         raise ValueError(f"Not a readable project file: {verdict.reason}")
 
     data_dir.mkdir(parents=True, exist_ok=True)
-    path = data_dir / unique_file_name(data_dir, target.stem)
+    # The name is only re-derived when something already holds it. Putting a
+    # name that has already been through the sanitizer back through it is not a
+    # no-op - ``unique_file_name`` answers "Tasting (2)" and reading that back
+    # in gives "Tasting _2_" - so a caller that has already chosen a free name
+    # and shown it to the user, which is what the picker's import preview does,
+    # would find the file written under a third name neither of them named.
+    path = target
+    if target.name.casefold() in _taken_names(data_dir):
+        path = data_dir / unique_file_name(data_dir, target.stem)
     path.write_bytes(raw_bytes)
 
     return probe_project_file(path)
