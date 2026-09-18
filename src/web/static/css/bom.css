@@ -2,9 +2,11 @@
  * Parts-list sheets (Items, Rankings, the project register): the folded BOM table, the callout
  * strip under the selected row, strip forms, and title-block controls. Loaded after sheet.css.
  *
- * Ported from docs/mockups/bom.css. Two deliberate differences, both from DESIGN.md's open
+ * Ported from docs/mockups/bom.css. Three deliberate differences. Two are from DESIGN.md's open
  * issues: rows take the shared --focus-inset instead of their own -2px, and a row's name and
- * its tag are separate elements so the ellipsis can never eat the tag. Both are marked below.
+ * its tag are separate elements so the ellipsis can never eat the tag. The third was found by the
+ * phase 5c capture pass: on phones an odd number of callout actions left an empty half-row that
+ * the strip painted solid ink. All three are marked below.
  */
 
 /* ---------- Sheet layout ---------- */
@@ -836,6 +838,17 @@ textarea.input {
   .strip-actions {
     grid-auto-flow: row;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* An odd number of actions - the register's Open, Duplicate, Download - left
+     the second half of the last row empty, and the strip paints its background
+     in ink so the gaps read as rules. An empty cell therefore came out as a
+     solid black rectangle beside the last action. The mockup does this too
+     (docs/mockups/bom.css:825); this is a third deliberate difference from it,
+     and the least invasive one: the odd action takes the whole row, so the
+     strip ends on a full-width cell instead of on a void. */
+  .strip-action:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
   }
 
   .strip-action {
