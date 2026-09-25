@@ -35,6 +35,36 @@ The directory is emptied of ``.pairrank`` files first, so re-running it after a
 capture pass has created, imported or duplicated something puts the register
 back where it started. The empty directory is written as ``<path>-empty``.
 
+**The Items pass (chunk 6c).** Every state of ``docs/mockups/items.html`` has
+an address on ``switches-sample`` or one of its variants, so the pass is one
+capture of the app and one of the mockup (``P`` is
+``/projects/switches-sample.pairrank/items``; quote each argument)::
+
+    capture_web.py --data-dir ../capture-data \\
+        "items-normal=$P?done=edited&item=it21" \\
+        "items-selected=$P?selected=it1" \\
+        "items-editing=$P?form=edit&item=it1" \\
+        "items-conflict=$P?form=edit&item=it1&submitted=1&name=Gateron+Oil+King&cat=Linear&slot=7&desc=Deep%2C+muted+bottom-out.+Smooth+all+the+way+down%2C+slight+spring+ping+on+release." \\
+        "items-delete=$P?form=delete&item=it1" \\
+        "items-retired=$P?retired=1&selected=it14" \\
+        "items-empty=/projects/switches-sample-empty.pairrank/items" \\
+        "items-noslots=/projects/switches-sample-no-slots.pairrank/items" \\
+        "items-full=/projects/switches-sample-full.pairrank/items" \\
+        "items-new=$P?form=new" "items-replace=$P?form=replace&item=it1" \\
+        "items-reactivate=$P?retired=1&form=reactivate&item=it14" \\
+        "items-done-retired=$P?selected=it15&done=retired&item=it14&freed=9"
+
+    capture_web.py --base-url "file:///$(wslpath -m docs/mockups)" \\
+        "mock-items-normal=/items.html?state=normal" ...
+
+with one ``mock-items-<state>`` per mockup state: normal, selected, editing,
+conflict, delete, retired, sheet2, empty, noslots, full. Two states have no
+address, because a key reaches them: sheet 2 is the plain sheet after PgDn,
+and the Delete sentence in Last change is the sheet a Delete lands on (its
+words travel in the session cookie). Photograph those by driving the page
+over CDP - ``drive_sheet.py``'s ``press`` and ``open_page`` do it - and seed
+again afterwards, because the Delete really deletes.
+
 Nothing here is imported by the application, and the files it writes are
 invented: names, figures and timestamps are all made up.
 """
