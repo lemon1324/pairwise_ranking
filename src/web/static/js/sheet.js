@@ -553,18 +553,26 @@
 
     // ---------- Keys ----------
 
+    /** @returns {boolean} True while the callout is one that can be cancelled: a form, a question. */
+    function modal() {
+      return !!(host && host.querySelector('[data-sheet-key~="Escape"]'));
+    }
+
     /**
      * Find the element a screen has put this key on.
      *
      * The open callout is searched first, so a form's Cancel takes Esc and its Save takes Enter
-     * ahead of anything the title block declares.
+     * ahead of anything the title block declares. A callout that can be cancelled - a form, a
+     * confirmation: anything declaring Escape - is the only scope while it is open, as the mockups
+     * ignore every verb while a form is up. Otherwise N or H pressed with the focus outside the
+     * form's fields would press the title block's Add or Retired, leave the page and lose the draft.
      *
      * @param {KeyboardEvent} e The key press.
      * @returns {Element|null} The button to press.
      */
     function keyTarget(e) {
       const wanted = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-      const scopes = [host, document.getElementById("sheet")].filter(Boolean);
+      const scopes = (modal() ? [host] : [host, document.getElementById("sheet")]).filter(Boolean);
       for (const scope of scopes) {
         for (const el of scope.querySelectorAll("[data-sheet-key]")) {
           // getClientRects(), not offsetParent: offsetParent is null for every element in a
@@ -648,8 +656,10 @@
             target.click();
             break;
           }
+          // Enter's fallback is not taken while a form or a question is open either: a delete
+          // confirmation that does not declare Enter means it.
           const tr = findRow(selectedId);
-          if (e.key === "Enter" && tr) {
+          if (e.key === "Enter" && tr && !modal()) {
             tr.dispatchEvent(
               new CustomEvent("sheet:open", { detail: { id: selectedId }, bubbles: true })
             );

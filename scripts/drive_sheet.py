@@ -94,6 +94,12 @@ What is checked, and why each one is here:
     block rather than sliding up over the row it belongs to; and a phone's
     callout stops inside the table's right rule.
 
+``form-verbs``
+    While a form (anything with a Cancel) is open, the sheet's own verbs are
+    not pressed: N and H over an Items edit form with the focus outside its
+    fields leave the page and the draft alone, as I does over the register's
+    New form. Esc still cancels, and N works again once it has.
+
 Each check leaves the page as it found it by navigating afresh, so they are
 independent and ``--check`` can run any one of them alone.
 """
@@ -1007,7 +1013,10 @@ def check_items_actions(devtools: DevTools, base: str) -> str:
     callout = devtools.evaluate(CALLOUT)
     expect(callout["label"] == "Replace (3) Candidate 3", f"clicking Replace opened {callout['label']!r}")
 
-    # N: the ghost row and the Add form; Enter (declared on Save) posts it.
+    # N: the ghost row and the Add form; Enter (declared on Save) posts it. The
+    # Replace form is closed first: while a form is open, N is not pressed.
+    press(devtools, "Escape")
+    wait_for_page(devtools, 'location.search === "?selected=item-3"', "the row after Cancel")
     devtools.evaluate("document.activeElement.blur(), true")
     press(devtools, "n")
     wait_for_page(devtools, 'location.search.includes("form=new")', "the Add form")
@@ -1120,6 +1129,63 @@ def check_callout_place(devtools: DevTools, base: str) -> str:
     )
 
 
+def check_form_verbs(devtools: DevTools, base: str) -> str:
+    """
+    Check that a sheet's verbs are not pressed while a form is open.
+
+    With the focus outside the form's fields - the person clicked its padding -
+    N and H used to press the title block's Add and Retired, leaving the page
+    with the draft. The form's own keys still work: Esc cancels it, and with
+    only the actions open N adds again. The register's I is checked too,
+    because the rule is the engine's.
+
+    Args:
+        devtools: The CDP session.
+        base: The server's base URL.
+
+    Returns:
+        str: What was measured, for the log.
+    """
+    kept = """
+    (() => ({
+      search: location.search,
+      draft: (document.getElementById("f-name") || {}).value || "",
+    }))()
+    """
+
+    open_page(devtools, f"{base}{ITEMS_PATH}?form=edit&item=item-3", *NARROW)
+    expect(
+        devtools.evaluate(CALLOUT)["label"] == "Edit (3) Candidate 3",
+        "the edit form did not open from its address",
+    )
+    devtools.evaluate(
+        'document.getElementById("f-name").value = "Draft kept", '
+        "document.activeElement.blur(), true"
+    )
+    start = devtools.evaluate(kept)
+    for key in ("n", "h"):
+        press(devtools, key)
+        now = devtools.evaluate(kept)
+        expect(
+            now == start,
+            f"{key.upper()} with the edit form open left {start} for {now}",
+        )
+
+    press(devtools, "Escape")
+    wait_for_page(devtools, 'location.search === "?selected=item-3"', "the row after Cancel")
+    devtools.evaluate("document.activeElement.blur(), true")
+    press(devtools, "n")
+    wait_for_page(devtools, 'location.search.includes("form=new")', "the Add form after Cancel")
+
+    open_page(devtools, f"{base}/?form=new&name=Draft%20name", *NARROW)
+    devtools.evaluate("document.activeElement.blur(), true")
+    before = devtools.evaluate("location.search")
+    press(devtools, "i")
+    after = devtools.evaluate("location.search")
+    expect(before == after, f"I with the register's New form open went from {before} to {after}")
+    return "N and H ignored over an Items edit form, I over the register's New form; Esc then N still work"
+
+
 CHECKS = {
     "fold": check_fold,
     "swap-empty": check_swap_empty,
@@ -1134,6 +1200,7 @@ CHECKS = {
     "items-filter": check_items_filter,
     "items-actions": check_items_actions,
     "callout-place": check_callout_place,
+    "form-verbs": check_form_verbs,
 }
 
 
