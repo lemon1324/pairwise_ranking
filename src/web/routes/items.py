@@ -849,13 +849,20 @@ async def items_sheet(
     else:
         form = ""
 
-    rows = []
-    for shown_item in shown:
-        if form in ROW_FORMS and shown_item is subject:
-            url = _item_url(request, pid, subject.id, form, view, **drafted)
-        else:
-            url = _item_url(request, pid, shown_item.id, "callout", view)
-        rows.append(_row(shown_item, labels, url))
+    # Every row asks for its actions. The form the address opens is fetched
+    # once, by the selection the page arrives with, and never again: selecting
+    # the row later - after another, or after a filter - shows its actions, as
+    # the mockup's does. Built into the row's hx-get, a refused form came back
+    # on every re-selection, and a delete question with Delete focused.
+    rows = [
+        _row(shown_item, labels, _item_url(request, pid, shown_item.id, "callout", view))
+        for shown_item in shown
+    ]
+    opening_url = (
+        _item_url(request, pid, subject.id, form, view, **drafted)
+        if form in ROW_FORMS
+        else None
+    )
 
     # Taken only by a page drawn whole. A rows swap is drawn whole too, but
     # htmx keeps the drawing area and drops the Last change cell, so a notice
@@ -895,6 +902,7 @@ async def items_sheet(
         "categories": categories,
         "show_retired": show_retired,
         "selected": selected,
+        "opening_url": opening_url,
         "items_url": items_url,
         "new_form": FORM_NEW,
         # What the Add cell carries besides `form=new`, so adding from a

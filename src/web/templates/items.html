@@ -230,7 +230,11 @@ hx-get="{{ items_url }}" hx-include="[form=view]" hx-target="#field" hx-select="
         return false;
       });
 
-      {% if selected %}
+      {% if selected and opening_url %}
+      // The row this page was asked to arrive on, with the form its address
+      // opens - this once. Selected again, the row shows its actions.
+      sheet.select({{ selected|tojson }}, { callout: {{ opening_url|tojson }} });
+      {% elif selected %}
       // The row this page was asked to arrive on.
       sheet.select({{ selected|tojson }});
       {% endif %}

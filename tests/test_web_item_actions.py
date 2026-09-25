@@ -66,6 +66,21 @@ VOTES = [
 ]
 
 
+def opening_of(body: str) -> str:
+    """
+    Find the form a sheet's address opens: the callout its boot script asks for.
+
+    Args:
+        body: The sheet.
+
+    Returns:
+        str: The address fetched once for the arriving selection, or empty when
+        the page opens no form on a row.
+    """
+    found = re.search(r"sheet\.select\((\"[^\"]*\"), \{ callout: (\"[^\"]*\") \}\)", body)
+    return json.loads(found.group(2)) if found else ""
+
+
 class ActionsTestCase(ItemsTestCase):
     """Base case with votes in the project and the register's post helpers."""
 
@@ -384,18 +399,33 @@ class TestFormAddresses(ActionsTestCase):
         self.assertEqual(row_ids(body), ["__new"])
 
     def test_form_edit_opens_on_the_item_s_row(self):
-        """Test that the row asks for its form rather than its actions."""
+        """Test that the arriving selection asks for the form, once."""
         body = self.sheet("form=edit&item=oil")
 
-        self.assertIn(f'hx-get="{ITEMS_URL}/oil/edit"', row_of(body, "oil"))
-        self.assertIn(f'hx-get="{ITEMS_URL}/jade/callout"', row_of(body, "jade"))
-        self.assertIn('sheet.select("oil")', body)
+        self.assertIn('sheet.select("oil", { callout: ', body)
+        self.assertEqual(opening_of(body), f"{ITEMS_URL}/oil/edit")
+
+    def test_the_row_itself_still_asks_for_its_actions(self):
+        """Test that selecting the row again shows its actions, not the form."""
+        for query in ("form=edit&item=oil", "form=delete&item=oil",
+                      "form=edit&item=oil&submitted=1&name=&slot=1"):
+            with self.subTest(query=query):
+                body = self.sheet(query)
+                self.assertIn(f'hx-get="{ITEMS_URL}/oil/callout"', row_of(body, "oil"))
+                self.assertIn(f'hx-get="{ITEMS_URL}/jade/callout"', row_of(body, "jade"))
+
+    def test_a_plain_selection_opens_no_form(self):
+        """Test that `selected` alone selects the row with its own callout."""
+        body = self.sheet("selected=oil")
+
+        self.assertIn('sheet.select("oil");', body)
+        self.assertEqual(opening_of(body), "")
 
     def test_a_refused_draft_is_carried_to_the_fragment(self):
         """Test that the page hands the draft on to the form it opens."""
         body = self.sheet("form=replace&item=oil&submitted=1&name=&cat=Linear&slot=1")
-        hookup = re.search(r'hx-get="([^"]+)"', row_of(body, "oil")).group(1)
-        query = parse_qs(urlparse(html.unescape(hookup)).query)
+        hookup = opening_of(body)
+        query = parse_qs(urlparse(hookup).query)
 
         self.assertEqual(query["submitted"], ["1"])
         self.assertEqual(query["slot"], ["1"])
@@ -561,7 +591,7 @@ class TestEditItem(ActionsTestCase):
         """Test the slot-conflict state end to end: page, then its row's fragment."""
         response = self.post("oil/edit", {"name": "Gateron Oil King", "slot": "Apostrophe"})
         page = self.landed(response)
-        hookup = html.unescape(re.search(r'hx-get="([^"]+)"', row_of(page, "oil")).group(1))
+        hookup = opening_of(page)
 
         body = self.client.get(hookup).text
 
@@ -631,7 +661,7 @@ class TestReplaceItem(ActionsTestCase):
         """Test the refusal's address end to end: the row asks for its replace form, refused."""
         response = self.post("oil/replace", {"name": "", "cat": "Linear", "slot": "10"})
         page = self.landed(response)
-        hookup = html.unescape(re.search(r'hx-get="([^"]+)"', row_of(page, "oil")).group(1))
+        hookup = opening_of(page)
 
         self.assertEqual(urlparse(hookup).path, f"{ITEMS_URL}/oil/replace")
         body = self.client.get(hookup).text
