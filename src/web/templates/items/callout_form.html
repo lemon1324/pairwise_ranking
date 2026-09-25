@@ -1,0 +1,93 @@
+{#
+  The item form: Add, Edit, Replace and Reactivate.
+
+  A fragment for `#row-callout`. Ported from `formHtml` in
+  docs/mockups/items.js: one form in four uses, with different words on it.
+  Add hangs off the sheet's ghost row; the other three off the item's row.
+  Reactivate asks only for the slot the item comes back to.
+
+  An ordinary POST, as the register's forms are. Every answer it can get is a
+  page of the sheet - the item selected, or this form again with the draft and
+  an inline error - and both have addresses, so both survive a reload and can
+  be photographed.
+
+  The rules of "Writing a callout" (§5c of the plan), each of which fails
+  silently when broken:
+
+  - The first field carries `autofocus` - the name, or the slot on Reactivate
+    - unless a field was refused, in which case that one does. A refused field
+    carries `aria-invalid`, which is also what stops the engine selecting the
+    words the person is about to correct.
+  - Save carries `data-sheet-key="Enter"` by hand, and Cancel "Escape". A
+    textarea keeps its own Enter: the engine leaves every key typed in a field
+    alone.
+
+  The datalists are inside the form rather than on the page, as the mockup had
+  them, because they belong to this callout and there is only ever one.
+#}
+{% from "macros/popover.html" import popover, popover_body %}
+{% from "macros/sheet.html" import icon, key %}
+{% from "items/macros.html" import view_fields as hidden_view %}
+
+{% call popover(title) %}
+  {% call popover_body(title) %}
+    <form class="strip-form" method="post" action="{{ action }}" novalidate>
+      {{ hidden_view(view_fields) }}
+      {% if not slot_only %}
+      <div class="field field-wide{% if errors.name %} is-error{% endif %}">
+        <label class="label" for="f-name">Name</label>
+        <input class="input" id="f-name" name="name" value="{{ values.name }}" autocomplete="off" required
+               {%- if focus == "name" %} autofocus{% endif %}
+               {%- if errors.name %} aria-invalid="true" aria-describedby="err-name"{% endif %}>
+        {% if errors.name %}
+        <p class="field-error" id="err-name">{{ icon("warn") }}<span><strong>{{ errors.name.lead }}</strong></span></p>
+        {% endif %}
+      </div>
+      <div class="field">
+        <label class="label" for="f-cat">Category</label>
+        <input class="input" id="f-cat" name="cat" list="dl-categories" value="{{ values.cat }}"
+               autocomplete="off" aria-describedby="hint-cat">
+        <span class="field-hint" id="hint-cat">Pick one or type a new category.</span>
+      </div>
+      {% endif %}
+      <div class="field{% if slot_only %} field-wide{% endif %}{% if errors.slot %} is-error{% endif %}">
+        <label class="label" for="f-slot">Slot</label>
+        <input class="input num" id="f-slot" name="slot" list="dl-slots" value="{{ values.slot }}" autocomplete="off"
+               {%- if focus == "slot" %} autofocus{% endif %}
+               {%- if errors.slot %} aria-invalid="true" aria-describedby="err-slot"{% else %} aria-describedby="hint-slot"{% endif %}>
+        {% if errors.slot %}
+        <p class="field-error" id="err-slot">{{ icon("warn") }}<span><strong>Slot {{ errors.slot.slot }} is taken</strong>
+          {%- if errors.slot.holder %} by {{ errors.slot.holder }}{% endif %};
+          {% if errors.slot.free %}free: <span class="num">{{ errors.slot.free|join(", ") }}</span>.
+          {%- elif has_slot_list %}no slots are free.
+          {%- else %}identifiers are unique among active items.{% endif %}</span></p>
+        {% else %}
+        <span class="field-hint" id="hint-slot">
+          {%- if not has_slot_list -%}
+            No slot list: any identifier, unique among active items.
+          {%- elif free_slots -%}
+            free: <span class="num">{{ free_slots|join(", ") }}</span>
+          {%- else -%}
+            No free slots. Retire an item or extend the slot list in Settings.
+          {%- endif -%}
+        </span>
+        {% endif %}
+      </div>
+      {% if not slot_only %}
+      <div class="field field-wide">
+        <label class="label" for="f-desc">Description</label>
+        <textarea class="input" id="f-desc" name="desc" rows="2">{{ values.desc }}</textarea>
+      </div>
+      {% endif %}
+      {% if note %}<p class="field-hint field-wide">{{ note }}</p>{% endif %}
+      <div class="strip-buttons">
+        <button class="cell-button is-primary" type="submit"
+                data-sheet-key="Enter" aria-keyshortcuts="Enter">{{ submit_label }} {{ key("↵") }}</button>
+        <a class="cell-button" href="{{ cancel_url }}" data-sheet-key="Escape"
+           aria-keyshortcuts="Escape">Cancel {{ key("Esc") }}</a>
+      </div>
+      <datalist id="dl-categories">{% for name in categories %}<option value="{{ name }}">{% endfor %}</datalist>
+      <datalist id="dl-slots">{% for slot in free_slots %}<option value="{{ slot }}">{% endfor %}</datalist>
+    </form>
+  {% endcall %}
+{% endcall %}

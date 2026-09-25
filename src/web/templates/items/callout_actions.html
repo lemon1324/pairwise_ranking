@@ -1,0 +1,35 @@
+{#
+  One item's callout: what can be done with the selected row.
+
+  A fragment for `#row-callout`, so it is the callout element and nothing
+  around it. Ported from `actionsHtml` in docs/mockups/items.js.
+
+    Active   Edit ↵, Retire R, Replace P, Delete Del.
+    Retired  Reactivate A, Delete Del.
+
+  Edit, Replace, Reactivate and Delete fetch the next fragment - a form, or
+  the confirmation - into this same host. Retire changes the project at once,
+  with nothing to fill in and nothing lost, so it posts: its cell submits the
+  hidden form drawn beside the strip, which carries the view the sheet is
+  drawn with. The form sits outside `.strip-actions` because the phone rule
+  that widens an odd last cell counts that strip's children.
+#}
+{% from "macros/popover.html" import popover, popover_actions %}
+{% from "items/macros.html" import view_fields as hidden_view %}
+
+{% call popover(label) %}
+  {% if retired %}
+    {{ popover_actions([
+        {"action": "reactivate", "label": "Reactivate", "key": "A", "url": reactivate_url},
+        {"action": "delete", "label": "Delete", "key": "Del", "shortcut": "Delete", "url": delete_url},
+    ]) }}
+  {% else %}
+    <form id="retire-form" method="post" action="{{ retire_url }}" hidden>{{ hidden_view(view_fields) }}</form>
+    {{ popover_actions([
+        {"action": "edit", "label": "Edit", "key": "↵", "shortcut": "Enter", "url": edit_url},
+        {"action": "retire", "label": "Retire", "key": "R", "form": "retire-form"},
+        {"action": "replace", "label": "Replace", "key": "P", "url": replace_url},
+        {"action": "delete", "label": "Delete", "key": "Del", "shortcut": "Delete", "url": delete_url},
+    ]) }}
+  {% endif %}
+{% endcall %}

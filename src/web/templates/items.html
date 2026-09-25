@@ -19,6 +19,11 @@
   out of band, because it is a form of its own and its hidden fields hold the
   filter it will keep. The toggle itself is a plain navigation: it changes
   what the title block says as well as which rows are drawn.
+
+  **Every row fetches its own callout** (templates/items/), and `form=new`
+  draws a ghost row for Add at the top of the sheet, selected by the boot
+  script as the register's New is. The Add cell carries the view, so the rows
+  swap carries it out of band beside the retired toggle.
 #}
 {% extends "base.html" %}
 {% from "macros/title_block.html" import title_block, keys_block, tb_title, tb_file, tb_sheet, tb_cell, tb_press_cell %}
@@ -55,15 +60,26 @@
   cell. Written once so the two controls cannot drift apart.
 #}
 {% macro view_swap() -%}
-hx-get="{{ items_url }}" hx-include="[form=view]" hx-target="#field" hx-select="#field" hx-swap="outerHTML" hx-select-oob="#retired-cell" hx-replace-url="true"
+hx-get="{{ items_url }}" hx-include="[form=view]" hx-target="#field" hx-select="#field" hx-swap="outerHTML" hx-select-oob="#retired-cell,#add-cell" hx-replace-url="true"
 {%- endmacro %}
 
 {% block sheet_body %}
   <section class="bom-field" id="field" aria-label="Items">
-    {% if rows %}
+    {% if rows or ghost_callout_url %}
       {% call parts_list(columns, "Items") %}
+        {# Add's ghost row: the item that is not there yet, at the top of the
+           sheet as in the mockup, selected by the boot script so the engine has
+           a row to hang the form on. #}
+        {% if ghost_callout_url %}
+          {% call parts_row(ghost_id, is_new=true, callout_url=ghost_callout_url) %}
+            <td class="c-find">{{ balloon("") }}</td>
+            <td>{{ name_cell(ghost_label) }}</td>
+            <td class="c-cat"></td>
+            <td>{{ tag(ghost_tag) }}</td>
+          {% endcall %}
+        {% endif %}
         {% for row in rows %}
-          {% call parts_row(row.id, retired=row.retired) %}
+          {% call parts_row(row.id, retired=row.retired, callout_url=row.callout_url) %}
             <td class="c-find">{{ balloon(row.short, row.slot) }}</td>
             <td>{{ name_cell(row.name, description=row.description) }}</td>
             <td class="c-cat"><span class="bom-cat">{{ row.category }}</span></td>
@@ -122,7 +138,16 @@ hx-get="{{ items_url }}" hx-include="[form=view]" hx-target="#field" hx-select="
        keys block rather than drawn in the cell, where it would cut "All
        categories" short at the standard block width. #}
     {% call tb_cell("Last change", span=2, phone_wide=true) %}
-      <p class="tb-text" id="tb-last" aria-live="polite"><span class="num">{{ modified }}</span></p>
+      {# The sentence the mockup writes after a change, with the time it was
+         saved; the stored modified time when nothing has just happened. #}
+      <p class="tb-text" id="tb-last" aria-live="polite">
+        {%- if last_change -%}
+          {{ last_change }} &middot; <span class="num">{{ change_time }}</span>
+        {%- else -%}
+          <span class="num">{{ modified }}</span>
+        {%- endif -%}
+        {%- if reloaded_note %} {{ reloaded_note }}{% endif -%}
+      </p>
     {% endcall %}
     <div class="tb-cell span-2 phone-wide">
       <label class="label" for="filter">Filter</label>
@@ -147,7 +172,10 @@ hx-get="{{ items_url }}" hx-include="[form=view]" hx-target="#field" hx-select="
       </div>
     </div>
 
-    {{ tb_press_cell("Add", "Add item", "N", "plus", items_url, params={"form": new_form}) }}
+    {# Carries the view, so adding from a filtered sheet comes back to it -
+       and so the rows swap carries this cell out of band too, as it does the
+       retired toggle's. #}
+    {{ tb_press_cell("Add", "Add item", "N", "plus", items_url, params=add_params, id="add-cell") }}
     {# A form of its own rather than a button in the view form: pressing it
        has to send the *other* value of `retired`, and the view form already
        carries the current one. The hidden fields keep the filter and category

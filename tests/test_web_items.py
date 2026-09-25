@@ -258,16 +258,17 @@ class TestTheListing(ItemsTestCase):
         Test that the table is the one the folding engine and the ARIA fix need.
 
         A grid, rows carrying their id and the find number in the first cell,
-        and no callout yet: the row actions are chunk 6b's, and a row pointing
-        its hx-get at a route that does not exist would fetch a 404 into the
-        host the moment it was selected.
+        and the hookup to the row's own callout, which the macro writes with
+        the aria-controls that says where it lands.
         """
         self.assertIn('<table class="bom" role="grid" aria-label="Items">', self.body)
         row = row_of(self.body, "oil")
         self.assertIn('tabindex="-1"', row)
         self.assertIn('aria-selected="false"', row)
         self.assertRegex(row, r'<tr[^>]*>\s*<td class="c-find"><span class="balloon"')
-        self.assertNotIn("hx-get", row)
+        self.assertIn(f'hx-get="{ITEMS_URL}/oil/callout"', row)
+        self.assertIn('hx-trigger="sheet:select"', row)
+        self.assertIn('aria-controls="row-callout"', row)
 
     def test_a_slotted_row_carries_its_balloon_name_and_description(self):
         """Test the ordinary row: balloon, name, description, category, Active."""
@@ -346,9 +347,9 @@ class TestTheListing(ItemsTestCase):
                 self.assertIn(f'aria-keyshortcuts="{key}"', tag)
 
     def test_add_points_at_the_new_item_form(self):
-        """Test that Add is a GET to this sheet's form=new address, which 6b serves."""
+        """Test that Add is a GET to this sheet's form=new address."""
         add = re.search(
-            r'<form class="tb-cell tb-press span-2" method="get" action="([^"]+)">\s*'
+            r'<form class="tb-cell tb-press span-2" id="add-cell" method="get" action="([^"]+)">\s*'
             r'<input type="hidden" name="form" value="new">',
             self.body,
         )
@@ -549,8 +550,8 @@ class TestTheFilter(ItemsTestCase):
 
         Both ask for this sheet with the whole view form, pick #field out of
         the answer - the rows swap sheet.js is built for - and carry the
-        retired cell out of band, since its hidden fields hold the filter. The
-        address in the bar is replaced, so a reload keeps the view.
+        retired and Add cells out of band, since their hidden fields hold the
+        filter. The address in the bar is replaced, so a reload keeps the view.
         """
         body = self.sheet()
         for pattern in (r'<input class="input" id="filter"', r'<select class="input" id="category"'):
@@ -561,7 +562,7 @@ class TestTheFilter(ItemsTestCase):
                 self.assertIn('hx-target="#field"', tag)
                 self.assertIn('hx-select="#field"', tag)
                 self.assertIn('hx-swap="outerHTML"', tag)
-                self.assertIn('hx-select-oob="#retired-cell"', tag)
+                self.assertIn('hx-select-oob="#retired-cell,#add-cell"', tag)
                 self.assertIn('hx-replace-url="true"', tag)
 
 
