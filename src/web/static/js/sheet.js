@@ -491,20 +491,38 @@
     /**
      * Select a row: mark it, turn to its sheet, focus it and ask the screen for its callout.
      *
+     * A ghost row (`.is-new`, the thing being added) that loses the selection goes with it, as the
+     * mockups draw it only while its form is open.
+     *
      * @param {string|null} id The row's data-id.
-     * @param {object} options focus: false to leave the focus where it is.
+     * @param {object} options focus: false to leave the focus where it is. callout: an address to
+     *     fetch this one time instead of the row's own hx-get - the form a page address opens,
+     *     which a later selection of the same row must not bring back.
      */
-    function select(id, { focus = true } = {}) {
+    function select(id, { focus = true, callout = null } = {}) {
       const tr = findRow(id);
       if (!tr) return;
+      const previous = findRow(selectedId);
       selectedId = tr.dataset.id;
       followSelection = true;
       // Cleared before the event rather than after the reply: the old callout belongs to the old
       // row, and leaving it up while a new one is fetched would show it beside the wrong one.
       clearCallout();
-      finish();
+      if (previous && previous !== tr && previous.classList.contains("is-new")) {
+        rows = rows.filter((row) => row !== previous);
+        previous.remove();
+        render();
+      } else {
+        finish();
+      }
       if (focus) focusSelected();
+      // htmx issues the request, and fires htmx:configRequest, while the event is dispatched.
+      const rewrite = (e) => {
+        if (e.detail.elt === tr) e.detail.path = callout;
+      };
+      if (callout) document.body.addEventListener("htmx:configRequest", rewrite);
       tr.dispatchEvent(new CustomEvent("sheet:select", { detail: { id: selectedId }, bubbles: true }));
+      if (callout) document.body.removeEventListener("htmx:configRequest", rewrite);
     }
 
     /** Drop the selection and its callout. */

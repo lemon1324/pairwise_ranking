@@ -100,6 +100,11 @@ What is checked, and why each one is here:
     fields leave the page and the draft alone, as I does over the register's
     New form. Esc still cancels, and N works again once it has.
 
+``form-once``
+    The form a page address opens (``form=delete&item=X``) is the arriving
+    selection's callout only: X selected again shows its actions. The
+    ``form=new`` ghost row goes once another row is selected.
+
 Each check leaves the page as it found it by navigating afresh, so they are
 independent and ``--check`` can run any one of them alone.
 """
@@ -1186,6 +1191,46 @@ def check_form_verbs(devtools: DevTools, base: str) -> str:
     return "N and H ignored over an Items edit form, I over the register's New form; Esc then N still work"
 
 
+def check_form_once(devtools: DevTools, base: str) -> str:
+    """
+    Check that the form a page address opens is opened once, not for good.
+
+    ``form=delete&item=X`` arrives on X's delete question. Select another row
+    and then X again: X shows its actions, where the bug this pins asked the
+    question again, with Delete focused. And ``form=new``'s ghost row goes as
+    soon as another row is selected.
+
+    Args:
+        devtools: The CDP session.
+        base: The server's base URL.
+
+    Returns:
+        str: What was measured, for the log.
+    """
+    open_page(devtools, f"{base}{ITEMS_PATH}?form=delete&item=item-3", *NARROW)
+    first = devtools.evaluate(CALLOUT)["label"]
+    expect(first == "Delete (3) Candidate 3", f"the address opened {first!r}")
+    for row in ("item-4", "item-3"):
+        devtools.evaluate(f'window.sheet.select("{row}"), true')
+        time.sleep(CALLOUT_WAIT_S)
+    again = devtools.evaluate(CALLOUT)["label"]
+    expect(again == "(3) Candidate 3", f"selecting the row again opened {again!r}, not its actions")
+
+    open_page(devtools, f"{base}{ITEMS_PATH}?form=new", *NARROW)
+    ghost = state(devtools)
+    expect(ghost["selectedId"] == "__new" and "__new" in ghost["ids"], "form=new drew no ghost row")
+    devtools.evaluate('window.sheet.select("item-3"), true')
+    time.sleep(CALLOUT_WAIT_S)
+    after = state(devtools)
+    expect("__new" not in after["ids"], "the ghost row outlived its selection")
+    expect(after["rowCount"] == 64, f"the engine holds {after['rowCount']} rows, not 64")
+    expect(
+        devtools.evaluate(CALLOUT)["label"] == "(3) Candidate 3",
+        "the row selected after the ghost did not show its actions",
+    )
+    return f"{first!r} once, then the row's actions; the ghost row gone with its selection"
+
+
 CHECKS = {
     "fold": check_fold,
     "swap-empty": check_swap_empty,
@@ -1201,6 +1246,7 @@ CHECKS = {
     "items-actions": check_items_actions,
     "callout-place": check_callout_place,
     "form-verbs": check_form_verbs,
+    "form-once": check_form_once,
 }
 
 
