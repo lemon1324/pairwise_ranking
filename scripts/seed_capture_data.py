@@ -29,9 +29,11 @@ directory with projects in it.
 
 Usage (from WSL, with the Windows venv - the capture script explains why)::
 
-    ./.venv/Scripts/python.exe scripts/seed_capture_data.py ../capture-data
+    ./.venv/Scripts/python.exe scripts/seed_capture_data.py \\
+        .scratch/capture-data
 
-The directory is emptied of ``.pairrank`` files first, so re-running it after a
+Keep it under ``.scratch/``: it is excluded from git, and nothing may be
+written outside the repository. The directory is emptied of ``.pairrank`` files first, so re-running it after a
 capture pass has created, imported or duplicated something puts the register
 back where it started. The empty directory is written as ``<path>-empty``.
 
@@ -40,7 +42,7 @@ an address on ``switches-sample`` or one of its variants, so the pass is one
 capture of the app and one of the mockup (``P`` is
 ``/projects/switches-sample.pairrank/items``; quote each argument)::
 
-    capture_web.py --data-dir ../capture-data \\
+    capture_web.py --data-dir .scratch/capture-data \\
         "items-normal=$P?done=edited&item=it21" \\
         "items-selected=$P?selected=it1" \\
         "items-editing=$P?form=edit&item=it1" \\

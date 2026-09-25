@@ -14,7 +14,9 @@ makes, and for the same reason)::
     ./.venv/Scripts/python.exe scripts/drive_sheet.py
 
 With no arguments it seeds its own scratch directory of projects, boots the
-app, runs every check and tears it all down. ``--data-dir`` points it at a
+app, runs every check and tears it all down. The data directory and the Chrome
+profile are made under ``.scratch/`` at the repository root and removed
+afterwards; nothing is written outside the repository. ``--data-dir`` points it at a
 directory that is already seeded, and ``--check NAME`` runs one check.
 
 What is checked, and why each one is here:
@@ -99,7 +101,6 @@ independent and ``--check`` can run any one of them alone.
 import argparse
 import shutil
 import sys
-import tempfile
 import time
 from pathlib import Path
 
@@ -109,6 +110,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from capture_web import (  # noqa: E402
     CaptureError,
     DevTools,
+    scratch_dir,
     start_chrome,
     start_server,
     stop_process,
@@ -1156,7 +1158,7 @@ def run(args: argparse.Namespace) -> int:
         if not Path(data_dir).is_dir():
             raise CheckError(f"no such data directory: {data_dir}")
     else:
-        scratch = tempfile.mkdtemp(prefix="pairrank-drive-")
+        scratch = scratch_dir("pairrank-drive-")
         written = seed(Path(scratch))
         data_dir = scratch
         print(f"{PROGRAM}: seeded {written} projects in {data_dir}")
@@ -1165,7 +1167,7 @@ def run(args: argparse.Namespace) -> int:
     server = None
     chrome = None
     devtools = None
-    profile_dir = tempfile.mkdtemp(prefix="pairrank-drive-profile-")
+    profile_dir = scratch_dir("pairrank-drive-profile-")
     failures = 0
 
     try:

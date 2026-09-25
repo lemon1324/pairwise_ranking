@@ -8,13 +8,17 @@ per width per theme into ``.impeccable/review/``.
 
 Usage (from WSL, with the Windows venv - see "Why the Windows venv" below)::
 
-    mkdir -p ../capture-data
+    ./.venv/Scripts/python.exe scripts/seed_capture_data.py \\
+        .scratch/capture-data
     ./.venv/Scripts/python.exe scripts/capture_web.py \\
-        --data-dir ../capture-data \\
+        --data-dir .scratch/capture-data \\
         register=/ items=/projects/demo/items
 
 The data directory has to live somewhere Windows can see - under ``/mnt/...``,
-not in WSL's own filesystem, which the server process cannot reach at all.
+not in WSL's own filesystem, which the server process cannot reach at all - and,
+by the owner's rule, inside the repository: ``.scratch/`` at its root is
+excluded from git for exactly this. The Chrome profile this script makes for
+itself goes there too (``scratch_dir``), and is removed afterwards.
 
 Each positional argument is an app path, optionally prefixed with ``label=`` to
 name the files. Without a label the path is slugified: ``/healthz`` becomes
@@ -115,6 +119,12 @@ CHROME = Path(r"C:\Program Files\Google\Chrome\Application\chrome.exe")
 
 DEFAULT_PORT = 8099
 DEFAULT_OUT_DIR = REPO_ROOT / ".impeccable" / "review"
+
+# Everything these scripts make for themselves - a Chrome profile, a seeded data
+# directory - goes here, inside the repository and excluded from git by
+# ``.git/info/exclude``. Nothing is written outside the repository (the owner's
+# rule), which rules out ``tempfile``'s default of Windows ``%TEMP%``.
+SCRATCH_ROOT = REPO_ROOT / ".scratch"
 
 # The three review widths: a phone, the narrow desktop where the drawing frame
 # still shows 6 zones, and the wide one where it shows 8. Heights are the usual
@@ -498,6 +508,24 @@ def windows_path(path: str) -> str:
         rest = (match.group(2) or "/").replace("/", "\\")
         return f"{drive}:{rest}"
     return path
+
+
+def scratch_dir(prefix: str) -> str:
+    """
+    Make a fresh scratch directory inside the repository's ``.scratch/``.
+
+    ``REPO_ROOT`` is resolved from this file, which the Windows venv sees as
+    ``C:\\src\\pairwise_ranking\\scripts``, so the directory is already in the
+    Windows form the server and Chrome need. The caller removes it.
+
+    Args:
+        prefix: The start of the directory's name.
+
+    Returns:
+        str: The new directory's path.
+    """
+    SCRATCH_ROOT.mkdir(exist_ok=True)
+    return tempfile.mkdtemp(prefix=prefix, dir=SCRATCH_ROOT)
 
 
 def slugify(path: str) -> str:
@@ -899,7 +927,7 @@ def run(args: argparse.Namespace) -> int:
     server = None
     chrome = None
     devtools = None
-    profile_dir = tempfile.mkdtemp(prefix="pairrank-capture-")
+    profile_dir = scratch_dir("pairrank-capture-")
 
     try:
         if args.base_url:
