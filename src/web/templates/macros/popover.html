@@ -46,6 +46,12 @@
                          button that navigates is one whose middle click, whose
                          "open in new tab" and whose status bar all do nothing.
                          An action has one or the other, never both.
+               form      optional; the id of a POST form elsewhere in the
+                         callout that this cell submits. For an action that
+                         changes the project at once, with nothing to fill
+                         in - Items' Retire. The form is the caller's to
+                         draw, *outside* this strip: the phone rule that
+                         widens an odd last cell counts the strip's children.
 
   A strip of equal cells sharing 1px ink gaps. The shortcut is declared with
   aria-keyshortcuts as well as drawn, so the legend is a picture of something
@@ -73,7 +79,8 @@
     {{ action.label }}{% if action.key %}{{ key(action.key) }}{% endif %}
   </a>
   {% else %}
-  <button class="strip-action" type="button" data-action="{{ action.action }}"
+  <button class="strip-action" data-action="{{ action.action }}"
+          {% if action.form %}type="submit" form="{{ action.form }}"{% else %}type="button"{% endif %}
           {% if shortcut %}aria-keyshortcuts="{{ shortcut }}" data-sheet-key="{{ shortcut }}"{% endif %}
           {% if action.url %}hx-get="{{ action.url }}" hx-target="#row-callout"{% endif %}>
     {{ action.label }}{% if action.key %}{{ key(action.key) }}{% endif %}
