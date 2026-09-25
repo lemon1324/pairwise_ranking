@@ -145,6 +145,15 @@
      5a fills, places and clears it. #}
   {% block popover %}
   <div id="row-callout" hidden></div>
+  {# What a sighted reader learns from the leader: a callout has arrived beside
+     the selected row. The host itself is not a live region, because a live
+     region reads out everything that lands in it - a whole form, field by
+     field - and one that is hidden and shown again is announced unreliably.
+     So sheet.js writes one short sentence here instead: whose callout it is
+     and what it offers. Polite, because it follows the row's own announcement
+     rather than interrupting it; and left unwritten when the callout takes the
+     focus, since moving the focus is itself the announcement. #}
+  <div id="callout-status" class="visually-hidden" role="status" aria-live="polite"></div>
   {% endblock %}
 
   <script src="{{ url_for('static', path='js/htmx.min.js').path }}" defer></script>

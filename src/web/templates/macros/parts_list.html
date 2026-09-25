@@ -21,9 +21,17 @@
     label    the accessible name of the table.
 
   Called with {% call %}; the caller emits the rows.
+
+  role="grid", because the rows are selected. `aria-selected` on a row of a
+  plain table is ignored by assistive technology - a table is for reading, and
+  nothing in one is selectable - so the selection the sheet draws in markup
+  blue was never announced. A grid is the table whose rows can be: the arrow
+  keys move through it, the row that has the selection is the one that takes
+  focus, and `aria-selected` then means what it says. sheet.js copies the role
+  onto every column it folds the rows into, so the split tables stay grids too.
 #}
 {% macro parts_list(columns, label) -%}
-<table class="bom" aria-label="{{ label }}">
+<table class="bom" role="grid" aria-label="{{ label }}">
   <thead>
     <tr>
       {% for column in columns %}
@@ -60,11 +68,18 @@
   keeps outside every swapped region. A row without one is selectable and does
   nothing else. Selecting clears the host first, so the callout on screen is
   never the one that belonged to the row before.
+
+  The same row also says so to assistive technology: `aria-controls` names the
+  host its callout lands in, because the host is not beside the row in the
+  document - it sits outside every swapped region, at the end of the page - and
+  nothing else ties the two together for someone who cannot see the leader.
+  The callout's arrival is announced through the polite status region
+  base.html keeps next to the host; sheet.js writes it.
 #}
 {% macro parts_row(id, selected=false, retired=false, is_new=false, callout_url=none) -%}
 <tr class="bom-row{% if selected %} is-selected{% endif %}{% if retired %} is-retired{% endif %}{% if is_new %} is-new{% endif %}"
     data-id="{{ id }}" tabindex="-1" aria-selected="{{ 'true' if selected else 'false' }}"
-    {%- if callout_url %} hx-get="{{ callout_url }}" hx-target="#row-callout" hx-trigger="sheet:select"{% endif %}>
+    {%- if callout_url %} hx-get="{{ callout_url }}" hx-target="#row-callout" hx-trigger="sheet:select" aria-controls="row-callout"{% endif %}>
   {{ caller() }}
 </tr>
 {%- endmacro %}
