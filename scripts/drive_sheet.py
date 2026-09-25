@@ -73,6 +73,12 @@ What is checked, and why each one is here:
     puts the focus in it, with a text field's contents selected, instead of
     clicking it - which for a field does nothing at all.
 
+``items-filter``
+    The first real rows swap in the set, driven end to end on the Items sheet:
+    ``/`` goes to the filter, typing narrows the rows through htmx, the address
+    and the retired toggle follow, a filter matching nothing leaves the empty
+    state and no selection, and Esc clears the filter and brings the rows back.
+
 Each check leaves the page as it found it by navigating afresh, so they are
 independent and ``--check`` can run any one of them alone.
 """
@@ -816,6 +822,96 @@ def check_key_on_field(devtools: DevTools, base: str) -> str:
     return "/ put the caret in a filter with its text selected; C focused a select"
 
 
+# The seeded project with the most items: 64 of them, "Candidate 1" onwards.
+ITEMS_PATH = "/projects/switches-2026.pairrank/items"
+
+# The debounce on the filter's input trigger, with room for the round trip and
+# the refold after it.
+FILTER_WAIT_S = 0.2 + CALLOUT_WAIT_S + REFOLD_WAIT_S
+
+
+def type_filter(devtools: DevTools, text: str) -> None:
+    """
+    Put text in the Items filter the way typing does, and wait for the swap.
+
+    Args:
+        devtools: The CDP session.
+        text: The whole new value of the field.
+    """
+    devtools.evaluate(
+        f"""
+        (() => {{
+          const filter = document.getElementById("filter");
+          filter.focus();
+          filter.value = {text!r};
+          filter.dispatchEvent(new Event("input", {{ bubbles: true }}));
+          return true;
+        }})()
+        """
+    )
+    time.sleep(FILTER_WAIT_S)
+
+
+def check_items_filter(devtools: DevTools, base: str) -> str:
+    """
+    Check the Items filter's real rows swap, end to end.
+
+    Args:
+        devtools: The CDP session.
+        base: The server's base URL.
+
+    Returns:
+        str: What was measured, for the log.
+    """
+    retired_q = """
+    (() => {
+      const q = document.querySelector('#retired-cell input[name="q"]');
+      return q ? q.value : "";
+    })()
+    """
+
+    open_page(devtools, f"{base}{ITEMS_PATH}", *NARROW)
+    start = state(devtools)
+    expect(start["rowCount"] == 64, f"the sheet drew {start['rowCount']} items, not 64")
+
+    press(devtools, "/")
+    focused = devtools.evaluate('(document.activeElement || {}).id || ""')
+    expect(focused == "filter", f"/ did not go to the filter: the focus is on {focused!r}")
+
+    type_filter(devtools, "Candidate 1")
+    narrowed = state(devtools)
+    expect(
+        narrowed["rowCount"] == 11,
+        f"'Candidate 1' left {narrowed['rowCount']} rows, not 11 (1 and 10-19)",
+    )
+    expect(narrowed["rowsInField"] == 11, "the engine did not refold the swapped rows")
+    expect(
+        "q=Candidate" in devtools.evaluate("location.search"),
+        "the filter did not replace the address, so a reload loses it",
+    )
+    expect(
+        devtools.evaluate(retired_q) == "Candidate 1",
+        "the retired toggle was not re-drawn with the filter it has to keep",
+    )
+
+    devtools.evaluate('window.sheet.select("item-10", { focus: false }), true')
+    type_filter(devtools, "zzz")
+    empty = state(devtools)
+    expect(empty["emptyLead"].startswith("No items match"), "no empty state after a filter matching nothing")
+    expect(empty["rowsInField"] == 0 and empty["rowCount"] == 0, "rows survived a filter matching nothing")
+    expect(empty["selectedId"] is None, "the selection outlived the rows the filter took away")
+
+    press(devtools, "Escape", in_field="#filter")
+    time.sleep(FILTER_WAIT_S)
+    cleared = state(devtools)
+    expect(
+        devtools.evaluate('document.getElementById("filter").value') == "",
+        "Esc did not clear the filter, which the empty state promises it does",
+    )
+    expect(cleared["rowCount"] == 64, f"clearing the filter brought back {cleared['rowCount']} rows")
+    return "/ took the filter; 64 rows to 11 to an empty state and back with Esc, address and toggle kept in step"
+
+
 CHECKS = {
     "fold": check_fold,
     "swap-empty": check_swap_empty,
@@ -827,6 +923,7 @@ CHECKS = {
     "short-window": check_short_window,
     "aria": check_aria,
     "key-on-field": check_key_on_field,
+    "items-filter": check_items_filter,
 }
 
 
