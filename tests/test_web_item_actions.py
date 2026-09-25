@@ -317,6 +317,17 @@ class TestItemForms(ActionsTestCase):
         self.assertIn('value=""', field_tag(body, "f-slot"))
         self.assertIn("No free slots.", body)
 
+    def test_the_form_offers_the_project_s_categories_and_free_slots(self):
+        """Test the two datalists the category and slot fields suggest from."""
+        body = self.fragment("new")
+
+        categories = re.search(r'<datalist id="dl-categories">(.*?)</datalist>', body).group(1)
+        slots = re.search(r'<datalist id="dl-slots">(.*?)</datalist>', body).group(1)
+        self.assertEqual(re.findall(r'value="([^"]+)"', categories), ["Clicky", "Linear", "Tactile"])
+        self.assertEqual(re.findall(r'value="([^"]+)"', slots), ["2", "Enter"])
+        self.assertIn('list="dl-categories"', field_tag(body, "f-cat"))
+        self.assertIn('list="dl-slots"', field_tag(body, "f-slot"))
+
     def test_forms_a_row_does_not_offer_are_not_found(self):
         """Test the 404s: a retired item has no edit or replace, an active one no reactivate."""
         for path in ("blue/edit", "blue/replace", "oil/reactivate", "oil/nonsense"):
@@ -512,6 +523,12 @@ class TestEditItem(ActionsTestCase):
              "category": "Linear", "retired": "1"},
         )
 
+    def test_last_change_names_the_item_as_it_now_is(self):
+        """Test the mockup's sentence, with the new name and slot."""
+        page = self.landed(self.post("oil/edit", {"name": "Oil King", "slot": "Enter"}))
+
+        self.assertEqual(cell_text(page, "tb-last").rsplit(" · ", 1)[0], "Edited (Enter) Oil King")
+
     def test_keeping_its_own_slot_is_not_a_conflict(self):
         """Test that the item's own slot is not counted as taken."""
         response = self.post("oil/edit", {"name": "Oil King", "slot": "10"})
@@ -610,6 +627,42 @@ class TestReplaceItem(ActionsTestCase):
         self.assertEqual(self.snapshot(), before)
         self.assertEqual(self.redirect_of(response)[1]["item"], "oil")
 
+    def test_the_refused_replace_is_drawn_on_the_old_item_s_row(self):
+        """Test the refusal's address end to end: the row asks for its replace form, refused."""
+        response = self.post("oil/replace", {"name": "", "cat": "Linear", "slot": "10"})
+        page = self.landed(response)
+        hookup = html.unescape(re.search(r'hx-get="([^"]+)"', row_of(page, "oil")).group(1))
+
+        self.assertEqual(urlparse(hookup).path, f"{ITEMS_URL}/oil/replace")
+        body = self.client.get(hookup).text
+        self.assertIn('aria-invalid="true"', field_tag(body, "f-name"))
+        self.assertIn('value="10"', field_tag(body, "f-slot"))
+
+    def test_an_empty_category_becomes_the_default(self):
+        """Test the validator's rule, as Add has it, rather than the old item's category."""
+        self.post("oil/replace", {"name": "Oil King V2", "cat": " ", "slot": "10"})
+
+        new = next(i for i in self.stored()["items"] if i["name"] == "Oil King V2")
+        self.assertEqual(new["category"], "Default")
+
+    def test_a_retired_item_is_not_replaced(self):
+        """Test that a post the row does not offer changes nothing and lands on the row."""
+        before = self.snapshot()
+
+        response = self.post("blue/replace", {"name": "Blue V2", "retired": "1"})
+
+        self.assertEqual(self.snapshot(), before)
+        self.assertEqual(self.redirect_of(response)[1], {"selected": "blue", "retired": "1"})
+
+    def test_an_item_that_has_gone_lands_on_the_sheet(self):
+        """Test the second-tab case: nothing changed, nothing selected."""
+        before = self.snapshot()
+
+        response = self.post("nope/replace", {"name": "Anything"})
+
+        self.assertEqual(self.snapshot(), before)
+        self.assertEqual(self.redirect_of(response), (ITEMS_URL, {}))
+
 
 class TestReactivateItem(ActionsTestCase):
     """Test cases for posting the reactivate form."""
@@ -647,6 +700,23 @@ class TestReactivateItem(ActionsTestCase):
         self.post("oil/reactivate", {"slot": "2"})
 
         self.assertEqual(self.snapshot(), before)
+
+    def test_an_item_that_has_gone_lands_on_the_sheet(self):
+        """Test the second-tab case: nothing changed, nothing selected."""
+        before = self.snapshot()
+
+        response = self.post("nope/reactivate", {"slot": "2", "retired": "1"})
+
+        self.assertEqual(self.snapshot(), before)
+        self.assertEqual(self.redirect_of(response), (ITEMS_URL, {"retired": "1"}))
+
+    def test_last_change_names_the_item_in_its_new_slot(self):
+        """Test the mockup's sentence."""
+        page = self.landed(self.post("blue/reactivate", {"slot": "Enter", "retired": "1"}))
+
+        self.assertEqual(
+            cell_text(page, "tb-last").rsplit(" · ", 1)[0], "Reactivated (Enter) Cherry MX Blue"
+        )
 
 
 class TestRetireItem(ActionsTestCase):
@@ -705,6 +775,15 @@ class TestRetireItem(ActionsTestCase):
 
         self.assertEqual(self.snapshot(), before)
 
+    def test_an_item_that_has_gone_changes_nothing(self):
+        """Test the double submit from a second tab."""
+        before = self.snapshot()
+
+        response = self.post("nope/retire", {"q": "cherry"})
+
+        self.assertEqual(self.snapshot(), before)
+        self.assertEqual(self.redirect_of(response), (ITEMS_URL, {"q": "cherry"}))
+
 
 class TestDeleteItem(ActionsTestCase):
     """Test cases for Delete, after its confirmation."""
@@ -749,6 +828,56 @@ class TestDeleteItem(ActionsTestCase):
 
         self.assertEqual(self.snapshot(), before)
         self.assertEqual(self.redirect_of(response), (ITEMS_URL, {}))
+
+
+def slot_error(body: str) -> str:
+    """
+    Read a refused slot's error the way a screen reader would.
+
+    Args:
+        body: The form fragment.
+
+    Returns:
+        str: The error's text, tags stripped and whitespace collapsed.
+    """
+    error = re.search(r'<p class="field-error" id="err-slot">(.*?)</p>', body, re.S).group(1)
+    return re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", "", error))).strip()
+
+
+class TestSlotConflictWords(ActionsTestCase):
+    """
+    Test cases for what a slot conflict offers instead, on every kind of board.
+
+    Words, for once, because the three endings are three different pieces of
+    advice and which one is drawn is decided by the project, not the template.
+    """
+
+    def test_a_board_with_free_slots_lists_them(self):
+        """Test the mockup's sentence."""
+        body = self.fragment("new?submitted=1&name=Holy+Panda&slot=10")
+
+        self.assertEqual(
+            slot_error(body), "Slot 10 is taken by Gateron Oil King; free: 2, Enter."
+        )
+
+    def test_a_full_board_says_none_are_free(self):
+        """Test the ending when every slot on the list is held."""
+        self.write(PROJECT, project_data(slots=["1", "10", "Apostrophe"], votes=VOTES))
+
+        body = self.fragment("new?submitted=1&name=Holy+Panda&slot=10")
+
+        self.assertEqual(slot_error(body), "Slot 10 is taken by Gateron Oil King; no slots are free.")
+
+    def test_a_project_with_no_slot_list_says_identifiers_are_unique(self):
+        """Test the ending with no board to offer a free slot from."""
+        self.write(PROJECT, project_data(slots=[], slot_labels={}, votes=VOTES))
+
+        body = self.fragment("new?submitted=1&name=Holy+Panda&slot=10")
+
+        self.assertEqual(
+            slot_error(body),
+            "Slot 10 is taken by Gateron Oil King; identifiers are unique among active items.",
+        )
 
 
 class TestLastChange(ActionsTestCase):
@@ -832,6 +961,44 @@ class TestAddCell(ActionsTestCase):
         self.assertIn('<input type="hidden" name="form" value="new">', cell)
         self.assertIn('<input type="hidden" name="q" value="cherry">', cell)
         self.assertIn('<input type="hidden" name="retired" value="1">', cell)
+
+
+class TestActionsUnderARootPath(ActionsTestCase):
+    """Test cases for the callouts and mutations behind a proxy on a subpath."""
+
+    root_path = "/rank"
+    prefixed = f"/rank{ITEMS_URL}"
+
+    def test_a_callout_s_actions_carry_the_prefix(self):
+        """Test every address the actions callout points at."""
+        body = self.fragment("oil/callout")
+
+        for verb in ("edit", "replace", "delete"):
+            with self.subTest(verb=verb):
+                self.assertIn(f'hx-get="{self.prefixed}/oil/{verb}"', body)
+        self.assertIn(f'action="{self.prefixed}/oil/retire"', body)
+
+    def test_a_form_posts_and_cancels_under_the_prefix(self):
+        """Test the edit form's action and its Cancel."""
+        body = self.fragment("oil/edit")
+
+        self.assertIn(f'action="{self.prefixed}/oil/edit"', body)
+        self.assertIn(f'href="{self.prefixed}?selected=oil"', element(body, r'<a class="cell-button"'))
+
+    def test_a_mutation_lands_under_the_prefix(self):
+        """Test the 303 of a change that went through."""
+        path, query = self.redirect_of(self.post("oil/retire"))
+
+        self.assertEqual(path, self.prefixed)
+        self.assertEqual(query["done"], "retired")
+        self.assertEqual(self.stored_item("oil")["status"], "retired")
+
+    def test_a_refusal_lands_under_the_prefix(self):
+        """Test the 303 back to the form with its draft."""
+        path, query = self.redirect_of(self.post("new", {"name": ""}))
+
+        self.assertEqual(path, self.prefixed)
+        self.assertEqual(query["form"], "new")
 
 
 if __name__ == "__main__":
