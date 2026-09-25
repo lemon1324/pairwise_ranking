@@ -64,7 +64,9 @@ hx-get="{{ items_url }}" hx-include="[form=view]" hx-target="#field" hx-select="
 {%- endmacro %}
 
 {% block sheet_body %}
-  <section class="bom-field" id="field" aria-label="Items">
+  {# data-q and data-category say which view these rows were drawn for, so the
+     boot script can tell whether a filter request is still to come. #}
+  <section class="bom-field" id="field" aria-label="Items" data-q="{{ q }}" data-category="{{ category }}">
     {% if rows or ghost_callout_url %}
       {% call parts_list(columns, "Items") %}
         {# Add's ghost row: the item that is not there yet, at the top of the
@@ -207,7 +209,43 @@ hx-get="{{ items_url }}" hx-include="[form=view]" hx-target="#field" hx-select="
     window.addEventListener("DOMContentLoaded", function () {
       var sheet = window.sheet;
       var filter = document.getElementById("filter");
+      var category = document.getElementById("category");
       if (!sheet || !filter) return;
+
+      // Whether the rows on the sheet are the ones the controls now ask for.
+      // Not while the filter's delayed request, or any view request, is still
+      // to come: the rows are then the previous view's.
+      function drawnForControls() {
+        var field = document.getElementById("field");
+        return !!field && field.dataset.q === filter.value.trim() &&
+          (!category || field.dataset.category === category.value);
+      }
+      function selectFirst() {
+        var first = document.querySelector(".bom-field tr[data-id]");
+        if (first) sheet.select(first.dataset.id);
+      }
+      // Set by Enter in the filter when its rows have not arrived yet.
+      var selectFirstOnArrival = false;
+
+      // On settle, not swap: htmx wires the new rows' hx-trigger only once the
+      // swap has settled, and a row selected before that fetches no callout.
+      document.body.addEventListener("htmx:afterSettle", function (event) {
+        // The element that asked (detail.elt is the one swapped in).
+        var config = event.detail && event.detail.requestConfig;
+        var from = config && config.elt;
+        if (from !== filter && from !== category) return;
+        if (selectFirstOnArrival && drawnForControls()) {
+          selectFirstOnArrival = false;
+          selectFirst();
+          return;
+        }
+        // A row the new view kept keeps the selection (the engine sees to
+        // that), but its callout was built for the old view: its actions, its
+        // Retire form and a form's Save and Cancel all carry the view back.
+        // Selected again, it fetches one for the new view - its actions, as
+        // the mockup closes an open form when the filter changes.
+        if (sheet.selectedId != null) sheet.select(sheet.selectedId, { focus: false });
+      });
 
       sheet.onKey(function (event, inControl) {
         if (event.ctrlKey || event.metaKey || event.altKey) return false;
@@ -219,12 +257,19 @@ hx-get="{{ items_url }}" hx-include="[form=view]" hx-target="#field" hx-select="
           htmx.trigger(filter, "search");
           return true;
         }
-        // Enter in the filter goes to the first row it left, rather than
-        // submitting the view form: the rows are already drawn.
+        // Enter in the filter goes to the first row it leaves, rather than
+        // submitting the view form. Typed faster than the filter's delay, the
+        // rows drawn are the previous view's: the request is sent now (any
+        // trigger cancels htmx's pending delay) and the first row selected
+        // when its rows arrive.
         if (event.key === "Enter" && event.target === filter) {
-          var first = document.querySelector(".bom-field tr[data-id]");
           filter.blur();
-          if (first) sheet.select(first.dataset.id);
+          if (drawnForControls() && !filter.classList.contains("htmx-request")) {
+            selectFirst();
+          } else {
+            selectFirstOnArrival = true;
+            htmx.trigger(filter, "search");
+          }
           return true;
         }
         return false;

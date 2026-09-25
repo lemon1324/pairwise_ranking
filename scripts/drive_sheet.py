@@ -105,6 +105,15 @@ What is checked, and why each one is here:
     selection's callout only: X selected again shows its actions. The
     ``form=new`` ghost row goes once another row is selected.
 
+``filter-callout``
+    A selected row the filter keeps gets a callout for the new view - its
+    Retire form and Edit carry the new filter - and an open edit form closes
+    into the row's actions.
+
+``filter-enter``
+    Enter in the filter, pressed inside its 200 ms delay, waits for the new
+    rows and selects the first of them, not the first of the old ones.
+
 Each check leaves the page as it found it by navigating afresh, so they are
 independent and ``--check`` can run any one of them alone.
 """
@@ -1231,6 +1240,124 @@ def check_form_once(devtools: DevTools, base: str) -> str:
     return f"{first!r} once, then the row's actions; the ghost row gone with its selection"
 
 
+# The view the open callout carries back: its Retire form's filter, its label,
+# and the address its first action cell (Edit) asks for.
+CALLOUT_VIEW = """
+(() => {
+  const callout = document.querySelector("#row-callout .bom-callout");
+  const q = document.querySelector('#row-callout input[name="q"]');
+  const edit = document.querySelector("#row-callout [hx-get]");
+  return {
+    label: callout ? callout.getAttribute("aria-label") : "",
+    retireQ: q ? q.value : "",
+    editUrl: edit ? edit.getAttribute("hx-get") : "",
+  };
+})()
+"""
+
+
+def check_filter_callout(devtools: DevTools, base: str) -> str:
+    """
+    Check that a row kept through a filter gets a callout for the new view.
+
+    The callout is built for the view it was fetched under: its action cells,
+    its Retire form and a form's Save and Cancel all carry the filter back.
+    Kept across a filter, the bug this pins retired with no ``q`` and the 303
+    dropped the filter. An open edit form closes into the row's actions, as
+    the mockup closes it on filter input.
+
+    Args:
+        devtools: The CDP session.
+        base: The server's base URL.
+
+    Returns:
+        str: What was measured, for the log.
+    """
+    open_page(devtools, f"{base}{ITEMS_PATH}?selected=item-10", *NARROW)
+    before = devtools.evaluate(CALLOUT_VIEW)
+    expect(before["label"] == "(10) Candidate 10", f"the arriving callout is {before['label']!r}")
+    expect(before["retireQ"] == "", "the unfiltered callout carries a filter")
+
+    type_filter(devtools, "Candidate 1")
+    after = devtools.evaluate(CALLOUT_VIEW)
+    expect(devtools.evaluate("window.sheet.selectedId") == "item-10", "the filter dropped a row it keeps")
+    expect(after["label"] == "(10) Candidate 10", f"the kept row's callout is {after['label']!r}")
+    expect(
+        after["retireQ"] == "Candidate 1",
+        f"the kept row's Retire form carries q={after['retireQ']!r}, not the filter",
+    )
+    expect("q=Candidate" in after["editUrl"], f"its Edit asks for {after['editUrl']!r}")
+
+    devtools.evaluate("document.activeElement.blur(), true")
+    press(devtools, "Enter")
+    expect(
+        devtools.evaluate(CALLOUT)["label"] == "Edit (10) Candidate 10",
+        "Enter did not open the edit form",
+    )
+    type_filter(devtools, "Candidate 10")
+    closed = devtools.evaluate(CALLOUT_VIEW)
+    expect(
+        closed["label"] == "(10) Candidate 10" and closed["retireQ"] == "Candidate 10",
+        f"after the filter the edit form left {closed}",
+    )
+    return "the kept row's actions re-fetched with the filter; an open edit form closed into them"
+
+
+def check_filter_enter(devtools: DevTools, base: str) -> str:
+    """
+    Check Enter in the filter, pressed before and after its rows arrive.
+
+    Typed faster than the filter's 200 ms delay, the rows on the sheet are the
+    previous view's. The bug this pins selected the first of those, then the
+    swap took it away: no selection, and the focus on ``<body>``. Enter now
+    sends the request at once and selects the first row of what it brings.
+
+    Args:
+        devtools: The CDP session.
+        base: The server's base URL.
+
+    Returns:
+        str: What was measured, for the log.
+    """
+    focused_row = '(document.activeElement && document.activeElement.dataset.id) || ""'
+
+    open_page(devtools, f"{base}{ITEMS_PATH}", *NARROW)
+    # Typing and Enter in one go, well inside the delay. Unfiltered, the first
+    # row is Candidate 1; "Candidate 2" starts at Candidate 2.
+    devtools.evaluate(
+        """
+        (() => {
+          const filter = document.getElementById("filter");
+          filter.focus();
+          filter.value = "Candidate 2";
+          filter.dispatchEvent(new Event("input", { bubbles: true }));
+          filter.dispatchEvent(new KeyboardEvent("keydown", {
+            key: "Enter", bubbles: true, cancelable: true
+          }));
+          return true;
+        })()
+        """
+    )
+    time.sleep(FILTER_WAIT_S)
+    fast = state(devtools)
+    expect(fast["rowCount"] == 11, f"'Candidate 2' left {fast['rowCount']} rows, not 11")
+    expect(fast["selectedId"] == "item-2", f"Enter inside the delay selected {fast['selectedId']!r}")
+    expect(devtools.evaluate(focused_row) == "item-2", "the focus did not land on the first match")
+    expect(
+        devtools.evaluate(CALLOUT)["label"] == "(2) Candidate 2",
+        "the first match's callout did not arrive",
+    )
+
+    # Settled: the rows are the filter's, so Enter selects at once.
+    devtools.evaluate('window.sheet.select("item-25", { focus: false }), true')
+    time.sleep(CALLOUT_WAIT_S)
+    press(devtools, "Enter", in_field="#filter")
+    settled = state(devtools)
+    expect(settled["selectedId"] == "item-2", f"Enter after the swap selected {settled['selectedId']!r}")
+    expect(devtools.evaluate(focused_row) == "item-2", "the focus did not follow Enter to the row")
+    return "Enter inside the delay waited for its rows and chose Candidate 2; after it, at once"
+
+
 CHECKS = {
     "fold": check_fold,
     "swap-empty": check_swap_empty,
@@ -1247,6 +1374,8 @@ CHECKS = {
     "callout-place": check_callout_place,
     "form-verbs": check_form_verbs,
     "form-once": check_form_once,
+    "filter-callout": check_filter_callout,
+    "filter-enter": check_filter_enter,
 }
 
 
