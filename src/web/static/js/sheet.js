@@ -435,7 +435,9 @@
       host.style.top = `${fieldBox.top + scrollY}px`;
 
       const rowBox = tr.getBoundingClientRect();
-      const colEl = tr.closest(".bom-col") || field;
+      // A phone's one table is not folded into a column, and is narrower than the drawing area
+      // around it: measured against the field, the callout ran past the table's right rule.
+      const colEl = tr.closest(".bom-col") || tr.closest("table") || field;
       const colBox = colEl.getBoundingClientRect();
       const findBox = tr.cells[0].getBoundingClientRect();
       const gap = GAP_REM * rem();
@@ -459,11 +461,18 @@
       } else if (rowTop - gap - height >= 0) {
         callout.classList.add("is-above");
         callout.style.top = `${rowTop - gap - height}px`;
+      } else if (rowBottom + gap + height <= limits.bottom) {
+        // It fits neither side of its row within the column, but it does fit below it within the
+        // drawing area: the rightmost column's form, taller than the space above the title block.
+        // Below the row, over the title block, as the mockup draws it. Sliding it up to the
+        // column's limit instead would lay it over its own row, with the leader pointing at
+        // whichever row happened to be above the callout's top edge.
+        callout.style.top = `${rowBottom + gap}px`;
       } else {
-        // It fits neither below nor above: sit it as low as the column allows rather than let it
-        // run into the title block or be clipped away (DESIGN.md open issue). The leader is told
-        // the real distance it has to cover, so it still reaches the row it belongs to.
-        const top = Math.max(0, Math.min(rowBottom + gap, bottomLimit - height));
+        // It fits nowhere: sit it as low as the drawing area allows rather than let it be clipped
+        // away (DESIGN.md open issue). A window this short cannot show the row and its form
+        // together: the callout covers part of the row, and its leader can no longer reach it.
+        const top = Math.max(0, Math.min(rowBottom + gap, limits.bottom - height));
         callout.style.top = `${top}px`;
         callout.style.setProperty("--gap", `${Math.max(0, rowBottom - top)}px`);
       }

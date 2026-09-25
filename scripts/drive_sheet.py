@@ -86,6 +86,11 @@ What is checked, and why each one is here:
     adds; R retires and moves the selection on; Del asks and Del again
     deletes. It adds an item and deletes it again, so ``items-filter`` still
     finds its 64 rows.
+``callout-place``
+    A callout taller than the room its column leaves - the Items edit form at
+    1280, on the mockups' own project - goes below its row over the title
+    block rather than sliding up over the row it belongs to; and a phone's
+    callout stops inside the table's right rule.
 
 Each check leaves the page as it found it by navigating afresh, so they are
 independent and ``--check`` can run any one of them alone.
@@ -1046,6 +1051,73 @@ def check_items_actions(devtools: DevTools, base: str) -> str:
     return "Enter/Esc, a click on Replace, N and Enter to add, R to retire, A to reactivate, Del Del to delete; focus and selection where the brief puts them"
 
 
+# The mockups' own project (seed_capture_data.py), whose rows carry
+# descriptions and whose edit form is taller than the space a 1280 sheet leaves
+# between a row near the top and the title block.
+SAMPLE_ITEMS_PATH = "/projects/switches-sample.pairrank/items"
+
+# Where the selected row and its callout are, and the table they belong to.
+PLACEMENT = """
+(() => {
+  const tr = document.querySelector('.bom-field tr[aria-selected="true"]');
+  const callout = document.querySelector("#row-callout .bom-callout");
+  if (!tr || !callout) return null;
+  const row = tr.getBoundingClientRect();
+  const box = callout.getBoundingClientRect();
+  return {
+    rowBottom: row.bottom,
+    tableRight: tr.closest("table").getBoundingClientRect().right,
+    top: box.top,
+    right: box.right,
+    above: callout.classList.contains("is-above"),
+  };
+})()
+"""
+
+
+def check_callout_place(devtools: DevTools, base: str) -> str:
+    """
+    Check that a tall callout stays off its own row, and inside a phone's table.
+
+    At 1280 the Items edit form on the third row of a sheet fits neither below
+    its row within the column (the title block is in the way) nor above it.
+    It goes below the row, over the title block, as the mockup draws it: the
+    bug this pins slid it up over its own row, leader and all. On a phone the
+    callout's right edge is the table's right rule less the edge, not the
+    drawing area's.
+
+    Args:
+        devtools: The CDP session.
+        base: The server's base URL.
+
+    Returns:
+        str: What was measured, for the log.
+    """
+    url = f"{base}{SAMPLE_ITEMS_PATH}?form=edit&item=it1"
+    open_page(devtools, url, *NARROW)
+    placed = devtools.evaluate(PLACEMENT)
+    expect(placed is not None, "the edit form never arrived under its row")
+    expect(
+        not placed["above"] and placed["top"] >= placed["rowBottom"],
+        f"the edit form's top is at {placed['top']:.0f}, over its row, which ends at "
+        f"{placed['rowBottom']:.0f}",
+    )
+    narrow = placed
+
+    open_page(devtools, url, *PHONE)
+    placed = devtools.evaluate(PLACEMENT)
+    expect(placed is not None, "the edit form never arrived on the phone")
+    expect(
+        placed["right"] < placed["tableRight"],
+        f"the phone callout ends at {placed['right']:.0f}, past the table's rule at "
+        f"{placed['tableRight']:.0f}",
+    )
+    return (
+        f"1280: form {narrow['top'] - narrow['rowBottom']:.0f} px below its row; "
+        f"390: {placed['tableRight'] - placed['right']:.0f} px inside the table's rule"
+    )
+
+
 CHECKS = {
     "fold": check_fold,
     "swap-empty": check_swap_empty,
@@ -1059,6 +1131,7 @@ CHECKS = {
     "key-on-field": check_key_on_field,
     "items-filter": check_items_filter,
     "items-actions": check_items_actions,
+    "callout-place": check_callout_place,
 }
 
 
