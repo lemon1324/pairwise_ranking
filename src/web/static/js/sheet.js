@@ -19,8 +19,9 @@
 //     callout. The engine clears the host before the event, so a stale callout never shows.
 //   - Mark its own verbs with data-sheet-key on the button that performs them, e.g.
 //     data-sheet-key="R" on Retire, data-sheet-key="Escape" on a form's Cancel. The engine
-//     presses the button; the screen never writes a key handler. Anything stranger than that can
-//     register one with sheet.onKey().
+//     presses the button; the screen never writes a key handler. A key declared on a field
+//     (data-sheet-key="/" on a filter) focuses it instead of clicking it. Anything stranger than
+//     that can register one with sheet.onKey().
 //
 // Events, all dispatched on the row (so hx-trigger on a row can hear them) and bubbling:
 // sheet:select {id}, sheet:open {id} (Enter, when nothing declares Enter), and sheet:clear {id}
@@ -120,6 +121,10 @@
     function columnTable() {
       const table = document.createElement("table");
       table.className = source.className;
+      // The server's table is a grid, so that its rows' aria-selected is read at all; a column
+      // left a plain table would lose that for every row folded into it.
+      const role = source.getAttribute("role");
+      if (role) table.setAttribute("role", role);
       table.dataset.sheetColumn = "";
       if (source.tHead) table.append(source.tHead.cloneNode(true));
       table.append(document.createElement("tbody"));
@@ -316,8 +321,60 @@
         tr.classList.toggle("is-selected", on);
         tr.setAttribute("aria-selected", String(on));
       });
+      rovingStop();
       placeCallout();
       announcePage();
+    }
+
+    /**
+     * Give the grid exactly one Tab stop: the selected row, or the first row of the sheet shown.
+     *
+     * The server draws every row at tabindex -1, because the arrow keys move the selection and a
+     * row per Tab press would make a sheet of sixty rows sixty stops. Left there, though, the grid
+     * has no stop at all and Tab walks straight past it. One row at 0 is the grid pattern's roving
+     * tab stop: Tab lands on the row that has the selection, or on the top of the sheet on screen
+     * when nothing is selected, and the arrows take it from there.
+     */
+    function rovingStop() {
+      const shown = field.querySelector(".bom-page:not([hidden])") || field;
+      const onSheet = Array.from(shown.querySelectorAll("tr[data-id]"));
+      const stop =
+        onSheet.find((tr) => tr.dataset.id === String(selectedId)) || onSheet[0] || null;
+      field.querySelectorAll("tr[data-id]").forEach((tr) => {
+        tr.tabIndex = tr === stop ? 0 : -1;
+      });
+    }
+
+    /**
+     * Say in words that a callout has arrived, for a reader who cannot see the leader.
+     *
+     * Written into the polite status region base.html keeps beside the host - never the host
+     * itself, which would read out a whole form. Whose callout it is comes from the callout's own
+     * accessible name, and what it offers from its action cells, or the lead of the warning box
+     * standing in for them. Left empty when the callout took the focus: the field the focus lands
+     * in is announced anyway, and saying it twice is the thing a live region must not do.
+     */
+    function announceCallout() {
+      const status = document.getElementById("callout-status");
+      if (!status || !host) return;
+      const callout = host.querySelector(".bom-callout");
+      if (!callout || host.contains(document.activeElement)) {
+        status.textContent = "";
+        return;
+      }
+      // An action's text is its label and its key legend run together ("RetireR"); the legend is
+      // declared on the button as aria-keyshortcuts already, so it is left out of the sentence.
+      const words = (el) => {
+        const copy = el.cloneNode(true);
+        copy.querySelectorAll(".key").forEach((key) => key.remove());
+        return copy.textContent.replace(/\s+/g, " ").trim();
+      };
+      const actions = Array.from(callout.querySelectorAll(".strip-action"), words).filter(Boolean);
+      const lead = callout.querySelector(".strip-confirm strong");
+      let text = `Callout for ${callout.getAttribute("aria-label") || "the selected row"}`;
+      if (actions.length) text += `: ${actions.join(", ")}`;
+      else if (lead) text += `: ${words(lead)}`;
+      status.textContent = `${text}.`;
     }
 
     /** Write the sheet count into the title block and enable the pager it belongs to. */
@@ -338,6 +395,10 @@
       host.replaceChildren();
       host.hidden = true;
       placedNode = null;
+      // Emptied with the host, so the next callout's sentence is a change the region announces
+      // even when it is word for word the last one - re-selecting the same row, say.
+      const status = document.getElementById("callout-status");
+      if (status) status.textContent = "";
     }
 
     /**
@@ -566,6 +627,14 @@
           // Enter and Space on a button or a link activate it, not a row verb.
           if ((e.key === "Enter" || e.key === " ") && closest("button, a")) return;
           const target = keyTarget(e);
+          if (target && target.matches("input, select, textarea")) {
+            // A key declared on a field - the filter's /, a category's C - means "go to it", and
+            // clicking a field does not put the caret in it. A text field's contents are
+            // selected, so what is typed next replaces the filter rather than extending it.
+            target.focus();
+            if (target.select) target.select();
+            break;
+          }
           if (target) {
             target.click();
             break;
@@ -665,6 +734,8 @@
             first.select();
           }
         }
+        // After the focus has moved, so it can tell whether the focus already said it.
+        announceCallout();
         return;
       }
       const current = document.querySelector(".bom-field");

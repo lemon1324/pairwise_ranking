@@ -61,6 +61,18 @@ What is checked, and why each one is here:
     what an unclamped last-column limit gives, and 68 projects become 68
     sheets.
 
+``aria``
+    What the selection says to someone who cannot see it: every folded column
+    is still a grid, a row with a callout names the host it controls, the grid
+    has exactly one Tab stop and it follows the selection, and a callout's
+    arrival is announced in the polite status region - by name and actions,
+    without the key legends - and forgotten when the callout goes.
+
+``key-on-field``
+    A key declared on a field (Items' ``/`` filter, a ``C`` category select)
+    puts the focus in it, with a text field's contents selected, instead of
+    clicking it - which for a field does nothing at all.
+
 Each check leaves the page as it found it by navigating afresh, so they are
 independent and ``--check`` can run any one of them alone.
 """
@@ -667,6 +679,143 @@ def check_short_window(devtools: DevTools, base: str) -> str:
     )
 
 
+ARIA_STATE = """
+(() => {
+  const field = document.querySelector(".bom-field");
+  const callout = document.querySelector("#row-callout .bom-callout");
+  const shown = field.querySelector(".bom-page:not([hidden])") || field;
+  return {
+    roles: Array.from(field.querySelectorAll("table.bom"), (t) => t.getAttribute("role")),
+    stops: Array.from(field.querySelectorAll("tr[data-id]"))
+      .filter((tr) => tr.tabIndex === 0)
+      .map((tr) => tr.dataset.id),
+    firstOnSheet: (shown.querySelector("tr[data-id]") || { dataset: {} }).dataset.id || null,
+    status: document.getElementById("callout-status").textContent,
+    label: callout ? callout.getAttribute("aria-label") : null,
+    controls: Array.from(field.querySelectorAll("tr[data-id][hx-get]"))
+      .every((tr) => tr.getAttribute("aria-controls") === "row-callout"),
+  };
+})()
+"""
+
+
+def check_aria(devtools: DevTools, base: str) -> str:
+    """
+    Check what the selection says to assistive technology.
+
+    Args:
+        devtools: The CDP session.
+        base: The server's base URL.
+
+    Returns:
+        str: What was measured, for the log.
+    """
+    open_page(devtools, f"{base}/", *NARROW)
+    before = devtools.evaluate(ARIA_STATE)
+    expect(before["roles"], "the folded sheet has no tables at all")
+    expect(
+        all(role == "grid" for role in before["roles"]),
+        f"a folded column lost the grid role: {before['roles']}",
+    )
+    expect(before["controls"], "a row with a callout does not name #row-callout")
+    expect(
+        before["stops"] == [before["firstOnSheet"]],
+        "with nothing selected the grid's one Tab stop should be the first row "
+        f"on the sheet; it is {before['stops']}",
+    )
+
+    ids = state(devtools)["ids"]
+    devtools.evaluate(f'window.sheet.select("{ids[2]}"), true')
+    time.sleep(CALLOUT_WAIT_S)
+    selected = devtools.evaluate(ARIA_STATE)
+    expect(selected["label"], "selecting a row drew no callout to announce")
+    expect(
+        selected["stops"] == [ids[2]],
+        f"the Tab stop did not follow the selection: {selected['stops']}",
+    )
+    expect(
+        selected["status"].startswith(f"Callout for {selected['label']}"),
+        f"the arrival of {selected['label']!r}'s callout was announced as "
+        f"{selected['status']!r}",
+    )
+    expect(
+        "Open" in selected["status"] and "↵" not in selected["status"],
+        "the announcement should list the actions by name, without their "
+        f"legends: {selected['status']!r}",
+    )
+
+    devtools.evaluate("window.sheet.clear(), true")
+    time.sleep(REFOLD_WAIT_S)
+    cleared = devtools.evaluate(ARIA_STATE)
+    expect(
+        cleared["status"] == "",
+        f"the announcement outlived its callout: {cleared['status']!r}",
+    )
+    return (
+        f"{len(before['roles'])} grid column(s); Tab stop on "
+        f"{before['stops'][0]!r}, then on the selection; announced "
+        f"{selected['status']!r}"
+    )
+
+
+def check_key_on_field(devtools: DevTools, base: str) -> str:
+    """
+    Check that a key declared on a field puts the caret in it.
+
+    Args:
+        devtools: The CDP session.
+        base: The server's base URL.
+
+    Returns:
+        str: What was measured, for the log.
+    """
+    open_page(devtools, f"{base}/", *NARROW)
+    devtools.evaluate(
+        """
+        (() => {
+          const input = document.createElement("input");
+          input.id = "probe-filter";
+          input.dataset.sheetKey = "/";
+          input.value = "typed before";
+          const select = document.createElement("select");
+          select.id = "probe-category";
+          select.dataset.sheetKey = "C";
+          select.innerHTML = "<option>All</option><option>Linear</option>";
+          document.getElementById("sheet").append(input, select);
+          document.activeElement && document.activeElement.blur();
+          return true;
+        })()
+        """
+    )
+    focused = """
+    (() => {
+      const el = document.activeElement;
+      return {
+        id: (el && el.id) || "",
+        selected: !!(el && el.select && el.selectionStart === 0 &&
+                     el.selectionEnd === el.value.length),
+      };
+    })()
+    """
+
+    press(devtools, "/")
+    slash = devtools.evaluate(focused)
+    expect(
+        slash["id"] == "probe-filter",
+        f"/ declared on a field did not focus it: the focus is on {slash['id']!r}",
+    )
+    expect(slash["selected"], "the filter's old text was not selected, so typing adds to it")
+
+    devtools.evaluate("document.activeElement.blur(), true")
+    press(devtools, "c")
+    category = devtools.evaluate(focused)
+    expect(
+        category["id"] == "probe-category",
+        f"C declared on a select did not focus it: the focus is on {category['id']!r}",
+    )
+    return "/ put the caret in a filter with its text selected; C focused a select"
+
+
 CHECKS = {
     "fold": check_fold,
     "swap-empty": check_swap_empty,
@@ -676,6 +825,8 @@ CHECKS = {
     "autofocus-select": check_autofocus_select,
     "key-on-fixed": check_key_on_fixed,
     "short-window": check_short_window,
+    "aria": check_aria,
+    "key-on-field": check_key_on_field,
 }
 
 

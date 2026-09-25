@@ -351,6 +351,9 @@ class TestRegisterListing(RegisterTestCase):
         self.assertIn('hx-get="/projects/Alpha.pairrank/callout"', row)
         self.assertIn('hx-target="#row-callout"', row)
         self.assertIn('hx-trigger="sheet:select"', row)
+        self.assertIn('aria-controls="row-callout"', row)
+        # The register is a grid, so the row's aria-selected is announced.
+        self.assertRegex(self.body, r'<table class="bom" role="grid" aria-label="Projects">')
 
     def test_a_current_file_is_untagged_and_carries_its_figures(self):
         """Test that a file in the current format is drawn as ordinary."""

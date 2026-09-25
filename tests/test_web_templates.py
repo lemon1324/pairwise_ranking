@@ -209,6 +209,28 @@ class TestSheetShell(TemplateTestCase):
         """
         self.assertEqual(ancestors_of(self.body, "row-callout"), ["html", "body"])
 
+    def test_a_callout_arriving_has_a_polite_place_to_be_announced(self):
+        """
+        Test that the status region the engine writes into is on every sheet.
+
+        It sits beside the host rather than being the host: a live region
+        reads out whatever lands in it, and a whole form read field by field is
+        not an announcement. It must outlive every swap the way the host does,
+        and it must be polite, because it follows the selected row's own
+        announcement rather than cutting across it.
+        """
+        region = re.search(r'<div id="callout-status"[^>]*>', self.body)
+
+        self.assertIsNotNone(region)
+        self.assertIn('role="status"', region.group(0))
+        self.assertIn('aria-live="polite"', region.group(0))
+        self.assertIn("visually-hidden", region.group(0))
+        self.assertEqual(ancestors_of(self.body, "callout-status"), ["html", "body"])
+        self.assertIsNone(
+            re.search(r'<div id="row-callout"[^>]*aria-live', self.body),
+            "the host itself is live, so a whole form would be read out",
+        )
+
     def test_the_page_pulls_its_script_and_styles_from_the_static_mount(self):
         """Test that nothing on the sheet is fetched from the internet."""
         for asset in REFERENCED_ASSETS:
@@ -470,7 +492,44 @@ class TestSheetMacros(TemplateTestCase):
 
         self.assertNotIn("hx-get", markup)
         self.assertNotIn("hx-trigger", markup)
+        self.assertNotIn("aria-controls", markup)
         self.assertIn('data-id="x1"', markup)
+
+    def test_a_parts_list_is_a_grid_so_its_selection_is_read(self):
+        """
+        Test that the table carries the role its rows' aria-selected needs.
+
+        On a plain table aria-selected is ignored: nothing in a table is
+        selectable, so the row the sheet draws in markup blue was never
+        announced as selected at all. A grid is the table whose rows are.
+        """
+        markup = self.render(
+            '{% from "macros/parts_list.html" import parts_list %}'
+            '{% call parts_list(columns, "Items") %}{% endcall %}',
+            columns=[{"label": "Name"}],
+        )
+
+        table = re.search(r"<table[^>]*>", markup).group(0)
+        self.assertIn('role="grid"', table)
+        self.assertIn('aria-label="Items"', table)
+
+    def test_a_row_with_a_callout_names_the_host_it_controls(self):
+        """
+        Test that a row points assistive technology at its callout.
+
+        The host is at the end of the page, outside every swapped region, so
+        nothing in the document's order ties it to the row it belongs to; the
+        leader does that for a sighted reader and aria-controls for everyone
+        else. It is written with the rest of the hookup and never without it.
+        """
+        markup = self.render(
+            '{% from "macros/parts_list.html" import parts_row %}'
+            '{% call parts_row("x1", callout_url="/c/x1") %}<td></td>{% endcall %}'
+        )
+
+        row = re.search(r"<tr[^>]*>", markup).group(0)
+        self.assertIn('aria-controls="row-callout"', row)
+        self.assertIn('hx-target="#row-callout"', row)
 
     def test_a_legend_with_no_key_value_is_drawn_but_not_declared(self):
         """
