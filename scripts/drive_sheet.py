@@ -79,6 +79,14 @@ What is checked, and why each one is here:
     and the retired toggle follow, a filter matching nothing leaves the empty
     state and no selection, and Esc clears the filter and brings the rows back.
 
+``items-actions``
+    The Items row callouts, by key and by mouse: Enter opens the edit form
+    with the name focused and Esc returns the focus to the row; a click on
+    Replace opens its form; N draws the ghost row and Enter (declared on Save)
+    adds; R retires and moves the selection on; Del asks and Del again
+    deletes. It adds an item and deletes it again, so ``items-filter`` still
+    finds its 64 rows.
+
 Each check leaves the page as it found it by navigating afresh, so they are
 independent and ``--check`` can run any one of them alone.
 """
@@ -912,6 +920,132 @@ def check_items_filter(devtools: DevTools, base: str) -> str:
     return "/ took the filter; 64 rows to 11 to an empty state and back with Esc, address and toggle kept in step"
 
 
+def wait_for_page(devtools: DevTools, condition: str, what: str) -> None:
+    """
+    Wait for a navigation a key started to land, and for the engine on it.
+
+    Args:
+        devtools: The CDP session.
+        condition: A JavaScript expression true once the new page is the one
+            expected - usually a test of ``location.search``.
+        what: What was expected, for the failure message.
+
+    Raises:
+        CheckError: If it never arrives.
+    """
+    deadline = time.monotonic() + READY_TIMEOUT_S
+    while time.monotonic() < deadline:
+        # A page mid-navigation can have no document to evaluate in.
+        try:
+            arrived = devtools.evaluate(
+                f'document.readyState === "complete" && !!window.sheet && ({condition})'
+            )
+        except CaptureError:
+            arrived = False
+        if arrived:
+            time.sleep(CALLOUT_WAIT_S)
+            return
+        time.sleep(POLL_INTERVAL_S)
+    raise CheckError(f"never landed on {what}")
+
+
+# What the callout host holds: its label, and the id of the focused element.
+CALLOUT = """
+(() => {
+  const callout = document.querySelector("#row-callout .bom-callout");
+  return {
+    label: callout ? callout.getAttribute("aria-label") : "",
+    focused: (document.activeElement || {}).id || "",
+    focusedText: ((document.activeElement || {}).textContent || "").trim(),
+    last: document.getElementById("tb-last").textContent.trim(),
+  };
+})()
+"""
+
+
+def check_items_actions(devtools: DevTools, base: str) -> str:
+    """
+    Check the Items row actions by their keys and by the mouse, end to end.
+
+    Adds an item, retires it and deletes it again, so the sheet ends as it
+    began and ``items-filter`` still finds its 64 rows whichever order the two
+    run in.
+
+    Args:
+        devtools: The CDP session.
+        base: The server's base URL.
+
+    Returns:
+        str: What was measured, for the log.
+    """
+    open_page(devtools, f"{base}{ITEMS_PATH}?selected=item-3", *NARROW)
+    callout = devtools.evaluate(CALLOUT)
+    expect(callout["label"] == "(3) Candidate 3", f"the selected row's callout is {callout['label']!r}")
+
+    # Enter opens the edit form, focused on the name; Esc goes back to the row.
+    press(devtools, "Enter")
+    callout = devtools.evaluate(CALLOUT)
+    expect(callout["label"] == "Edit (3) Candidate 3", f"Enter opened {callout['label']!r}")
+    expect(callout["focused"] == "f-name", f"the edit form left the focus on {callout['focused']!r}")
+    press(devtools, "Escape")
+    wait_for_page(devtools, 'location.search === "?selected=item-3"', "the row after Cancel")
+    focused_row = devtools.evaluate(
+        '(document.activeElement && document.activeElement.dataset.id) || ""'
+    )
+    expect(focused_row == "item-3", f"Cancel returned the focus to {focused_row!r}, not the row")
+
+    # The mouse: the Replace cell opens its form in the same host.
+    devtools.evaluate('document.querySelector("#row-callout [data-action=replace]").click(), true')
+    time.sleep(CALLOUT_WAIT_S)
+    callout = devtools.evaluate(CALLOUT)
+    expect(callout["label"] == "Replace (3) Candidate 3", f"clicking Replace opened {callout['label']!r}")
+
+    # N: the ghost row and the Add form; Enter (declared on Save) posts it.
+    devtools.evaluate("document.activeElement.blur(), true")
+    press(devtools, "n")
+    wait_for_page(devtools, 'location.search.includes("form=new")', "the Add form")
+    expect(devtools.evaluate("window.sheet.selectedId") == "__new", "N did not select the ghost row")
+    callout = devtools.evaluate(CALLOUT)
+    expect(callout["focused"] == "f-name", f"the Add form left the focus on {callout['focused']!r}")
+    devtools.evaluate(
+        'document.getElementById("f-name").value = "Driven item", '
+        'document.getElementById("f-name").blur(), true'
+    )
+    press(devtools, "Enter")
+    wait_for_page(devtools, 'location.search.includes("done=added")', "the added item")
+    added = devtools.evaluate("window.sheet.selectedId")
+    expect(bool(added) and added != "__new", f"the new item was not selected: {added!r}")
+    expect(
+        devtools.evaluate(CALLOUT)["last"].startswith("Added Driven item"),
+        "Last change does not name the added item",
+    )
+
+    # R retires it at once, and the selection moves to the row before it.
+    press(devtools, "r")
+    wait_for_page(devtools, 'location.search.includes("done=retired")', "the retired item")
+    after_retire = state(devtools)
+    expect(added not in after_retire["ids"], "the retired item is still drawn with retired items hidden")
+    expect(after_retire["selectedId"] == "item-64", f"Retire left {after_retire['selectedId']!r} selected")
+
+    # Del asks, Del again deletes: back to the 64 the sheet started with.
+    open_page(devtools, f"{base}{ITEMS_PATH}?retired=1&selected={added}", *NARROW)
+    press(devtools, "a")
+    callout = devtools.evaluate(CALLOUT)
+    expect(callout["label"] == "Reactivate Driven item", f"A opened {callout['label']!r}")
+    expect(callout["focused"] == "f-slot", f"Reactivate left the focus on {callout['focused']!r}")
+    press(devtools, "Escape")
+    wait_for_page(devtools, f'location.search.includes("selected={added}")', "the row after Cancel")
+    press(devtools, "Delete")
+    callout = devtools.evaluate(CALLOUT)
+    expect(callout["label"] == "Delete Driven item", f"Del opened {callout['label']!r}")
+    expect(callout["focusedText"].startswith("Delete"), "the confirmation did not focus Delete")
+    press(devtools, "Delete")
+    wait_for_page(devtools, 'location.search.includes("done=deleted")', "the sheet after Delete")
+    end = state(devtools)
+    expect(end["rowCount"] == 64 and added not in end["ids"], f"Delete left {end['rowCount']} rows")
+    return "Enter/Esc, a click on Replace, N and Enter to add, R to retire, A to reactivate, Del Del to delete; focus and selection where the brief puts them"
+
+
 CHECKS = {
     "fold": check_fold,
     "swap-empty": check_swap_empty,
@@ -924,6 +1058,7 @@ CHECKS = {
     "aria": check_aria,
     "key-on-field": check_key_on_field,
     "items-filter": check_items_filter,
+    "items-actions": check_items_actions,
 }
 
 
