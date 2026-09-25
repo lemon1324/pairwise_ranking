@@ -17,7 +17,11 @@ conditions it holds. This writes all of them:
   shallow, and opening it lands on the damaged page,
 * a name long enough to need its ellipsis, one carrying punctuation the file
   name has to sanitise, and one with no votes,
-* a ``notes.txt``, to show that the listing is not simply the directory.
+* a ``notes.txt``, to show that the listing is not simply the directory,
+* the Items and Rankings mockups' own project (``docs/mockups/sample-data.js``)
+  as ``switches-sample``, beside three variants for the mockup states that are
+  a different project rather than a different address: no items, no slot list,
+  and a board with no slot free.
 
 It also writes an empty sibling directory, because the picker's empty state is
 a state of the screen like any other and cannot be photographed from a
@@ -37,6 +41,7 @@ invented: names, figures and timestamps are all made up.
 
 import argparse
 import json
+import random
 import shutil
 import sys
 from pathlib import Path
@@ -129,6 +134,103 @@ FILLER_SUBJECTS = (
     "Magnets", "Pins",
 )
 
+# The Items and Rankings mockups' own project, ported from
+# docs/mockups/sample-data.js so a screen can be photographed beside the
+# mockup state it was drawn from. Written under stems of their own:
+# switches-2026 above is what drive_sheet.py counts on (64 "Candidate n" rows,
+# identifiers 1-64, no slot list), and must stay as it is.
+SAMPLE_TITLE = "Linear switches, winter shortlist"
+SAMPLE_MODIFIED = "2026-09-16T20:58:00"
+
+# (name, category, description), in the mockup's order; item n is "it<n>".
+SAMPLE_ITEMS = (
+    ("Gateron Oil King", "Linear", "Deep, muted bottom-out. Smooth all the way down, slight spring ping on release."),
+    ("Cherry MX Black Clear-Top (Hyperglide)", "Linear", "Heavier spring, sharper top-out. Scratchier than expected for this batch."),
+    ("NovelKeys Cream", "Linear", "Scratchy until broken in; hollow, clacky POM sound."),
+    ("Durock T1", "Tactile", "Sharp bump right at the top, short travel after it."),
+    ("Kailh Box Jade", "Clicky", "Loud, crisp click bar. Heavy for long sessions."),
+    ("Akko Lavender Purple", "Tactile", ""),
+    ("Gazzew Boba U4T", "Tactile", "Round, full-travel bump with a thick, quiet bottom-out."),
+    ("Alpaca V2", "Linear", "Light, smooth, a bit of stem wobble."),
+    ("Gateron Ink Black V2", "Linear", "Smoky housing, deeper pitch than the Yellows."),
+    ("Gateron Milky Yellow Pro", "Linear", "Budget pick; slightly gritty but consistent."),
+    ("Gateron Box CJ", "Linear", "Very smooth once lubed; muted and a touch mushy."),
+    ("Gateron North Pole", "Linear", ""),
+    ("Cherry MX Brown", "Tactile", "Barely-there bump. Hard to tell from a linear blind."),
+    ("Cherry MX Blue", "Clicky", "Classic click, rattly spring."),
+    ("Cherry MX2A Silent Red", "Silent", "Quiet dampened bottom-out, slightly spongy."),
+    ("NovelKeys Blueberry", "Tactile", "Big tactile event, loud top-out."),
+    ("Tangerine V2 (62g)", "Linear", "Long spring, bouncy return."),
+    ("Durock POM Linear", "Linear", "Dry, clacky, very consistent between switches."),
+    ("Durock Dolphin", "Linear", ""),
+    ("Kailh Box Navy", "Clicky", "Heaviest click in the set; fatigue after a few minutes."),
+    ("Kailh Box White V2", "Clicky", "Crisp and light; pleasant pitch."),
+    ("Kailh Speed Silver", "Linear", "Short travel, early actuation, feels twitchy."),
+    ("Kailh Deep Sea Silent Box Pink", "Silent", "Near-silent; soft landing."),
+    ("Akko Cream Yellow", "Linear", "Light and smooth for the price."),
+    ("Akko Jelly Pink", "Linear", ""),
+    ("Akko Rosewood", "Tactile", "Mild rounded bump, quiet."),
+    ("Gazzew Boba U4 Silent", "Silent", "Silent tactile; bump feels thicker than U4T."),
+    ("Gazzew Boba LT", "Linear", "Thocky long pole, faint scratch."),
+    ("Zeal Zealios V2 67g", "Tactile", "Sharp, prominent bump; premium feel."),
+    ("Zeal Tealios V2", "Linear", "Buttery smooth, quiet."),
+    ("Zeal Healios", "Silent", "Silent linear; slight rubbery bottom."),
+    ("Zeal Roselios", "Silent", ""),
+    ("Holy Panda X", "Tactile", "Snappy bump, loud-ish bottom-out."),
+    ("Invyr Holy Panda", "Tactile", "Rounder bump than the X; scratch on one sample."),
+    ("Drop Halo True", "Tactile", "Rounded bump through most of the travel."),
+    ("Drop Halo Clear", "Tactile", "Lighter than True; similar shape."),
+    ("Everglide Oreo", "Tactile", "Short sharp bump, deep sound."),
+    ("Everglide Aqua King", "Linear", "Slippery, high-pitched clack."),
+    ("Outemu Silent Lemon", "Silent", "Quiet but inconsistent between samples."),
+    ("JWK Black Linear", "Linear", "Heavier, smooth, low pitch."),
+    ("JWK Lavender", "Linear", ""),
+    ("SP-Star Meteor White", "Linear", "Very light; accidental presses."),
+    ("TTC Gold Pink V2", "Linear", "Smooth; slightly sharp bottom-out."),
+    ("TTC Bluish White", "Tactile", "Sharp small bump, crisp."),
+    ("KTT Strawberry", "Linear", "Budget; scratchy out of the box."),
+    ("KTT Kang White", "Linear", "Crisp, clacky, light."),
+    ("HMX Cloud", "Linear", "Soft, marbly sound."),
+    ("HMX Hyacinth V2", "Linear", "Creamy, deep, a favourite so far."),
+    ("Wuque WS Morandi", "Linear", "Light, smooth, a little hollow."),
+    ("Wuque WS Heavy Tactile", "Tactile", "Very strong bump; tiring."),
+    ("Haimu Heartbeat", "Tactile", "Pronounced rounded bump; long spring."),
+    ("Haimu Mint", "Linear", ""),
+    ("Mode Signal", "Tactile", "Clean bump, smooth after it."),
+    ("Mode Chosen", "Linear", "Smooth and quiet; slight spring noise."),
+    ("C³ Tangerine Light Green", "Linear", "Light variant; bouncy."),
+    ("SwitchOddity Pineapple", "Linear", "Muted, round sound."),
+    ("Raw Studio Yaki Nasu", "Tactile", "Short bump; sounds thin."),
+    ("Durock Shrimp Silent", "Silent", "Silent linear, very smooth."),
+    ("Kinetic Labs Salmon", "Tactile", "Rounded bump; stem wobble noticeable."),
+    ("Kinetic Labs Penguin", "Tactile", "Silent-ish tactile; deeper sound than expected."),
+    ("Gateron Melodic", "Linear", "Bright, poppy; polarising."),
+    ("Cherry MX Red", "Linear", "Baseline reference; scratchy."),
+    ("Durock Sunflower", "Tactile", ""),
+    ("Akko V3 Piano Pro", "Tactile", "Soft bump, low pitch."),
+)
+
+# A 60-slot tester board: 56 numbered sockets and four key positions, one
+# with an explicit short label. 9, 31, 44 and Backspace are left free.
+SAMPLE_SLOTS = tuple(str(n) for n in range(1, 57)) + (
+    "Apostrophe", "Enter", "Space", "Backspace",
+)
+SAMPLE_FREE = ("9", "31", "44", "Backspace")
+SAMPLE_SLOT_LABELS = {"Apostrophe": "'"}
+SAMPLE_RETIRED = (13, 24, 38, 41, 44, 61)  # indexes into SAMPLE_ITEMS
+SAMPLE_NO_SLOT = (52, 63)  # active, not yet placed on the board
+# The two items the Compare mockup shows, in the slots it shows them in.
+SAMPLE_PLACED = (("it1", "12"), ("it2", "7"))
+
+# The mockup's states that are a different project rather than a different
+# address: (stem, what it changes). "full" keeps only the slots in use.
+SAMPLE_PROJECTS = (
+    ("switches-sample", "sample"),
+    ("switches-sample-empty", "empty"),
+    ("switches-sample-no-slots", "no-slots"),
+    ("switches-sample-full", "full"),
+)
+
 NOT_A_PROJECT = "notes.txt"
 
 NOT_A_PROJECT_TEXT = (
@@ -208,6 +310,109 @@ def project_data(name: str, items: int, votes: int, modified: str) -> dict:
     }
 
 
+def sample_items() -> list:
+    """
+    Build the mockups' 64 switches, placed on the board as sample-data.js does.
+
+    Slotted items take the board's used slots in order, skipping the retired
+    and the unplaced; then the two Compare items are swapped into the slots
+    the Compare mockup shows them in.
+
+    Returns:
+        list: Item dictionaries in the current format, ids "it1" to "it64".
+    """
+    used = [slot for slot in SAMPLE_SLOTS if slot not in SAMPLE_FREE]
+    items = []
+    for index, (name, category, description) in enumerate(SAMPLE_ITEMS):
+        retired = index in SAMPLE_RETIRED
+        slot = ""
+        if not retired and index not in SAMPLE_NO_SLOT:
+            slot = used.pop(0)
+        items.append(
+            {
+                "id": f"it{index + 1}",
+                "name": name,
+                "description": description,
+                "identifier": slot,
+                "category": category,
+                "status": "retired" if retired else "active",
+            }
+        )
+    by_id = {entry["id"]: entry for entry in items}
+    for item_id, slot in SAMPLE_PLACED:
+        moving = by_id[item_id]
+        holder = next((e for e in items if e["identifier"] == slot), None)
+        if holder is not None and holder is not moving:
+            holder["identifier"] = moving["identifier"]
+        moving["identifier"] = slot
+    return items
+
+
+def sample_votes(items: list) -> list:
+    """
+    Build a deterministic spread of votes over the sample items.
+
+    Every item, retired or not, takes part in a handful, so Delete always has
+    votes to count. The figures are invented and match no mockup number.
+
+    Args:
+        items: The item entries.
+
+    Returns:
+        list: Vote dictionaries in the current format.
+    """
+    rng = random.Random(20260916)
+    votes = []
+    for index, entry in enumerate(items):
+        for _ in range(2 + rng.randrange(6)):
+            other = items[(index + 1 + rng.randrange(len(items) - 1)) % len(items)]
+            winner, loser = (entry, other) if rng.random() < 0.5 else (other, entry)
+            votes.append(
+                {
+                    "id": f"vote-{len(votes) + 1}",
+                    "winner_id": winner["id"],
+                    "loser_id": loser["id"],
+                    "weight": float(1 + rng.randrange(3)),
+                    "timestamp": "2026-09-16T20:00:00",
+                }
+            )
+    return votes
+
+
+def sample_project(variant: str) -> dict:
+    """
+    Build the mockups' project, or one of the variants a mockup state needs.
+
+    Args:
+        variant: "sample" as sample-data.js has it; "empty" with no items;
+            "no-slots" with no slot list; "full" with only the slots in use,
+            so none is free.
+
+    Returns:
+        dict: The project, ready to be written as JSON.
+    """
+    items = [] if variant == "empty" else sample_items()
+    slots = list(SAMPLE_SLOTS)
+    if variant == "no-slots":
+        slots = []
+    elif variant == "full":
+        held = {entry["identifier"] for entry in items if entry["status"] == "active"}
+        slots = [slot for slot in slots if slot in held]
+    return {
+        "format_version": CURRENT_FORMAT_VERSION,
+        "name": SAMPLE_TITLE,
+        "created": "2026-09-01T09:00:00",
+        "modified": SAMPLE_MODIFIED,
+        "items": items,
+        "votes": sample_votes(items) if items else [],
+        "settings": {},
+        "slots": slots,
+        "slot_labels": {
+            slot: label for slot, label in SAMPLE_SLOT_LABELS.items() if slot in slots
+        },
+    }
+
+
 def write(directory: Path, stem: str, data) -> Path:
     """
     Write one project file.
@@ -264,6 +469,10 @@ def seed(directory: Path, filler: int = len(FILLER_SUBJECTS)) -> int:
                 f"2026-0{1 + n % 6}-{10 + n % 18:02d}T{8 + n % 9:02d}:{n % 60:02d}:00",
             ),
         )
+        written += 1
+
+    for stem, variant in SAMPLE_PROJECTS:
+        write(directory, stem, sample_project(variant))
         written += 1
 
     name, stem, items, votes, modified = OLD_FORMAT
