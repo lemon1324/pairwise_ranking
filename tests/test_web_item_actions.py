@@ -432,6 +432,28 @@ class TestFormAddresses(ActionsTestCase):
         self.assertEqual(query["slot"], ["1"])
         self.assertEqual(query["cat"], ["Linear"])
 
+    def test_a_mistyped_submitted_opens_a_fresh_form(self):
+        """
+        Test that `submitted` other than 1 is no draft, not FastAPI's 422.
+
+        On the page, which hands no draft on to the form, and on the fragment,
+        which draws the item's own fields with no error.
+        """
+        for value in ("yes", "on", "2", "1.0"):
+            with self.subTest(value=value):
+                page = self.client.get(
+                    f"{ITEMS_URL}?form=edit&item=oil&submitted={value}&name="
+                )
+                self.assertEqual(page.status_code, 200)
+                self.assertIn("text/html", page.headers["content-type"])
+                self.assertEqual(opening_of(page.text), f"{ITEMS_URL}/oil/edit")
+
+                form = self.client.get(f"{ITEMS_URL}/oil/edit?submitted={value}&name=")
+                self.assertEqual(form.status_code, 200)
+                self.assertIn("text/html", form.headers["content-type"])
+                self.assertNotIn('aria-invalid="true"', form.text)
+                self.assertIn('value="Gateron Oil King"', field_tag(form.text, "f-name"))
+
     def test_a_form_the_row_cannot_have_is_no_form(self):
         """Test that a row not drawn, or not offering the form, opens none."""
         for query in ("form=edit&item=blue&retired=1", "form=reactivate&item=blue",

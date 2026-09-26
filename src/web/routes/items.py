@@ -124,6 +124,11 @@ MODIFIED_FORMAT = "%Y-%m-%d %H:%M"
 # mistyped address should draw the sheet, not an error page.
 SHOW_RETIRED = "1"
 
+# The value of `submitted` that marks a draft as refused once, for the same
+# reason read as a string: typed as a number, `submitted=yes` would answer
+# FastAPI's 422 instead of the sheet. Anything else is a fresh form.
+SUBMITTED = "1"
+
 # How the Last change cell writes the time of a change it names. The date is
 # today's, and the sentence beside it is the news.
 CHANGE_TIME_FORMAT = "%H:%M"
@@ -480,7 +485,7 @@ class Draft:
             fields are the draft's rather than absent.
         """
         return {
-            "submitted": 1,
+            "submitted": SUBMITTED,
             "name": self.name,
             "cat": self.cat,
             "slot": self.slot,
@@ -504,7 +509,7 @@ def _draft(name: str, cat: str, slot: str, desc: str) -> Draft:
 
 
 async def draft_query(
-    submitted: int = Query(0, description="whether the draft has been posted"),
+    submitted: str = Query("", description="1 when the draft has been posted"),
     name: str = Query("", description="the drafted name"),
     cat: str = Query("", description="the drafted category"),
     slot: str = Query("", description="the drafted slot"),
@@ -517,7 +522,7 @@ async def draft_query(
         Optional[Draft]: The draft, or None when nothing has been posted - an
         empty field is only an error once someone has pressed Save on it.
     """
-    return _draft(name, cat, slot, desc) if submitted else None
+    return _draft(name, cat, slot, desc) if submitted == SUBMITTED else None
 
 
 async def draft_form(
