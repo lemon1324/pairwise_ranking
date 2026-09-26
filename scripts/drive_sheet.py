@@ -151,6 +151,15 @@ What is checked, and why each one is here:
     sheet that draws, reloads the page once and the second time only says so
     in the status region.
 
+``rankings-keys``
+    The Rankings sheet on ``switches-sample``: an arrow selects without
+    opening the detail, Enter opens it and closes it again, arrows carry an
+    open detail to the next row, a click opens a row's detail and a second
+    click closes it with the selection, Esc deselects; C goes to the category,
+    choosing one swaps the rows and carries the export cell, H shows retired
+    items keeping the category, and X submits the export form with the whole
+    view, whose answer is a CSV with as many rows as the sheet draws.
+
 Each check leaves the page as it found it by navigating afresh, so they are
 independent and ``--check`` can run any one of them alone.
 """
@@ -1844,6 +1853,163 @@ def check_items_error(devtools: DevTools, base: str) -> str:
     return "a row clicked in a deleted project showed the not-found page; a repeated fragment 404 reloaded once and then said so"
 
 
+SAMPLE_RANKINGS_PATH = "/projects/switches-sample.pairrank/rankings"
+
+# The selected row and what the callout host holds on the Rankings sheet.
+RANKINGS = """
+(() => {
+  const callout = document.querySelector("#row-callout .bom-callout");
+  const host = document.getElementById("row-callout");
+  return {
+    selectedId: window.sheet.selectedId,
+    ids: Array.from(document.querySelectorAll(".bom-field tr[data-id]"), (tr) => tr.dataset.id),
+    detail: !!(host && !host.hidden && callout && callout.querySelector(".strip-detail")),
+    label: callout ? callout.getAttribute("aria-label") : "",
+    focused: (document.activeElement || {}).id || "",
+  };
+})()
+"""
+
+
+def check_rankings_keys(devtools: DevTools, base: str) -> str:
+    """
+    Check the Rankings sheet's keys and its detail callout.
+
+    The detail opens on a click and toggles with Enter, arrows carry it while
+    it is open, and Esc or a second click closes it with the selection - the
+    mockup's rules, kept by the page's boot script on top of the engine. Then
+    C goes to the category, a category swaps the rows and carries the export
+    cell, H shows retired items keeping the category, and X presses the
+    export form with the view.
+
+    Args:
+        devtools: The CDP session.
+        base: The server's base URL.
+
+    Returns:
+        str: What was measured, for the log.
+    """
+    open_page(devtools, f"{base}{SAMPLE_RANKINGS_PATH}", *NARROW)
+    start = devtools.evaluate(RANKINGS)
+    expect(len(start["ids"]) > 2, f"the sheet drew {len(start['ids'])} rows")
+    first, second, third = start["ids"][:3]
+
+    press(devtools, "ArrowDown")
+    moved = devtools.evaluate(RANKINGS)
+    expect(moved["selectedId"] == first, f"ArrowDown selected {moved['selectedId']!r}, not {first!r}")
+    expect(not moved["detail"], "an arrow opened the detail, which only a click or Enter opens")
+
+    press(devtools, "Enter")
+    opened = devtools.evaluate(RANKINGS)
+    expect(opened["detail"], "Enter did not open the selected row's detail")
+    expect(opened["label"].startswith("#1 "), f"the first row's detail is labelled {opened['label']!r}")
+
+    press(devtools, "ArrowDown")
+    carried = devtools.evaluate(RANKINGS)
+    expect(carried["selectedId"] == second, "ArrowDown did not move the selection")
+    expect(
+        carried["detail"] and carried["label"].startswith("#2 "),
+        f"the open detail did not follow the selection: {carried['label']!r}",
+    )
+
+    press(devtools, "Enter")
+    closed = devtools.evaluate(RANKINGS)
+    expect(not closed["detail"], "Enter did not close the detail")
+    expect(closed["selectedId"] == second, "closing the detail dropped the selection")
+
+    press(devtools, "Escape")
+    expect(devtools.evaluate(RANKINGS)["selectedId"] is None, "Esc did not deselect")
+
+    click = f'document.querySelector(\'.bom-field tr[data-id="{third}"]\').click(), true'
+    devtools.evaluate(click)
+    time.sleep(CALLOUT_WAIT_S)
+    clicked = devtools.evaluate(RANKINGS)
+    expect(clicked["selectedId"] == third and clicked["detail"], "a click did not open the row's detail")
+    devtools.evaluate(click)
+    time.sleep(CALLOUT_WAIT_S)
+    again = devtools.evaluate(RANKINGS)
+    expect(
+        again["selectedId"] is None and not again["detail"],
+        "a second click on the selected row did not close it",
+    )
+
+    press(devtools, "c")
+    expect(devtools.evaluate(RANKINGS)["focused"] == "category", "C did not go to the category")
+    devtools.evaluate(
+        """
+        (() => {
+          const select = document.getElementById("category");
+          select.value = "Linear";
+          select.dispatchEvent(new Event("change", { bubbles: true }));
+          return true;
+        })()
+        """
+    )
+    time.sleep(FILTER_WAIT_S)
+    narrowed = devtools.evaluate(
+        """
+        (() => ({
+          categories: Array.from(document.querySelectorAll(".bom-field .bom-cat"), (c) => c.textContent),
+          search: location.search,
+          exportCategory: (document.querySelector('#export-cell input[name="category"]') || {}).value || "",
+        }))()
+        """
+    )
+    expect(
+        narrowed["categories"] and set(narrowed["categories"]) == {"Linear"},
+        f"the category left {sorted(set(narrowed['categories']))}",
+    )
+    expect("category=Linear" in narrowed["search"], "the category did not replace the address")
+    expect(narrowed["exportCategory"] == "Linear", "the export cell was not carried with the category")
+
+    devtools.evaluate("document.activeElement.blur(), true")
+    press(devtools, "h")
+    wait_for_page(devtools, 'location.search.includes("retired=1")', "the sheet with retired items")
+    shown = devtools.evaluate(
+        '({ retired: document.querySelectorAll(".bom-field tr.is-retired").length,'
+        ' search: location.search })'
+    )
+    expect(shown["retired"] > 0, "H showed no retired rows")
+    expect("category=Linear" in shown["search"], "H dropped the category")
+
+    # X presses the export form; the submission is caught before it downloads,
+    # and the address it would have gone to is fetched instead.
+    exported = devtools.evaluate(
+        """
+        new Promise((resolve) => {
+          document.addEventListener("submit", (event) => {
+            event.preventDefault();
+            const form = event.target;
+            const url = form.action + "?" + new URLSearchParams(new FormData(form));
+            fetch(url).then((response) => response.text().then((text) => resolve({
+              id: form.id,
+              url,
+              type: response.headers.get("content-type"),
+              header: text.split("\\r\\n")[0],
+              rows: text.trim().split("\\r\\n").length - 1,
+            })));
+          }, { once: true, capture: true });
+          document.body.dispatchEvent(new KeyboardEvent("keydown", {
+            key: "x", bubbles: true, cancelable: true
+          }));
+        })
+        """
+    )
+    expect(exported["id"] == "export-cell", f"X submitted {exported['id']!r}")
+    expect(
+        "category=Linear" in exported["url"] and "retired=1" in exported["url"],
+        f"X exported {exported['url']!r}, not the view",
+    )
+    expect(exported["type"].startswith("text/csv"), f"the export answered {exported['type']!r}")
+    expect(exported["header"].startswith("Rank,Name,Category"), f"the export began {exported['header']!r}")
+    rows_drawn = devtools.evaluate('document.querySelectorAll(".bom-field tr[data-id]").length')
+    expect(exported["rows"] == rows_drawn, f"the export has {exported['rows']} rows, the sheet {rows_drawn}")
+    return (
+        "arrows select, Enter toggles the detail and arrows carry it, click opens and closes it; "
+        f"C, a category swap, H and X kept the view ({exported['rows']} rows exported)"
+    )
+
+
 CHECKS = {
     "fold": check_fold,
     "swap-empty": check_swap_empty,
@@ -1867,6 +2033,7 @@ CHECKS = {
     "compare-double": check_compare_double,
     "compare-error": check_compare_error,
     "items-error": check_items_error,
+    "rankings-keys": check_rankings_keys,
 }
 
 
