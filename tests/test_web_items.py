@@ -707,6 +707,57 @@ class TestProjectsThatCannotBeDrawn(ItemsTestCase):
         self.assertEqual(response.url.path, f"/projects/{PROJECT}/compare")
 
 
+class TestEveryItemsPageReadsTheFile(ItemsTestCase):
+    """Test cases for pages and fragments drawn after the file changed elsewhere."""
+
+    def setUp(self):
+        """Draw the sheet once, so the registry holds the project."""
+        super().setUp()
+        self.sheet()
+
+    def add_elsewhere(self) -> None:
+        """Save the project from "another program" with one more item."""
+        self.write(PROJECT, project_data(items=ITEMS + [item("tealios", "Tealios V2")]))
+
+    def cached(self) -> bool:
+        """Tell whether the registry still holds the project."""
+        registry = self.app.state.registry
+        return registry.resolve(PROJECT) in registry._entries
+
+    def test_the_sheet_draws_a_row_added_elsewhere(self):
+        """Test the page GET."""
+        self.add_elsewhere()
+
+        self.assertIn("tealios", row_ids(self.sheet()))
+
+    def test_the_callout_of_an_item_added_elsewhere_answers(self):
+        """Test a fragment GET, which reads the file as the page does."""
+        self.add_elsewhere()
+
+        response = self.client.get(
+            f"{ITEMS_URL}/tealios/callout", headers={"HX-Request": "true"}
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_a_callout_after_a_delete_is_not_found_and_forgets_the_project(self):
+        """Test that the stale project is neither drawn nor kept."""
+        (self.data_dir / PROJECT).unlink()
+
+        response = self.client.get(f"{ITEMS_URL}/oil/callout", headers={"HX-Request": "true"})
+
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(self.cached())
+
+    def test_the_register_s_open_after_a_delete_is_not_found(self):
+        """Test that Open does not redirect into a project whose file is gone."""
+        (self.data_dir / PROJECT).unlink()
+
+        response = self.client.get(f"/projects/{PROJECT}/open", follow_redirects=False)
+
+        self.assertEqual(response.status_code, 404)
+
+
 class TestItemsUnderARootPath(ItemsTestCase):
     """Test cases for the sheet behind a reverse proxy on a subpath."""
 
