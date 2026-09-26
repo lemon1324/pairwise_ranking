@@ -1,0 +1,155 @@
+{#
+  The Settings sheet: the parameter table, the slot panel and the title block.
+
+  Ported from docs/mockups/settings.html; see src/web/routes/settings.py for
+  how its states are addressed.
+
+  **The form is an empty element before the sheet's parts**, and every field
+  and both buttons join it with `form="settings"`, as the Items sheet's view
+  form does: the mockup's <form> is the .spec-sheet grid itself, which
+  base.html's .frame-inner already is, and a <form> between them would be a
+  grid item of its own and take the sheet apart.
+
+  **Every input carries what settings.js needs to redraw the sheet as it is
+  typed**: its saved value (the change marks), its default (Reset), its range
+  and the two sentences its errors are. The server draws the same marks and
+  sentences for the address it was asked, so a refused save lands drawn.
+
+  **Save posts; Reset is a GET.** With JavaScript Reset fills the defaults in
+  place and Ctrl+S presses Save. Without it, Reset asks for `?reset=1`, which
+  draws the defaults unsaved, and Save is never disabled, because nothing would
+  enable it again.
+
+  **The slot panel is read only** (8b): its textarea has no name, so a save
+  leaves the slots alone. The slot table is 8c's.
+#}
+{% extends "base.html" %}
+{% from "macros/title_block.html" import title_block, keys_block, tb_title, tb_file, tb_sheet %}
+{% from "macros/tabs.html" import tabs %}
+{% from "macros/sheet.html" import key, icon %}
+
+{% block title %}Settings &middot; {{ project_name }}{% endblock %}
+
+{% block styles %}
+  <link rel="stylesheet" href="{{ url_for('static', path='css/bom.css').path }}">
+  <link rel="stylesheet" href="{{ url_for('static', path='css/settings.css').path }}">
+{% endblock %}
+
+{% block tabs %}{{ tabs(request, project_id, current="settings") }}{% endblock %}
+
+{% block frame_class %} spec-sheet{% endblock %}
+
+{% macro control(row) -%}
+{% set field = row.field %}
+{% if field.kind == kind_switch %}
+<label class="switch"><input type="checkbox" id="f-{{ field.key }}" name="{{ field.key }}" form="settings"
+       data-field="{{ field.key }}" data-name="{{ field.name }}"
+       data-saved="{{ row.saved }}" data-default="{{ row.default_raw }}"{% if row.checked %} checked{% endif %}><span class="switch-state" id="s-{{ field.key }}">{{ "On" if row.checked else "Off" }}</span><span class="visually-hidden">{{ field.name }}</span></label>
+{% else %}
+<label class="visually-hidden" for="f-{{ field.key }}">{{ field.name }}</label><input class="input num" id="f-{{ field.key }}" name="{{ field.key }}" form="settings"
+       inputmode="decimal" autocomplete="off" aria-describedby="h-{{ field.key }} e-{{ field.key }}"
+       value="{{ row.raw }}"
+       data-field="{{ field.key }}" data-name="{{ field.name }}"
+       data-saved="{{ row.saved }}" data-default="{{ row.default_raw }}"
+       data-min="{{ field.limit.minimum }}" data-max="{{ field.limit.maximum if field.limit.maximum is not none else '' }}"
+       data-whole="{{ '1' if field.limit.whole else '' }}"
+       data-error-empty="{{ empty_error(field) }}" data-error-range="{{ range_error(field) }}"
+       {%- if row.error %} aria-invalid="true"{% endif %}{% if field.key == first_error %} autofocus{% endif %}>
+{% endif %}
+{%- endmacro %}
+
+{% block sheet_body %}
+  <form id="settings" method="post" action="{{ settings_url }}" novalidate hidden
+        data-number-pattern="{{ number_pattern }}" data-error-number="{{ error_number }}"
+        data-error-whole="{{ error_whole }}"></form>
+
+  <section class="spec-params" aria-label="Algorithm settings">
+    <table class="spec">
+      <caption class="visually-hidden">Algorithm settings</caption>
+      <colgroup>
+        <col>
+        <col class="c-value">
+        <col class="c-default">
+        <col class="c-range">
+      </colgroup>
+      <thead>
+        <tr>
+          <th scope="col">Parameter</th>
+          <th scope="col">Value</th>
+          <th scope="col" class="c-default">Default</th>
+          <th scope="col" class="c-range">Range</th>
+        </tr>
+      </thead>
+      <tbody id="params">
+        {% for group in groups %}
+        <tr class="spec-group"><th colspan="4" scope="rowgroup">{{ group.title }}</th></tr>
+        {% for row in group.rows %}
+        <tr id="row-{{ row.field.key }}" class="{{ 'is-changed' if row.changed }}{{ ' is-error' if row.error }}">
+          <td>
+            <span class="spec-name">{{ row.field.name }}</span>
+            <span class="spec-help" id="h-{{ row.field.key }}">{{ row.field.help }}</span>
+            <span class="spec-phone-meta">Default {{ row.default }} &middot; {{ range_text(row.field) }}</span>
+            <p class="spec-error" id="e-{{ row.field.key }}"{% if not row.error %} hidden{% endif %}>
+              {%- if row.error %}{{ icon("warn") }}<span><strong>{{ row.error }}</strong></span>{% endif -%}
+            </p>
+          </td>
+          <td><div class="spec-value"><svg class="rev-mark" viewBox="0 0 14 14" role="img" aria-label="changed"><use href="#i-rev"/></svg>{{ control(row) }}</div></td>
+          <td class="spec-default c-default">{{ row.default }}</td>
+          <td class="spec-range c-range">{{ range_text(row.field) }}</td>
+        </tr>
+        {% endfor %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  {# Read only until the slot table (8c): no name on the textarea, so a save
+     leaves the slots alone. #}
+  <section class="spec-slots" id="slots-panel" aria-labelledby="slots-title">
+    <div class="spec-slots-head">
+      <h2 id="slots-title">Slots</h2>
+      <span class="field-hint" id="slots-count">{{ slots.total }} slots &middot; {{ slots.used }} in use</span>
+    </div>
+    <div class="spec-slots-body">
+      <label class="visually-hidden" for="slots">Slot list, comma separated</label>
+      <textarea class="input" id="slots" rows="4" spellcheck="false" readonly>{{ slots.text }}</textarea>
+      <p class="field-hint">Comma separated. Shown read only on this sheet for now.</p>
+    </div>
+  </section>
+
+  {% call title_block(3) %}
+    {{ keys_block(keys) }}
+    {{ tb_title(project_name) }}
+    {{ tb_file(file_name) }}
+
+    <div class="tb-cell tb-status span-6 phone-wide{% if status.error %} is-error{% endif %}" id="status-cell">
+      <span class="label">Status</span>
+      <p class="tb-text" id="status" aria-live="polite" data-note="{{ status.note }}" data-last-saved="{{ last_saved }}">
+        {%- if status.note %}{{ status.note }} {% endif -%}
+        {%- if status.lead %}<strong>{{ status.lead }}</strong> {% endif -%}
+        {{ status.text -}}
+      </p>
+    </div>
+
+    <div class="tb-cell tb-press span-2">
+      <button type="submit" id="save" form="settings" aria-keyshortcuts="Control+S">
+        <span class="label">Save</span>
+        <span class="tb-act">{{ icon("save") }}Save {{ key("Ctrl S") }}</span>
+      </button>
+    </div>
+    <div class="tb-cell tb-press span-2">
+      <button type="submit" id="reset" form="settings" name="reset" value="1"
+              formmethod="get" formaction="{{ settings_url }}" formnovalidate>
+        <span class="label">Defaults</span>
+        <span class="tb-act">{{ icon("reset") }}Reset</span>
+      </button>
+    </div>
+    {{ tb_sheet(1, 1) }}
+  {% endcall %}
+{% endblock %}
+
+{% block bottom_tabs %}{{ tabs(request, project_id, current="settings", bottom=true) }}{% endblock %}
+
+{% block scripts %}
+  <script src="{{ url_for('static', path='js/settings.js').path }}" defer></script>
+{% endblock %}
