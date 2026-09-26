@@ -1,0 +1,52 @@
+{#
+  One project's callout: what can be done with the selected file.
+
+  A fragment for `#row-callout`, so it is the callout element and nothing
+  around it - no wrapper, no host.
+
+  Three shapes, one per condition the register tags:
+
+    OK           the three actions.
+    Old format   the same three, over a line saying that opening the file
+                 upgrades it and keeps the original beside it. Nothing is
+                 taken away: an old file is a perfectly good project.
+    Newer format
+    Unreadable   the warning box in place of the actions, with the cause in
+                 words, and Download left because taking a copy away is the
+                 one thing that still makes sense to do with the file.
+
+  Open and Download are links rather than buttons: both leave the page, one for
+  another sheet and one for a file. sheet.js presses whatever carries
+  `data-sheet-key`, link or button alike, so ↵ still opens.
+#}
+{% from "macros/popover.html" import popover, popover_actions, popover_warning %}
+
+{% call popover(info.display_name) %}
+  {% if newer_format %}
+    {% call popover_warning("Made by a newer version of Pairwise Ranking.") %}
+      <p>{{ info.reason }} Update the application, or open the project in the one that wrote it.</p>
+      <div class="strip-buttons">
+        <a class="cell-button" href="{{ download_url }}" download>Download</a>
+      </div>
+    {% endcall %}
+  {% elif unreadable %}
+    {% call popover_warning("Can't read " ~ info.file_name ~ ".") %}
+      <p>{{ info.reason }} The file is left exactly as it is.</p>
+      <div class="strip-buttons">
+        <a class="cell-button" href="{{ download_url }}" download>Download</a>
+      </div>
+    {% endcall %}
+  {% else %}
+    {% if old_format %}
+      {# `upgrade_note`, not `info.reason`: the shared sentence says "keeps a
+         backup of the original beside it", and here the backup's name is
+         derivable, so the callout says what it will be called. #}
+      <p class="strip-body field-hint" style="margin:0;padding-bottom:0">{{ upgrade_note }}</p>
+    {% endif %}
+    {{ popover_actions([
+        {"action": "open", "label": "Open", "key": "↵", "shortcut": "Enter", "href": open_url},
+        {"action": "duplicate", "label": "Duplicate", "key": "D", "url": duplicate_url},
+        {"action": "download", "label": "Download", "href": download_url, "download": true},
+    ]) }}
+  {% endif %}
+{% endcall %}

@@ -1,0 +1,26 @@
+{#
+  Delete one item: the confirmation, in place of the actions.
+
+  A fragment for `#row-callout`. Ported from `confirmHtml` in
+  docs/mockups/items.js: the warning box, the question with the votes that go
+  with the item, what cannot be undone and the gentler way, and two buttons.
+
+  Delete takes the focus, as in the mockup, so Enter on it and Del anywhere on
+  the sheet both confirm - and Backspace, which the mockup also took. Enter is
+  deliberately *not* declared on it: once the focus has left the button, Enter
+  is not a key that should delete anything. Cancel goes back to the row's
+  actions with the row selected.
+#}
+{% from "macros/popover.html" import popover, popover_confirm %}
+{% from "macros/sheet.html" import key %}
+{% from "items/macros.html" import view_fields as hidden_view %}
+
+{% call popover("Delete " ~ label) %}
+  <form id="delete-form" method="post" action="{{ action }}" hidden>{{ hidden_view(view_fields) }}</form>
+  {% call popover_confirm(question, consequence) %}
+    <button class="cell-button is-danger" type="submit" form="delete-form" autofocus
+            data-sheet-key="Delete Backspace" aria-keyshortcuts="Delete">Delete {{ key("Del") }}</button>
+    <a class="cell-button" href="{{ cancel_url }}" data-sheet-key="Escape"
+       aria-keyshortcuts="Escape">Cancel {{ key("Esc") }}</a>
+  {% endcall %}
+{% endcall %}

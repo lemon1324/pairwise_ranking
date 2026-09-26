@@ -4,9 +4,12 @@ import unittest
 
 from src.app.slots import (
     SlotLabelError,
+    check_slot_labels,
     clean_slot_labels,
+    entered_slot_labels,
     format_slot_list,
     label_collisions,
+    label_owner,
     parse_slot_list,
     short_label,
     validate_slot_labels,
@@ -181,6 +184,148 @@ class TestValidateSlotLabels(unittest.TestCase):
             ["A", "B", "C"], {"C": "xyz", "A": "uvw"}
         )
         self.assertEqual(list(verdict.errors), ["A", "C"])
+
+
+class TestEnteredSlotLabels(unittest.TestCase):
+    """Test cases for keeping only the board labels worth storing."""
+
+    def test_a_label_equal_to_the_derived_one_is_not_kept(self):
+        """Test that typing a slot's own first two characters stores nothing."""
+        labels = entered_slot_labels(["Apex", "7"], {"Apex": "Ap", "7": "7"})
+        self.assertEqual(labels, {})
+
+    def test_empty_and_unknown_labels_are_dropped(self):
+        """Test that an empty tile and a slot no longer listed store nothing."""
+        labels = entered_slot_labels(
+            ["Apostrophe", "Enter"], {"Apostrophe": " ' ", "Enter": "", "Gone": "G"}
+        )
+        self.assertEqual(labels, {"Apostrophe": "'"})
+
+    def test_a_long_label_is_kept_to_be_refused(self):
+        """Test that nothing is truncated here."""
+        self.assertEqual(entered_slot_labels(["A"], {"A": "abc"}), {"A": "abc"})
+
+
+class TestCheckSlotLabels(unittest.TestCase):
+    """Test cases for the board's check: unique among every drawn label."""
+
+    def test_a_label_matching_another_slots_derived_label_is_refused(self):
+        """Test that derived labels count, unlike validate_slot_labels."""
+        verdict = check_slot_labels(["Enter", "Apostrophe"], {"Apostrophe": "En"})
+
+        self.assertEqual(verdict.errors, {"Apostrophe": SlotLabelError.LABEL_IN_USE})
+        self.assertEqual(label_owner(["Enter", "Apostrophe"], verdict.labels, "Apostrophe"), "Enter")
+
+    def test_typing_the_shared_derived_label_changes_nothing(self):
+        """Test that "Ap" on Apostrophe is its own derived label: not stored, not refused."""
+        verdict = check_slot_labels(["Apex", "Apostrophe"], {"Apostrophe": "Ap"})
+
+        self.assertTrue(verdict.ok)
+        self.assertEqual(verdict.labels, {})
+
+    def test_a_label_matching_a_short_slot_name_is_refused(self):
+        """Test that a slot named "1" is drawn "1", so "1" is taken."""
+        verdict = check_slot_labels(["1", "Apostrophe"], {"Apostrophe": "1"})
+        self.assertEqual(verdict.errors, {"Apostrophe": SlotLabelError.LABEL_IN_USE})
+
+    def test_two_entered_labels_refuse_the_later(self):
+        """Test that the first slot keeps a label two slots were given."""
+        slots = ["Apex", "Apostrophe", "Enter"]
+        verdict = check_slot_labels(slots, {"Enter": "x", "Apex": "x"})
+
+        self.assertEqual(verdict.errors, {"Enter": SlotLabelError.LABEL_IN_USE})
+        self.assertEqual(label_owner(slots, verdict.labels, "Enter"), "Apex")
+
+    def test_derived_labels_colliding_are_not_refused(self):
+        """Test that a collision nobody chose is a warning, not an error."""
+        verdict = check_slot_labels(["Apex", "Apostrophe"], {})
+
+        self.assertTrue(verdict.ok)
+        self.assertEqual(label_collisions(["Apex", "Apostrophe"], verdict.labels), {"Ap": ["Apex", "Apostrophe"]})
+
+    def test_a_label_resolving_a_collision_is_accepted(self):
+        """Test the fix the board's warning asks for."""
+        verdict = check_slot_labels(["Apex", "Apostrophe"], {"Apostrophe": "'"})
+
+        self.assertTrue(verdict.ok)
+        self.assertEqual(verdict.labels, {"Apostrophe": "'"})
+
+    def test_a_long_label_is_refused(self):
+        """Test the length limit."""
+        verdict = check_slot_labels(["Apex"], {"Apex": "abc"})
+        self.assertEqual(verdict.errors, {"Apex": SlotLabelError.LABEL_TOO_LONG})
+
+    def test_moving_a_label_between_slots_is_accepted(self):
+        """Test that a label taken from one slot can go to another in one save."""
+        verdict = check_slot_labels(["Apex", "Apostrophe"], {"Apex": "", "Apostrophe": "x"})
+        self.assertTrue(verdict.ok)
+
+
+class TestEditedLabelIsRefused(unittest.TestCase):
+    """Test cases for owner ruling R8-2: of two labels alike, the one that changed gives way."""
+
+    SLOTS = ["Apex", "Apostrophe", "Enter"]
+
+    def check(self, labels: dict, saved: dict):
+        """
+        Check labels against saved ones, and name each refused slot's owner.
+
+        Args:
+            labels: Slot name to label, as entered.
+            saved: The saved labels.
+
+        Returns:
+            tuple: The errors, and slot name to the slot it collides with.
+        """
+        verdict = check_slot_labels(self.SLOTS, labels, saved)
+        owners = {
+            slot: label_owner(self.SLOTS, verdict.labels, slot, saved)
+            for slot in verdict.errors
+        }
+        return verdict.errors, owners
+
+    def test_an_earlier_slot_typed_like_a_saved_label_is_refused(self):
+        """Test that the edited label is refused although it comes first."""
+        errors, owners = self.check({"Apex": "x", "Enter": "x"}, {"Enter": "x"})
+        self.assertEqual(errors, {"Apex": SlotLabelError.LABEL_IN_USE})
+        self.assertEqual(owners, {"Apex": "Enter"})
+
+    def test_a_later_slot_typed_like_a_saved_label_is_refused(self):
+        """Test the case where the position rule agrees."""
+        errors, owners = self.check({"Apex": "x", "Enter": "x"}, {"Apex": "x"})
+        self.assertEqual(errors, {"Enter": SlotLabelError.LABEL_IN_USE})
+        self.assertEqual(owners, {"Enter": "Apex"})
+
+    def test_both_changed_refuses_the_later(self):
+        """Test that two new labels alike fall back on the position rule."""
+        errors, owners = self.check({"Apex": "x", "Enter": "x"}, {"Apex": "a", "Enter": "e"})
+        self.assertEqual(errors, {"Enter": SlotLabelError.LABEL_IN_USE})
+        self.assertEqual(owners, {"Enter": "Apex"})
+
+    def test_neither_changed_refuses_the_later(self):
+        """Test that two saved labels alike fall back on the position rule."""
+        errors, _ = self.check({"Apex": "x", "Enter": "x"}, {"Apex": "x", "Enter": "x"})
+        self.assertEqual(errors, {"Enter": SlotLabelError.LABEL_IN_USE})
+
+    def test_three_alike_keep_the_unchanged_one(self):
+        """Test that the saved label stays and both edits are refused, each naming it."""
+        labels = {"Apex": "x", "Apostrophe": "x", "Enter": "x"}
+        errors, owners = self.check(labels, {"Apostrophe": "x"})
+        self.assertEqual(set(errors), {"Apex", "Enter"})
+        self.assertEqual(owners, {"Apex": "Apostrophe", "Enter": "Apostrophe"})
+
+    def test_a_label_like_a_derived_one_is_refused_whatever_was_saved(self):
+        """Test that a derived label never gives way: nobody typed it."""
+        errors, owners = self.check({"Apostrophe": "En"}, {"Apostrophe": "En"})
+        self.assertEqual(errors, {"Apostrophe": SlotLabelError.LABEL_IN_USE})
+        self.assertEqual(owners, {"Apostrophe": "Enter"})
+
+    def test_whether_anything_is_refused_does_not_depend_on_saved(self):
+        """Test that saved labels choose only which slot is refused."""
+        for saved in (None, {}, {"Apex": "x"}, {"Enter": "x"}):
+            with self.subTest(saved=saved):
+                verdict = check_slot_labels(self.SLOTS, {"Apex": "x", "Enter": "x"}, saved)
+                self.assertEqual(len(verdict.errors), 1)
 
 
 class TestLabelCollisions(unittest.TestCase):

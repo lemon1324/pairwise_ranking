@@ -1,0 +1,14 @@
+{% extends "errors/_layout.html" %}
+
+{% block title %}Something went wrong{% endblock %}
+
+{% block body %}
+  <p>
+    The application ran into a problem it did not expect and stopped rather
+    than guess. Your project file has not been changed.
+  </p>
+  <p>
+    The details are in the server log, which is where they belong; there is
+    nothing on this page you could act on.
+  </p>
+{% endblock %}

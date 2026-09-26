@@ -5,6 +5,8 @@ from datetime import datetime
 from typing import Optional
 import uuid
 
+from src.models.item import normalize_id
+
 
 # Valid vote weights mapping preference strength to numerical weight
 VOTE_WEIGHTS = {
@@ -170,6 +172,10 @@ class Vote:
 
         Raises:
             KeyError: If required keys are missing from data.
+            ValueError: If 'winner_id', 'loser_id' or a present 'id' is empty,
+                null or not text or a number (see
+                :func:`~src.models.item.normalize_id`), or the two items are
+                one.
         """
         timestamp = data.get("timestamp")
         if isinstance(timestamp, str):
@@ -178,9 +184,13 @@ class Vote:
             timestamp = datetime.now()
 
         return cls(
-            winner_id=data["winner_id"],
-            loser_id=data["loser_id"],
+            winner_id=normalize_id(data["winner_id"], "A vote's 'winner_id'"),
+            loser_id=normalize_id(data["loser_id"], "A vote's 'loser_id'"),
             weight=float(data["weight"]),
             timestamp=timestamp,
-            id=data.get("id", str(uuid.uuid4())),
+            id=(
+                normalize_id(data["id"], "A vote's 'id'")
+                if "id" in data
+                else str(uuid.uuid4())
+            ),
         )

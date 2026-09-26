@@ -1,0 +1,164 @@
+{#
+  The row callout: the selected row's actions, form, confirmation or detail,
+  drawn as the one popover on the sheet.
+
+  These macros emit the callout itself, which routes return as a fragment
+  targeted at #row-callout - the empty host base.html keeps outside every
+  swapped region. Phase 5a's engine positions it beside the find-number column
+  and draws its leader; nothing here knows where on the sheet it will land.
+#}
+{% from "macros/sheet.html" import key, icon %}
+
+{#
+  popover(label, extra_class="")
+
+    label        the accessible name of the callout, e.g. the item's name.
+    extra_class  extra classes on the callout element.
+
+  Called with {% call %}; the caller emits one of the bodies below.
+
+  role="group" rather than "dialog": the callout does not trap focus, the sheet
+  behind it stays live, and Esc closes it the way clicking the selected row
+  again does. Calling it a dialog would promise modality the design refuses.
+#}
+{% macro popover(label, extra_class="") -%}
+<div class="bom-callout strip{% if extra_class %} {{ extra_class }}{% endif %}"
+     role="group" aria-label="{{ label }}">
+  {{ caller() }}
+</div>
+{%- endmacro %}
+
+{#
+  popover_actions(actions)
+
+    actions  a sequence of mappings, each with:
+               action    the name posted back, e.g. "retire".
+               label     the words on the cell.
+               key       the shortcut's legend, as drawn: "R", "Del", "↵".
+               shortcut  the same shortcut written as UI Events key values:
+                         "R", "Delete", "Enter", "PageUp PageDown". Wanted
+                         whenever the legend is a glyph or an abbreviation,
+                         which is most of them.
+               url       optional; an hx-get for the fragment this action opens.
+               href      optional; makes the cell a link to this address
+                         instead of a button. For an action that leaves the
+                         page - the register's Open and Download - because a
+                         button that navigates is one whose middle click, whose
+                         "open in new tab" and whose status bar all do nothing.
+                         An action has one or the other, never both.
+               form      optional; the id of a POST form elsewhere in the
+                         callout that this cell submits. For an action that
+                         changes the project at once, with nothing to fill
+                         in - Items' Retire. The form is the caller's to
+                         draw, *outside* this strip: the phone rule that
+                         widens an odd last cell counts the strip's children.
+
+  A strip of equal cells sharing 1px ink gaps. The shortcut is declared with
+  aria-keyshortcuts as well as drawn, so the legend is a picture of something
+  assistive technology has actually been told about - but the two are different
+  strings. ARIA reads key *values*, and "↵" or "Del" names no key at all, so
+  the legend and the declaration are separate arguments. A legend that is
+  already a key value - a bare letter or digit - stands for both; anything else
+  without a `shortcut` is drawn and left undeclared rather than declared wrong.
+  `tb_sheet` in title_block.html spells its own the same way.
+
+  The same value goes on `data-sheet-key`, which is what actually makes the key
+  work: sheet.js presses the button when that key is pressed. So the legend on
+  the cell, what assistive technology is told, and what the key does are one
+  declaration, and a screen that draws a key it has not wired is not possible
+  here. A cell with no declarable shortcut gets neither attribute.
+#}
+{% macro popover_actions(actions) -%}
+<div class="strip-actions">
+  {% for action in actions %}
+  {% set shortcut = action.shortcut or (action.key if action.key is string and action.key|length == 1 and action.key.isalnum()) %}
+  {% if action.href %}
+  <a class="strip-action" href="{{ action.href }}" data-action="{{ action.action }}"
+     {% if action.download %}download{% endif %}
+     {% if shortcut %}aria-keyshortcuts="{{ shortcut }}" data-sheet-key="{{ shortcut }}"{% endif %}>
+    {{ action.label }}{% if action.key %}{{ key(action.key) }}{% endif %}
+  </a>
+  {% else %}
+  <button class="strip-action" data-action="{{ action.action }}"
+          {% if action.form %}type="submit" form="{{ action.form }}"{% else %}type="button"{% endif %}
+          {% if shortcut %}aria-keyshortcuts="{{ shortcut }}" data-sheet-key="{{ shortcut }}"{% endif %}
+          {% if action.url %}hx-get="{{ action.url }}" hx-target="#row-callout"{% endif %}>
+    {{ action.label }}{% if action.key %}{{ key(action.key) }}{% endif %}
+  </button>
+  {% endif %}
+  {% endfor %}
+</div>
+{%- endmacro %}
+
+{#
+  popover_body(title=none, subtitle=none)
+
+    title     the title line of a form or detail.
+    subtitle  what follows it, e.g. an item's rank or category.
+
+  Called with {% call %}; the caller emits the form or the detail.
+#}
+{% macro popover_body(title=none, subtitle=none) -%}
+<div class="strip-body">
+  {% if title %}
+  <p class="strip-title">{{ title }}{% if subtitle %}<span class="label">{{ subtitle }}</span>{% endif %}</p>
+  {% endif %}
+  {{ caller() }}
+</div>
+{%- endmacro %}
+
+{#
+  popover_warning(lead, label="Warning")
+
+    lead   the bold warn-coloured sentence, e.g. "Made by a newer version."
+    label  the accessible name of the box.
+
+  Called with {% call %}; the caller emits the rest of the words and any cell
+  buttons, inside the box.
+
+  The warning box of DESIGN.md, drawn in a callout: it replaces the actions it
+  concerns rather than stacking over them, and it says the cause and the
+  recovery in words beside the icon, because warn orange carries no meaning on
+  its own. The register uses it for the two file conditions that have no
+  actions - a file from a newer version, and one that will not read.
+
+  role="group" rather than the confirmation's "alertdialog": nothing is being
+  asked here. This is a statement about the row that is already selected, and
+  announcing it as a dialog would promise a decision that is not being offered.
+#}
+{% macro popover_warning(lead, label="Warning") -%}
+<div class="strip-confirm" role="group" aria-label="{{ label }}">
+  {{ icon("warn") }}
+  <div>
+    <p><strong>{{ lead }}</strong></p>
+    {{ caller() }}
+  </div>
+</div>
+{%- endmacro %}
+
+{#
+  popover_confirm(question, consequence, alternative=none)
+
+    question     the bold warn-coloured question, e.g. "Delete Gateron Oil King?"
+    consequence  what is lost, in words.
+    alternative  the gentler thing to do instead, when there is one.
+
+  Called with {% call %}; the caller emits the destructive and cancel buttons.
+
+  The warning box replaces the actions rather than stacking over them, and it
+  states the consequence in words: warn orange never carries the meaning by
+  itself.
+#}
+{% macro popover_confirm(question, consequence, alternative=none) -%}
+<div class="strip-confirm" role="alertdialog" aria-labelledby="confirm-question">
+  {{ icon("warn") }}
+  <div>
+    <p id="confirm-question"><strong>{{ question }}</strong></p>
+    <p>{{ consequence }}</p>
+    {% if alternative %}<p>{{ alternative }}</p>{% endif %}
+    <div class="strip-buttons">
+      {{ caller() }}
+    </div>
+  </div>
+</div>
+{%- endmacro %}

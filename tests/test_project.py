@@ -198,6 +198,40 @@ class TestProject(unittest.TestCase):
         with self.assertRaises(ValueError):
             Project.from_dict([])
 
+    def test_from_dict_refuses_two_items_with_one_id(self):
+        """Test that a file whose items share an id is damaged, not loaded."""
+        data = {
+            "name": "Test Project",
+            "items": [
+                Item(id="same", name="First").to_dict(),
+                Item(id="other", name="Second").to_dict(),
+                Item(id="same", name="Third").to_dict(),
+            ],
+        }
+
+        with self.assertRaises(ValueError) as ctx:
+            Project.from_dict(data)
+
+        self.assertIn("'same'", str(ctx.exception))
+
+    def test_add_item_refuses_an_id_already_held(self):
+        """Test that the project cannot be made to hold two items with one id."""
+        project = Project(name="Test Project")
+        project.add_item(Item(id="same", name="First"))
+
+        with self.assertRaises(ValueError):
+            project.add_item(Item(id="same", name="Second"))
+
+        self.assertEqual([item.name for item in project.items], ["First"])
+
+    def test_new_items_get_distinct_ids(self):
+        """Test that items built without an id each get their own."""
+        project = Project(name="Test Project")
+        for n in range(50):
+            project.add_item(Item(name=f"Item {n}"))
+
+        self.assertEqual(len({item.id for item in project.items}), 50)
+
     def test_to_dict_includes_format_version(self):
         """Test that to_dict stamps the current format version."""
         project = Project(name="Test Project")
@@ -562,6 +596,127 @@ class TestProjectFromDictValidation(unittest.TestCase):
         self.assertEqual(project.slots, [])
         self.assertEqual(project.slot_labels, {})
         self.assertEqual(project.settings, Settings())
+
+
+class TestProjectIdsAreText(unittest.TestCase):
+    """Test cases for ids read as text: numbers converted, empty ones refused."""
+
+    def data(self, items, votes=(), slots=()) -> dict:
+        """
+        Build a project dictionary.
+
+        Args:
+            items: The item entries.
+            votes: The vote entries.
+            slots: The slot list.
+
+        Returns:
+            dict: The project data.
+        """
+        return {"name": "x", "items": list(items), "votes": list(votes), "slots": list(slots)}
+
+    def test_numeric_ids_are_read_as_text(self):
+        """Test item ids, vote ids and every reference to one."""
+        project = Project.from_dict(
+            self.data(
+                [
+                    {"id": 1, "name": "One", "status": "retired", "replaced_by": 2},
+                    {"id": 2.0, "name": "Two"},
+                    {"id": 3.5, "name": "Three and a half"},
+                ],
+                [{"id": 7, "winner_id": 2, "loser_id": 1.0, "weight": 2.0}],
+            )
+        )
+
+        self.assertEqual([item.id for item in project.items], ["1", "2", "3.5"])
+        self.assertEqual(project.items[0].replaced_by, "2")
+        vote = project.votes[0]
+        self.assertEqual((vote.id, vote.winner_id, vote.loser_id), ("7", "2", "1"))
+        self.assertIs(project.find_item("2"), project.items[1])
+
+    def test_saving_writes_the_ids_back_as_text(self):
+        """Test that the dictionary a save writes holds text ids only."""
+        project = Project.from_dict(
+            self.data(
+                [{"id": 1, "name": "One"}, {"id": 2, "name": "Two"}],
+                [{"id": 7, "winner_id": 2, "loser_id": 1, "weight": 2.0}],
+            )
+        )
+
+        data = project.to_dict()
+
+        self.assertEqual([item["id"] for item in data["items"]], ["1", "2"])
+        vote = data["votes"][0]
+        self.assertEqual((vote["id"], vote["winner_id"], vote["loser_id"]), ("7", "2", "1"))
+
+    def test_a_number_and_its_text_are_one_id(self):
+        """Test that the duplicate check runs on the converted ids."""
+        for other in ("1", 1.0):
+            with self.subTest(other=other):
+                with self.assertRaises(ValueError) as ctx:
+                    Project.from_dict(
+                        self.data([{"id": 1, "name": "One"}, {"id": other, "name": "Uno"}])
+                    )
+                self.assertIn("more than one item with the id '1'", str(ctx.exception))
+
+    def test_an_id_that_names_nothing_is_refused(self):
+        """Test empty, blank, null and non-scalar item ids, naming the key."""
+        for bad in ("", "  ", None, [1], {"a": 1}, True, float("nan")):
+            with self.subTest(bad=bad):
+                with self.assertRaises(ValueError) as ctx:
+                    Project.from_dict(self.data([{"id": bad, "name": "One"}]))
+                self.assertIn("An item's 'id'", str(ctx.exception))
+
+    def test_a_vote_naming_no_item_id_is_refused(self):
+        """Test the vote's own id and both of its item references."""
+        items = [{"id": "a", "name": "A"}, {"id": "b", "name": "B"}]
+        for key in ("id", "winner_id", "loser_id"):
+            for bad in ("", None):
+                with self.subTest(key=key, bad=bad):
+                    entry = {"id": "v", "winner_id": "a", "loser_id": "b", "weight": 1.0}
+                    entry[key] = bad
+                    with self.assertRaises(ValueError) as ctx:
+                        Project.from_dict(self.data(items, [entry]))
+                    self.assertIn(f"A vote's '{key}'", str(ctx.exception))
+
+    def test_a_vote_between_a_number_and_its_text_is_one_item(self):
+        """Test that winner 1 and loser "1" are refused as the same item."""
+        with self.assertRaises(ValueError):
+            Project.from_dict(
+                self.data(
+                    [{"id": 1, "name": "One"}],
+                    [{"winner_id": 1, "loser_id": "1", "weight": 1.0}],
+                )
+            )
+
+    def test_an_empty_replaced_by_references_nothing(self):
+        """Test that an empty reference is read as none, and a bad one refused."""
+        for empty in (None, ""):
+            with self.subTest(empty=empty):
+                project = Project.from_dict(
+                    self.data([{"id": "a", "name": "A", "replaced_by": empty}])
+                )
+                self.assertIsNone(project.items[0].replaced_by)
+        with self.assertRaises(ValueError):
+            Project.from_dict(self.data([{"id": "a", "name": "A", "replaced_by": ["b"]}]))
+
+    def test_a_missing_id_is_still_issued_one(self):
+        """Test that only a present id is checked; an absent one is made up."""
+        project = Project.from_dict(self.data([{"name": "A"}]))
+
+        self.assertTrue(project.items[0].id)
+
+    def test_a_numeric_slot_holds_the_slot_of_that_name(self):
+        """Test an identifier written as a number, and one that is no scalar."""
+        project = Project.from_dict(
+            self.data([{"id": "a", "name": "A", "identifier": 12}], slots=["12"])
+        )
+
+        self.assertEqual(project.items[0].identifier, "12")
+        self.assertEqual(active_identifiers(project.items), {"12"})
+        self.assertEqual(free_slots(project.slots, project.items), [])
+        with self.assertRaises(ValueError):
+            Project.from_dict(self.data([{"id": "a", "name": "A", "identifier": [12]}]))
 
 
 class TestProjectSlotLabels(unittest.TestCase):

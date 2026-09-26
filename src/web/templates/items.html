@@ -1,0 +1,289 @@
+{#
+  The Items sheet: an assembly parts list of one project's items.
+
+  Ported from docs/mockups/items.html; see src/web/routes/items.py for how its
+  views are addressed. The rows are drawn once, in the order the slot board is
+  laid out, and the folding engine does the rest.
+
+  **The view controls are one GET form.** The filter, the category and the
+  retired toggle sit in three different title-block cells, and a <form> around
+  them would be a grid item of its own and take the block apart. So the form is
+  an empty element before the block, and the fields join it with `form="view"`.
+  Enter in the filter submits it with JavaScript off, and every view is an
+  address either way.
+
+  **With JavaScript, the filter and category swap only the drawing area.**
+  htmx asks for the same address and picks `#field` out of the answer, which is
+  the rows swap sheet.js adopts and refolds, and it replaces the address in the
+  bar so a reload keeps the view. The retired toggle's cell is carried along
+  out of band, because it is a form of its own and its hidden fields hold the
+  filter it will keep. The toggle itself is a plain navigation: it changes
+  what the title block says as well as which rows are drawn.
+
+  **Every row fetches its own callout** (templates/items/), and `form=new`
+  draws a ghost row for Add at the top of the sheet, selected by the boot
+  script as the register's New is. The Add cell carries the view, so the rows
+  swap carries it out of band beside the retired toggle.
+#}
+{% extends "base.html" %}
+{% from "macros/title_block.html" import title_block, keys_block, tb_title, tb_file, tb_sheet, tb_cell, tb_press_cell %}
+{% from "macros/parts_list.html" import parts_list, parts_row, name_cell, empty_state %}
+{% from "macros/tabs.html" import tabs %}
+{% from "macros/sheet.html" import key, icon, tag, balloon %}
+
+{% block title %}Items &middot; {{ project_name }}{% endblock %}
+
+{% block styles %}
+  <link rel="stylesheet" href="{{ url_for('static', path='css/bom.css').path }}">
+{% endblock %}
+
+{% block tabs %}{{ tabs(request, project_id, current="items") }}{% endblock %}
+
+{% block frame_class %} bom-sheet{% endblock %}
+
+{#
+  A named slot in the Slots cell: the short label on the sheet, the full name
+  on hover and to assistive technology - as visually hidden text, not an
+  aria-label on a bare span, which many screen readers ignore.
+#}
+{% macro slot_name(entry) -%}
+{%- if entry.full -%}
+<span title="Slot {{ entry.full }}"><span aria-hidden="true">{{ entry.short }}</span><span class="visually-hidden">{{ entry.full }}</span></span>
+{%- else -%}
+{{ entry.short }}
+{%- endif -%}
+{%- endmacro %}
+
+{#
+  What the filter and the category control both ask htmx for: this sheet, with
+  every field of the view form, swapping the drawing area and the retired
+  cell. Written once so the two controls cannot drift apart.
+#}
+{% macro view_swap() -%}
+hx-get="{{ items_url }}" hx-include="[form=view]" hx-target="#field" hx-select="#field" hx-swap="outerHTML" hx-select-oob="#retired-cell,#add-cell" hx-replace-url="true"
+{%- endmacro %}
+
+{% block sheet_body %}
+  {# data-q and data-category say which view these rows were drawn for, so the
+     boot script can tell whether a filter request is still to come. #}
+  <section class="bom-field" id="field" aria-label="Items" data-q="{{ q }}" data-category="{{ category }}">
+    {% if rows or ghost_callout_url %}
+      {% call parts_list(columns, "Items") %}
+        {# Add's ghost row: the item that is not there yet, at the top of the
+           sheet as in the mockup, selected by the boot script so the engine has
+           a row to hang the form on. #}
+        {% if ghost_callout_url %}
+          {% call parts_row(ghost_id, is_new=true, callout_url=ghost_callout_url) %}
+            <td class="c-find">{{ balloon("") }}</td>
+            <td>{{ name_cell(ghost_label) }}</td>
+            <td class="c-cat"></td>
+            <td>{{ tag(ghost_tag) }}</td>
+          {% endcall %}
+        {% endif %}
+        {% for row in rows %}
+          {% call parts_row(row.id, retired=row.retired, callout_url=row.callout_url) %}
+            <td class="c-find">{{ balloon(row.short, row.slot) }}</td>
+            <td>{{ name_cell(row.name, description=row.description) }}</td>
+            <td class="c-cat"><span class="bom-cat">{{ row.category }}</span></td>
+            <td>{% if row.tag %}{{ tag(row.tag) }}{% else %}<span class="status">Active</span>{% endif %}</td>
+          {% endcall %}
+        {% endfor %}
+      {% endcall %}
+    {% else %}
+      {# No table at all, never an empty one: the engine tells a rows swap that
+         found nothing apart from one that changed something else in the field
+         by whether a table came back. #}
+      {% call empty_state(empty.lead, empty.detail) %}
+        {% if empty.add %}
+        <div class="strip-buttons" style="justify-content:center">
+          <a class="cell-button" href="{{ items_url }}?form={{ new_form }}">Add item {{ key("N") }}</a>
+        </div>
+        {% endif %}
+      {% endcall %}
+    {% endif %}
+  </section>
+
+  <form id="view" method="get" action="{{ items_url }}" hidden>
+    {# `form` is redundant on a child of the form, and is here for htmx: the
+       controls include "[form=view]", which a plain child would not match. #}
+    {% if show_retired %}<input type="hidden" name="retired" value="1" form="view">{% endif %}
+  </form>
+
+  {% call title_block(rows=4) %}
+    {{ keys_block(keys) }}
+    {{ tb_title(project_name) }}
+    {{ tb_file(file_name) }}
+
+    {% call tb_cell("Slots", span=3) %}
+      <p class="tb-text" id="tb-slots">
+        {%- if slots -%}
+          <span class="num">{{ slots.used }}/{{ slots.total }}</span> used &middot;
+          {% if slots.free -%}
+            free: <span class="num">{% for entry in slots.free %}{{ slot_name(entry) }}{% if not loop.last %}, {% endif %}{% endfor %}</span>
+            {%- if slots.more %} and {{ slots.more }} more{% endif %}
+          {%- else -%}
+            <strong>none free</strong>
+          {%- endif -%}
+        {%- else -%}
+          No slot list. Identifiers are free text.
+        {%- endif -%}
+      </p>
+    {% endcall %}
+    {% call tb_cell("Items", span=3) %}
+      <p class="tb-text" id="tb-counts"><span class="num">{{ active_count }}</span> active &middot; <span class="num">{{ retired_count }}</span> retired</p>
+    {% endcall %}
+
+    {# Narrowed from the mockup's span 4 to make room for Category beside the
+       filter: the two controls that choose which rows are drawn sit together,
+       with the retired toggle under them. The Category cell is Rankings' own
+       (docs/mockups/rankings.html), legend and all - its C is listed in the
+       keys block rather than drawn in the cell, where it would cut "All
+       categories" short at the standard block width. #}
+    {% call tb_cell("Last change", span=2, phone_wide=true) %}
+      {# The sentence the mockup writes after a change, with the time it was
+         made, when the address names the project's last change; the stored
+         modified time otherwise. #}
+      <p class="tb-text" id="tb-last" aria-live="polite">
+        {%- if last_change -%}
+          {{ last_change }} &middot; <span class="num">{{ change_time }}</span>
+        {%- else -%}
+          <span class="num">{{ modified }}</span>
+        {%- endif -%}
+        {%- if reloaded_note %} {{ reloaded_note }}{% endif -%}
+      </p>
+    {% endcall %}
+    <div class="tb-cell span-2 phone-wide">
+      <label class="label" for="filter">Filter</label>
+      <div class="tb-control">
+        <input class="input" id="filter" name="q" form="view" type="search" value="{{ q }}"
+               placeholder="Name" autocomplete="off" aria-keyshortcuts="/" data-sheet-key="/"
+               hx-trigger="input changed delay:200ms, search" {{ view_swap() }}>
+        <span class="key" aria-hidden="true">/</span>
+      </div>
+    </div>
+    <div class="tb-cell span-2 phone-wide">
+      <label class="label" for="category">Category</label>
+      <div class="tb-control">
+        <select class="input" id="category" name="category" form="view"
+                aria-keyshortcuts="C" data-sheet-key="C"
+                hx-trigger="change" {{ view_swap() }}>
+          <option value=""{% if not category %} selected{% endif %}>All categories</option>
+          {% for name in categories %}
+          <option value="{{ name }}"{% if name == category %} selected{% endif %}>{{ name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    {# Carries the view, so adding from a filtered sheet comes back to it -
+       and so the rows swap carries this cell out of band too, as it does the
+       retired toggle's. #}
+    {{ tb_press_cell("Add", "Add item", "N", "plus", items_url, params=add_params, id="add-cell") }}
+    {# A form of its own rather than a button in the view form: pressing it
+       has to send the *other* value of `retired`, and the view form already
+       carries the current one. The hidden fields keep the filter and category
+       it was drawn with - which is why the rows swap re-draws this cell. #}
+    <form class="tb-cell tb-press span-2" id="retired-cell" method="get" action="{{ items_url }}">
+      {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
+      {% if category %}<input type="hidden" name="category" value="{{ category }}">{% endif %}
+      {% if not show_retired %}<input type="hidden" name="retired" value="1">{% endif %}
+      <button type="submit" id="toggle-retired" aria-pressed="{{ 'true' if show_retired else 'false' }}"
+              aria-keyshortcuts="H" data-sheet-key="H">
+        <span class="label">Retired</span>
+        <span class="tb-act">{{ icon("eye" if show_retired else "eye-off") }}<span id="retired-text">{{ "Shown" if show_retired else "Hidden" }}</span> {{ key("H") }}</span>
+      </button>
+    </form>
+    {{ tb_sheet(1, 1, paged=true) }}
+  {% endcall %}
+{% endblock %}
+
+{% block bottom_tabs %}{{ tabs(request, project_id, current="items", bottom=true) }}{% endblock %}
+
+{% block scripts %}
+  {# After htmx, and deferred: the engine reads the rows htmx may later
+     replace, and wants the whole sheet in the page before it measures. #}
+  <script src="{{ url_for('static', path='js/sheet.js').path }}" defer></script>
+  <script>
+    // Bound on `window`, never `document`: htmx wires every hx-trigger from a
+    // listener it binds on document, and a window listener is guaranteed to run
+    // after it. See "Writing a callout" in the plan, rule 3.
+    window.addEventListener("DOMContentLoaded", function () {
+      var sheet = window.sheet;
+      var filter = document.getElementById("filter");
+      var category = document.getElementById("category");
+      if (!sheet || !filter) return;
+
+      // Whether the rows on the sheet are the ones the controls now ask for.
+      // Not while the filter's delayed request, or any view request, is still
+      // to come: the rows are then the previous view's.
+      function drawnForControls() {
+        var field = document.getElementById("field");
+        return !!field && field.dataset.q === filter.value.trim() &&
+          (!category || field.dataset.category === category.value);
+      }
+      function selectFirst() {
+        var first = document.querySelector(".bom-field tr[data-id]");
+        if (first) sheet.select(first.dataset.id);
+      }
+      // Set by Enter in the filter when its rows have not arrived yet.
+      var selectFirstOnArrival = false;
+
+      // On settle, not swap: htmx wires the new rows' hx-trigger only once the
+      // swap has settled, and a row selected before that fetches no callout.
+      document.body.addEventListener("htmx:afterSettle", function (event) {
+        // The element that asked (detail.elt is the one swapped in).
+        var config = event.detail && event.detail.requestConfig;
+        var from = config && config.elt;
+        if (from !== filter && from !== category) return;
+        if (selectFirstOnArrival && drawnForControls()) {
+          selectFirstOnArrival = false;
+          selectFirst();
+          return;
+        }
+        // A row the new view kept keeps the selection (the engine sees to
+        // that), but its callout was built for the old view: its actions, its
+        // Retire form and a form's Save and Cancel all carry the view back.
+        // Selected again, it fetches one for the new view - its actions, as
+        // the mockup closes an open form when the filter changes.
+        if (sheet.selectedId != null) sheet.select(sheet.selectedId, { focus: false });
+      });
+
+      sheet.onKey(function (event, inControl) {
+        if (event.ctrlKey || event.metaKey || event.altKey) return false;
+        // Esc clears the filter before it clears the selection, as the empty
+        // state promises - unless a callout is open, whose Cancel comes first.
+        if (event.key === "Escape" && filter.value &&
+            !document.querySelector('#row-callout [data-sheet-key~="Escape"]')) {
+          filter.value = "";
+          htmx.trigger(filter, "search");
+          return true;
+        }
+        // Enter in the filter goes to the first row it leaves, rather than
+        // submitting the view form. Typed faster than the filter's delay, the
+        // rows drawn are the previous view's: the request is sent now (any
+        // trigger cancels htmx's pending delay) and the first row selected
+        // when its rows arrive.
+        if (event.key === "Enter" && event.target === filter) {
+          filter.blur();
+          if (drawnForControls() && !filter.classList.contains("htmx-request")) {
+            selectFirst();
+          } else {
+            selectFirstOnArrival = true;
+            htmx.trigger(filter, "search");
+          }
+          return true;
+        }
+        return false;
+      });
+
+      {% if selected and opening_url %}
+      // The row this page was asked to arrive on, with the form its address
+      // opens - this once. Selected again, the row shows its actions.
+      sheet.select({{ selected|tojson }}, { callout: {{ opening_url|tojson }} });
+      {% elif selected %}
+      // The row this page was asked to arrive on.
+      sheet.select({{ selected|tojson }});
+      {% endif %}
+    });
+  </script>
+{% endblock %}

@@ -134,6 +134,40 @@ class TestProbeProjectFile(RegisterTestCase):
                 self.assertEqual(info.condition, ProjectCondition.OLD_FORMAT)
                 self.assertIn("upgrade", info.reason)
 
+    def test_an_old_file_names_the_backup_migrating_it_would_leave(self):
+        """
+        Test that the row can say what the original will be called.
+
+        `reason` can only say "a backup", because it is shared with paths that
+        have nothing to name. The name itself is derivable - migration writes
+        the original to the file's own name with the version in the suffix -
+        so a screen offering to open an old file can say where the original
+        goes, which is the difference between a reassurance and a sentence.
+        """
+        for version in [1, 2]:
+            with self.subTest(version=version):
+                path = self.temp_dir / f"old-{version}.pairrank"
+                write_project(path, version=version)
+
+                info = probe_project_file(path)
+
+                self.assertEqual(info.format_version, version)
+                self.assertEqual(
+                    info.backup_name, f"old-{version}.pairrank.v{version}.bak"
+                )
+
+    def test_only_an_old_file_names_a_backup(self):
+        """Test that a file no migration will run on names no backup."""
+        for version, condition in (
+            (CURRENT_FORMAT_VERSION, "current"),
+            (FUTURE_VERSION, "newer"),
+        ):
+            with self.subTest(condition=condition):
+                path = self.temp_dir / f"{condition}.pairrank"
+                write_project(path, version=version)
+
+                self.assertEqual(probe_project_file(path).backup_name, "")
+
     def test_newer_file_is_tagged_newer_format(self):
         """Test that a file from a newer application is tagged, not rejected."""
         path = self.temp_dir / "future.pairrank"
@@ -515,6 +549,22 @@ class TestScanDirectory(RegisterTestCase):
 
         self.assertEqual([row.file_name for row in rows], ["real.pairrank"])
 
+    def test_a_differently_cased_extension_is_not_listed(self):
+        """
+        Test that the register lists only what can actually be opened.
+
+        The glob behind this is case-insensitive on Windows and on an SMB
+        share, so it finds TASTING.PAIRRANK; ``ProjectStorage.load`` and
+        ``resolve_project_path`` both refuse that name, so listing it would
+        draw a row every action on which answers "not found".
+        """
+        write_project(self.temp_dir / "real.pairrank")
+        write_project(self.temp_dir / "shouty.PAIRRANK")
+
+        rows = scan_directory(self.temp_dir)
+
+        self.assertEqual([row.file_name for row in rows], ["real.pairrank"])
+
     def test_ordering_is_deterministic(self):
         """Test that rows come back in a stable, case-insensitive name order."""
         for name in ["zeta", "Alpha", "middle"]:
@@ -664,6 +714,40 @@ class TestUniqueFileName(RegisterTestCase):
             "Fresh.pairrank",
         )
 
+    def test_a_directory_that_cannot_be_listed_is_not_answered_as_empty(self):
+        """
+        Test that an unreadable directory is an error, not a free name.
+
+        A directory that is not there yet holds nothing, and the write that
+        follows will create it. A directory that is there and will not be read
+        is a different thing, and answering it as "nothing is in it" hands out
+        a name whose write then truncates whatever was really there.
+        ``Path.glob`` makes exactly that mistake - it returns an empty iterator
+        for a path that is not a directory - so the scan is done with
+        ``os.scandir``, which says so.
+        """
+        not_a_directory = self.temp_dir / "notes.txt"
+        not_a_directory.write_text("not a directory", encoding="utf-8")
+
+        with self.assertRaises(OSError):
+            unique_file_name(not_a_directory, "Fresh")
+
+    def test_a_differently_cased_extension_takes_the_name(self):
+        """
+        Test that .PAIRRANK and .pairrank are treated as one name.
+
+        Not a nicety: on the Windows share this application is actually run
+        from they are one file, so a name handed out beside an existing
+        ``Taken.PAIRRANK`` would be written straight over it. The check is the
+        same on every platform, because the dangerous answer is the one that
+        has to be right.
+        """
+        (self.temp_dir / "Taken.PAIRRANK").write_text("{}", encoding="utf-8")
+
+        self.assertEqual(
+            unique_file_name(self.temp_dir, "Taken"), "Taken (2).pairrank"
+        )
+
 
 class TestResolveProjectPath(RegisterTestCase):
     """Test cases for the boundary a file name from outside has to cross."""
@@ -713,6 +797,20 @@ class TestResolveProjectPath(RegisterTestCase):
                 with self.assertRaises(ValueError):
                     resolve_project_path(self.temp_dir, file_name)
 
+    def test_a_differently_cased_extension_is_not_a_project_file(self):
+        """
+        Test that listing and addressing agree about the extension's case.
+
+        ``ProjectStorage.load`` refuses a differently-cased extension, so such
+        a file cannot be opened by the desktop app either. Addressing it is
+        refused here and :func:`scan_directory` leaves it out of the register,
+        rather than the register drawing a row nothing can act on.
+        """
+        for file_name in ["Project.PAIRRANK", "Project.PairRank"]:
+            with self.subTest(file_name=file_name):
+                with self.assertRaises(ValueError):
+                    resolve_project_path(self.temp_dir, file_name)
+
 
 class TestImportFile(RegisterTestCase):
     """Test cases for taking an uploaded project into the directory."""
@@ -758,6 +856,24 @@ class TestImportFile(RegisterTestCase):
         self.assertEqual(
             (self.temp_dir / "incoming.pairrank").read_bytes(), original
         )
+
+    def test_a_free_name_is_used_exactly_as_it_was_given(self):
+        """
+        Test that a name nothing holds is not put through the sanitizer again.
+
+        The sanitizer is not idempotent over unique_file_name's own answer -
+        "incoming (2)" comes back "incoming _2_" - so a caller that has already
+        chosen a free name and shown it to someone, which is what the web
+        picker's import preview does, has to get that name and not a third one.
+        """
+        write_project(self.temp_dir / "incoming.pairrank", name="Original")
+        chosen = unique_file_name(self.temp_dir, "incoming")
+        raw = json.dumps(project_data(name="Incoming")).encode("utf-8")
+
+        info = import_file(self.temp_dir, chosen, raw)
+
+        self.assertEqual(chosen, "incoming (2).pairrank")
+        self.assertEqual(info.file_name, chosen)
 
     def test_directory_is_created(self):
         """Test that importing into a directory that is not there yet works."""

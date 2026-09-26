@@ -517,6 +517,111 @@ class TestProjectSessionVoting(unittest.TestCase):
         self.assertEqual(self.session.project.votes, [])
 
 
+class TestProjectSessionSkipExclude(unittest.TestCase):
+    """Test cases for a skip that passes over the pair on screen."""
+
+    @staticmethod
+    def ids(offer) -> frozenset:
+        """Name an offer's pair regardless of its order."""
+        return frozenset(item.id for item in offer.pair)
+
+    def test_the_skipped_pair_is_not_offered_again(self):
+        """Test that the pair a plain skip would repeat is passed over, either order."""
+        session = build_session(seed=0)
+        first = session.next_pair()
+        a, b = (item.id for item in first.pair)
+
+        self.assertEqual(self.ids(session.skip()), self.ids(first))
+        for exclude in ((a, b), (b, a)):
+            with self.subTest(exclude=exclude):
+                offer = session.skip(exclude=exclude)
+
+                self.assertTrue(offer.has_pair)
+                self.assertNotEqual(self.ids(offer), frozenset((a, b)))
+
+    def test_the_only_pair_is_offered_again(self):
+        """Test that two items' sole pair comes back rather than an empty state."""
+        session = build_session(seed=0, items=build_items(2))
+
+        offer = session.skip(exclude=("item-0", "item-1"))
+
+        self.assertTrue(offer.has_pair)
+        self.assertEqual(self.ids(offer), frozenset(("item-0", "item-1")))
+
+    def test_nothing_is_kept_between_skips(self):
+        """Test that the exclusion lasts one call: the next plain choice is unchanged."""
+        session = build_session(seed=0)
+        first = session.next_pair()
+
+        session.skip(exclude=tuple(item.id for item in first.pair))
+
+        self.assertEqual(self.ids(session.next_pair()), self.ids(first))
+        self.assertEqual(self.ids(session.skip()), self.ids(first))
+
+    def test_ids_naming_no_pair_exclude_nothing(self):
+        """Test that an unknown or doubled id changes nothing about the choice."""
+        session = build_session(seed=0)
+        first = session.next_pair()
+
+        for exclude in (("item-0", "item-0"), ("item-0", "gone")):
+            with self.subTest(exclude=exclude):
+                self.assertEqual(self.ids(session.skip(exclude=exclude)), self.ids(first))
+
+
+class TestProjectSessionOfferPair(unittest.TestCase):
+    """Test cases for putting one named pair back on offer."""
+
+    def test_an_eligible_pair_is_offered_in_the_order_given(self):
+        """Test that the pair comes back as asked for, with the selector's stats."""
+        session = build_session(
+            seed=0, votes=[build_vote("item-0", "item-1", 2.0)]
+        )
+
+        offer = session.offer_pair("item-3", "item-1")
+
+        self.assertEqual([item.id for item in offer.pair], ["item-3", "item-1"])
+        self.assertIsNone(offer.reason)
+        self.assertEqual(offer.stats["total_possible_pairs"], 6)
+        self.assertEqual(offer.stats["compared_pairs"], 1)
+        self.assertEqual(session.comparison_stats(), offer.stats)
+
+    def test_the_stats_are_the_ones_a_selection_would_report(self):
+        """Test that naming the pair changes nothing about its statistics."""
+        session = build_session(
+            seed=0, votes=[build_vote("item-0", "item-1"), build_vote("item-2", "item-1")]
+        )
+
+        chosen = session.next_pair()
+        named = session.offer_pair(chosen.pair[0].id, chosen.pair[1].id)
+
+        self.assertEqual(named.stats, chosen.stats)
+
+    def test_a_pair_that_cannot_be_compared_is_not_offered(self):
+        """Test the same item twice, a missing item and a retired one."""
+        items = build_items(3)
+        items[2].retire()
+        session = build_session(seed=0, items=items)
+
+        for first, second in (
+            ("item-0", "item-0"),
+            ("item-0", "item-gone"),
+            ("item-2", "item-0"),
+        ):
+            with self.subTest(pair=(first, second)):
+                self.assertIsNone(session.offer_pair(first, second))
+
+    def test_blinded_mode_refuses_an_item_without_an_identifier(self):
+        """Test that the blinded filter applies to a named pair too."""
+        items = build_items(3)
+        items[0].identifier = ""
+        session = build_session(
+            seed=0, items=items, settings=Settings(blinded_comparison_mode=True)
+        )
+
+        self.assertIsNone(session.offer_pair("item-0", "item-1"))
+        self.assertTrue(session.offer_pair("item-1", "item-2").blinded)
+
+
 class TestProjectSessionUndoEligibility(unittest.TestCase):
     """Test cases for undoing a vote whose items have since changed."""
 
@@ -815,6 +920,55 @@ class TestProjectSessionSettings(unittest.TestCase):
         self.session.apply_settings(Settings(decay_timescale_days=1.0), [])
 
         self.assertIsNot(self.session.rankings(), before)
+
+    def test_apply_settings_refuses_settings_out_of_range(self):
+        """Test that an out-of-range setting changes nothing and saves nothing."""
+        with self.assertRaises(ValueError):
+            self.session.apply_settings(Settings(cross_category_rate=1.5), ["B1"])
+
+        self.assertEqual(self.session.project.settings, Settings())
+        self.assertEqual(self.session.project.slots, ["A0", "A1"])
+        self.assertEqual(self.saves, [])
+
+    def test_apply_settings_keeps_the_labels_when_given_none(self):
+        """Test the desktop's call: the stored labels stay with their slots."""
+        self.session.project.set_slot_labels({"A1": "x"})
+
+        self.session.apply_settings(Settings(), ["A0", "A1", "B1"])
+
+        self.assertEqual(self.session.project.slot_labels, {"A1": "x"})
+
+    def test_apply_settings_stores_the_board_labels(self):
+        """Test the web's call: labels kept as entered_slot_labels keeps them."""
+        self.session.apply_settings(
+            Settings(), ["Apex", "Apostrophe", "7"],
+            {"Apex": "Ap", "Apostrophe": "'", "7": "", "Gone": "g"},
+        )
+
+        self.assertEqual(self.session.project.slot_labels, {"Apostrophe": "'"})
+        self.assertEqual(len(self.saves), 1)
+
+    def test_apply_settings_drops_the_label_of_a_slot_that_goes(self):
+        """Test that a label posted for a removed slot is not stored."""
+        self.session.project.set_slot_labels({"A1": "x"})
+
+        self.session.apply_settings(Settings(), ["A0"], {"A0": "", "A1": "x"})
+
+        self.assertEqual(self.session.project.slot_labels, {})
+
+    def test_apply_settings_refuses_a_colliding_label(self):
+        """Test that a refused label changes nothing and saves nothing."""
+        for labels in ({"A1": "A0"}, {"A1": "abc"}):
+            with self.subTest(labels=labels):
+                with self.assertRaises(ValueError):
+                    self.session.apply_settings(
+                        Settings(weight_freshness=4.0), ["A0", "A1", "B1"], labels
+                    )
+
+                self.assertEqual(self.session.project.settings, Settings())
+                self.assertEqual(self.session.project.slots, ["A0", "A1"])
+                self.assertEqual(self.session.project.slot_labels, {})
+                self.assertEqual(self.saves, [])
 
     def test_reset_settings_restores_the_defaults(self):
         """Test that reset returns every algorithm setting to its default."""

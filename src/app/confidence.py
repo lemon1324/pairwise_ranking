@@ -246,16 +246,8 @@ class AdjacentNeighbourConfidence:
             Optional[float]: The tolerance in rating points, or None when the
             log-strengths carry no spread and rating points mean nothing.
         """
-        log_strengths = [
-            result.log_strength
-            for result in rankings
-            if math.isfinite(result.log_strength)
-        ]
-        if not log_strengths:
-            return None
-
-        spread = float(np.std(log_strengths))
-        if spread < MIN_LOG_STRENGTH_SPREAD:
+        scale = rating_points_per_log_unit(rankings)
+        if scale is None:
             return None
 
         standard_errors = sorted(
@@ -272,7 +264,42 @@ class AdjacentNeighbourConfidence:
         else:
             median = (standard_errors[middle - 1] + standard_errors[middle]) / 2.0
 
-        return median * ELO_SPREAD / spread
+        return median * scale
+
+
+def rating_points_per_log_unit(rankings: list[RankingResult]) -> Optional[float]:
+    """
+    Say how many rating points one unit of log-strength is worth.
+
+    The rating of an item is ``1500 + 200 * z``, where ``z`` is the z-score of
+    its log-strength across every item the model was given, retired ones
+    included, so one unit of log-strength is ``200 / std(log-strengths)``
+    points. The Compare tolerance and the +/- SE on a Rankings row are both a
+    log-strength standard error times this, which is what keeps them on one
+    scale. An item whose log-strength is not finite is left out (see
+    :meth:`AdjacentNeighbourConfidence._tolerance`).
+
+    Args:
+        rankings: Every result the model produced, retired items included.
+
+    Returns:
+        Optional[float]: The points per unit, or None when there is nothing to
+        measure or the log-strengths carry no spread, so rating points mean
+        nothing.
+    """
+    log_strengths = [
+        result.log_strength
+        for result in rankings
+        if math.isfinite(result.log_strength)
+    ]
+    if not log_strengths:
+        return None
+
+    spread = float(np.std(log_strengths))
+    if spread < MIN_LOG_STRENGTH_SPREAD:
+        return None
+
+    return ELO_SPREAD / spread
 
 
 # The reader a screen gets when it asks for no particular one.

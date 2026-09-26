@@ -1,0 +1,885 @@
+// The parts-list sheet engine: folding, selection, the row callout and the shared keys.
+//
+// Ported from docs/mockups/bom.js, with one change that runs through everything: the mockup held
+// the rows in JavaScript and drew them from sample data, and this reads them out of the page. The
+// server renders one long table, which is the whole sheet on phones and with JavaScript off. Here
+// that table is the source of truth: its <tr> elements are moved - never re-created - into as many
+// columns as fit at MIN_COL_REM each and, once a sheet is full, onto continuation sheets. Moving
+// the server's own rows is what keeps their hx- attributes, their ids and their event handlers
+// alive across a fold.
+//
+// Nothing on the sheet needs this file to be correct. Without it the page is the long table with
+// the title block after it, every row readable and every link and form still working; the engine
+// only decides where the rows are drawn and which one is selected.
+//
+// What a screen has to do, and all it has to do:
+//
+//   - Draw its rows with the parts_list / parts_row macros, inside .bom-field.
+//   - Put hx-get + hx-target="#row-callout" + hx-trigger="sheet:select" on a row that has a
+//     callout. The engine clears the host before the event, so a stale callout never shows.
+//   - Mark its own verbs with data-sheet-key on the button that performs them, e.g.
+//     data-sheet-key="R" on Retire, data-sheet-key="Escape" on a form's Cancel. The engine
+//     presses the button; the screen never writes a key handler. A key declared on a field
+//     (data-sheet-key="/" on a filter) focuses it instead of clicking it. Anything stranger than
+//     that can register one with sheet.onKey().
+//
+// Events, all dispatched on the row (so hx-trigger on a row can hear them) and bubbling:
+// sheet:select {id}, sheet:open {id} (Enter, when nothing declares Enter), and sheet:clear {id}
+// on the field.
+
+(() => {
+  "use strict";
+
+  // The phone breakpoint DESIGN.md sets: below it there is one scrolling table and no folding.
+  const PHONE = matchMedia("(max-width: 40rem)");
+  const MIN_COL_REM = 36;
+  const CLEARANCE_REM = 0.75; // space between the last column and the title block below it
+  // Less room than this above the title block and the block is covering the drawing area rather
+  // than sitting under it. See renderFolded, where it is the last column's floor.
+  const MIN_LAST_COL_REM = 8;
+  const GAP_REM = 0.5; // between the selected row and its callout
+  const EDGE_REM = 0.375; // between the find-number column and the callout's left edge
+  const MIN_CALLOUT_REM = 12;
+  const REFOLD_MS = 60;
+
+  const rem = () => parseFloat(getComputedStyle(document.documentElement).fontSize);
+
+  /**
+   * Build the engine over one drawing area.
+   *
+   * @param {Element} startField The .bom-field the server rendered its table into.
+   * @returns {object} The sheet, as documented at the bottom of this file.
+   */
+  function createSheet(startField) {
+    let field = startField;
+    // Every sheet in the set closes with a title block, and the fold is measured against this one.
+    // A detached stand-in keeps a sheet that somehow has none from taking the engine, and with it
+    // the whole list, down.
+    let titleblock =
+      document.querySelector(".bom-sheet > .titleblock") || document.createElement("div");
+    const host = document.getElementById("row-callout");
+
+    let source = null; // the server's table, held detached while the sheet is folded
+    let rows = []; // its <tr>s in document order, moved between columns as they fold
+    let label = "Parts list";
+    let selectedId = null;
+    let page = 0;
+    let pages = 1;
+    let limits = { bottom: Infinity, lastColBottom: Infinity };
+    let followSelection = true;
+    let placedNode = null; // the callout element last positioned, to keep a refold from replaying
+    let pendingFocusId = null; // the row that had focus when HTMX took the table away
+    const rowPage = new Map();
+    const keyHandlers = [];
+
+    // ---------- Reading what the server drew ----------
+
+    /**
+     * Take over the table currently in the drawing area, if it is a new one.
+     *
+     * A folded column's table is marked, so this finds only markup the server produced: the first
+     * render, and every HTMX swap that replaces the rows.
+     *
+     * A swap can also land no table at all - a filter that matches nothing renders the empty state
+     * and nothing else - and then the rows this engine was holding have gone out of the page with
+     * the markup they were folded into. They are forgotten here, because otherwise render() would
+     * take them for the current list, wipe the server's empty state and draw the previous rows back
+     * over it, selectable, as though the filter had never run. The engine's own folded columns are
+     * the test: if they are still in the drawing area, the swap was of something else inside the
+     * field and the rows it built stand.
+     *
+     * @returns {boolean} True if a new table was adopted.
+     */
+    function adopt() {
+      const table = field.querySelector("table.bom:not([data-sheet-column])");
+      if (!table) {
+        if (!field.querySelector("[data-sheet-column]")) {
+          source = null;
+          rows = [];
+        }
+        return false;
+      }
+      source = table;
+      label = table.getAttribute("aria-label") || field.getAttribute("aria-label") || label;
+      rows = Array.from(table.tBodies[0] ? table.tBodies[0].rows : []);
+      return true;
+    }
+
+    /** @returns {Element|null} The row with the current selection, wherever it has been folded. */
+    function findRow(id) {
+      if (id == null) return null;
+      return field.querySelector(`tr[data-id="${CSS.escape(String(id))}"]`);
+    }
+
+    // ---------- Folding ----------
+
+    /**
+     * Build a fresh table shell for one column: the repeated header and an empty body.
+     *
+     * @returns {HTMLTableElement} The shell, marked as the engine's own work.
+     */
+    function columnTable() {
+      const table = document.createElement("table");
+      table.className = source.className;
+      // The server's table is a grid, so that its rows' aria-selected is read at all; a column
+      // left a plain table would lose that for every row folded into it.
+      const role = source.getAttribute("role");
+      if (role) table.setAttribute("role", role);
+      table.dataset.sheetColumn = "";
+      if (source.tHead) table.append(source.tHead.cloneNode(true));
+      table.append(document.createElement("tbody"));
+      return table;
+    }
+
+    /**
+     * Say, to assistive technology, that the split tables are one list.
+     *
+     * A folded sheet is several <table>s holding one parts list between them, and left alone each
+     * would be announced as a list of its own that starts again at row 1. So every column declares
+     * the whole list's length and every row its position in the whole list - the case
+     * aria-rowcount and aria-rowindex exist for - and each column's caption names the list and
+     * says which part of it this is. The caption is visually hidden: the sheet already shows which
+     * column is which by drawing them side by side.
+     *
+     * @param {Element[]} pageEls The .bom-page elements, in order.
+     */
+    function announceAsOneList(pageEls) {
+      const index = new Map(rows.map((tr, i) => [tr, i + 2])); // + the header row, which is row 1
+      pageEls.forEach((pageEl, i) => {
+        const columns = pageEl.querySelectorAll(".bom-col");
+        columns.forEach((column, j) => {
+          const table = column.querySelector("table.bom");
+          table.setAttribute("aria-rowcount", String(rows.length + 1));
+          const caption = table.createCaption();
+          caption.className = "visually-hidden";
+          caption.textContent =
+            `${label}, sheet ${i + 1} of ${pageEls.length}, column ${j + 1} of ${columns.length}`;
+          const header = table.tHead && table.tHead.rows[0];
+          if (header) header.setAttribute("aria-rowindex", "1");
+          for (const tr of table.tBodies[0].rows) {
+            tr.setAttribute("aria-rowindex", String(index.get(tr)));
+          }
+        });
+      });
+    }
+
+    /** Draw the phone sheet: the server's own table, whole, scrolling. */
+    function renderPhone() {
+      titleblock.style.width = "";
+      const body = source.tBodies[0];
+      for (const tr of rows) body.append(tr);
+      source.setAttribute("aria-rowcount", String(rows.length + 1));
+      field.replaceChildren(source);
+      rows.forEach((tr, i) => {
+        tr.setAttribute("aria-rowindex", String(i + 2));
+        rowPage.set(tr.dataset.id, 0);
+      });
+      pages = 1;
+      page = 0;
+      limits = { bottom: Infinity, lastColBottom: Infinity };
+    }
+
+    /** Fold the rows into columns and continuation sheets. */
+    function renderFolded() {
+      const width = field.clientWidth;
+      const height = field.clientHeight;
+      // The rightmost column matches the standard title-block width (--tb-width) so the block sits
+      // exactly under it; the other columns share the rest, each at least MIN_COL_REM wide.
+      const standard =
+        parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tb-width")) * rem();
+      const minCol = MIN_COL_REM * rem();
+      const tbWidth = Math.min(standard, width);
+      const others = Math.floor((width - tbWidth) / minCol);
+      const columns = others + 1;
+      const otherWidth = others ? (width - tbWidth) / others : 0;
+      const widthFor = (i) => (i === columns - 1 ? tbWidth : otherWidth);
+
+      titleblock.style.width = `${tbWidth}px`;
+      const tbTop = titleblock.isConnected
+        ? titleblock.getBoundingClientRect().top - field.getBoundingClientRect().top
+        : height;
+      const lastCol = columns - 1;
+      // The title block can be taller than the drawing area - a short window, or text-only zoom
+      // past 200% - and it is pinned to the corner either way, so the room above it goes to zero
+      // and then negative. Unfloored, every row overflows the last column, the one-row-per-column
+      // guard below is the only thing that stops the loop, and 68 rows fold onto 68 sheets. There
+      // is no fold that helps at that height: the block covers the sheet whatever we do. So the
+      // last column stops being treated as the last one and is folded like any other, which at
+      // least puts a sheet's worth of rows on a sheet.
+      const clearance = tbTop - CLEARANCE_REM * rem();
+      const lastColBottom =
+        clearance < MIN_LAST_COL_REM * rem() ? height : clearance;
+      limits = { bottom: height, lastColBottom };
+
+      const pageEls = [];
+      let pageEl;
+      let colIndex;
+      let col;
+      let body;
+
+      const newCol = () => {
+        colIndex += 1;
+        col = document.createElement("div");
+        col.className = "bom-col";
+        col.style.width = `${widthFor(colIndex)}px`;
+        col.dataset.limit = String(colIndex === lastCol ? lastColBottom : height);
+        const table = columnTable();
+        col.append(table);
+        pageEl.append(col);
+        body = table.tBodies[0];
+      };
+      const newPage = () => {
+        pageEl = document.createElement("div");
+        pageEl.className = "bom-page";
+        field.append(pageEl);
+        pageEls.push(pageEl);
+        colIndex = -1;
+        newCol();
+      };
+
+      newPage();
+      for (const tr of rows) {
+        body.append(tr);
+        // One row past the column's limit starts the next column - unless it is the only row
+        // there, which would leave an empty column and try the same row again for ever.
+        if (col.offsetHeight > Number(col.dataset.limit) && body.children.length > 1) {
+          tr.remove();
+          if (colIndex < lastCol) newCol();
+          else newPage();
+          body.append(tr);
+        }
+        rowPage.set(tr.dataset.id, pageEls.length - 1);
+      }
+
+      pageEls.forEach((el) => {
+        const cols = el.querySelectorAll(".bom-col");
+        // A page that ran to the full column count reaches the frame's right-hand line and drops
+        // its own rule there, so the two do not double up.
+        if (cols.length === columns) cols[cols.length - 1].classList.add("is-edge");
+        cols.forEach((c, j) => c.classList.toggle("is-last", j === lastCol));
+      });
+      announceAsOneList(pageEls);
+      pages = pageEls.length;
+    }
+
+    /**
+     * Draw the sheet: phone or folded, then settle the selection, the callout and the sheet count.
+     */
+    function render() {
+      const phone = PHONE.matches;
+      // The class the stylesheet folds on: it pins the sheet to the viewport and the title block
+      // to its lower-right corner. Off it, the page is the long table the server rendered.
+      document.documentElement.classList.toggle("bom-fixed", !phone);
+      titleblock = document.querySelector(".bom-sheet > .titleblock") || titleblock;
+
+      const focusedRow = document.activeElement && document.activeElement.closest
+        ? document.activeElement.closest("tr[data-id]")
+        : null;
+      const refocusId = focusedRow ? focusedRow.dataset.id : pendingFocusId;
+      pendingFocusId = null;
+
+      rowPage.clear();
+      // A row the server has just taken away - deleted, retired out of the filter - cannot go on
+      // being the selection, and its callout has nothing left to point at.
+      if (selectedId != null && !rows.some((tr) => tr.dataset.id === String(selectedId))) {
+        selectedId = null;
+        clearCallout();
+      }
+      if (!source || !rows.length) {
+        // Nothing to fold: the server's empty state is already in the drawing area, and the title
+        // block falls back to the width the stylesheet gives it.
+        titleblock.style.width = "";
+        pages = 1;
+        page = 0;
+        finish();
+        if (refocusId) focusSelected();
+        return;
+      }
+
+      // Detaching the source first takes the rows out of the page in one move; they are held in
+      // `rows` throughout, so nothing is lost and no row is ever rebuilt from markup.
+      source.remove();
+      field.replaceChildren();
+      if (phone) renderPhone();
+      else renderFolded();
+      finish();
+      if (refocusId != null && String(refocusId) === String(selectedId)) focusSelected();
+    }
+
+    // ---------- Selection, the callout and the sheet count ----------
+
+    /** Show the current sheet, mark the selected row, place the callout and update SHEET n OF N. */
+    function finish() {
+      // The sheet follows the selection unless the reader paged away with PgUp/PgDn.
+      if (followSelection && selectedId != null && rowPage.has(String(selectedId))) {
+        page = rowPage.get(String(selectedId));
+      }
+      page = Math.max(0, Math.min(page, pages - 1));
+      field.querySelectorAll(".bom-page").forEach((el, i) => (el.hidden = i !== page));
+      field.querySelectorAll("tr[data-id]").forEach((tr) => {
+        const on = tr.dataset.id === String(selectedId);
+        tr.classList.toggle("is-selected", on);
+        tr.setAttribute("aria-selected", String(on));
+      });
+      rovingStop();
+      placeCallout();
+      announcePage();
+    }
+
+    /**
+     * Give the grid exactly one Tab stop: the selected row, or the first row of the sheet shown.
+     *
+     * The server draws every row at tabindex -1, because the arrow keys move the selection and a
+     * row per Tab press would make a sheet of sixty rows sixty stops. Left there, though, the grid
+     * has no stop at all and Tab walks straight past it. One row at 0 is the grid pattern's roving
+     * tab stop: Tab lands on the row that has the selection, or on the top of the sheet on screen
+     * when nothing is selected, and the arrows take it from there.
+     */
+    function rovingStop() {
+      const shown = field.querySelector(".bom-page:not([hidden])") || field;
+      const onSheet = Array.from(shown.querySelectorAll("tr[data-id]"));
+      const stop =
+        onSheet.find((tr) => tr.dataset.id === String(selectedId)) || onSheet[0] || null;
+      field.querySelectorAll("tr[data-id]").forEach((tr) => {
+        tr.tabIndex = tr === stop ? 0 : -1;
+      });
+    }
+
+    /**
+     * Say in words that a callout has arrived, for a reader who cannot see the leader.
+     *
+     * Written into the polite status region base.html keeps beside the host - never the host
+     * itself, which would read out a whole form. Whose callout it is comes from the callout's own
+     * accessible name, and what it offers from its action cells, or the lead of the warning box
+     * standing in for them. Left empty when the callout took the focus: the field the focus lands
+     * in is announced anyway, and saying it twice is the thing a live region must not do.
+     */
+    function announceCallout() {
+      const status = document.getElementById("callout-status");
+      if (!status || !host) return;
+      const callout = host.querySelector(".bom-callout");
+      if (!callout || host.contains(document.activeElement)) {
+        status.textContent = "";
+        return;
+      }
+      // An action's text is its label and its key legend run together ("RetireR"); the legend is
+      // declared on the button as aria-keyshortcuts already, so it is left out of the sentence.
+      const words = (el) => {
+        const copy = el.cloneNode(true);
+        copy.querySelectorAll(".key").forEach((key) => key.remove());
+        return copy.textContent.replace(/\s+/g, " ").trim();
+      };
+      const actions = Array.from(callout.querySelectorAll(".strip-action"), words).filter(Boolean);
+      const lead = callout.querySelector(".strip-confirm strong");
+      let text = `Callout for ${callout.getAttribute("aria-label") || "the selected row"}`;
+      if (actions.length) text += `: ${actions.join(", ")}`;
+      else if (lead) text += `: ${words(lead)}`;
+      status.textContent = `${text}.`;
+    }
+
+    /** Write the sheet count into the title block and enable the pager it belongs to. */
+    function announcePage() {
+      const count = document.getElementById("sheet-no");
+      if (count) count.textContent = `${page + 1} of ${pages}`;
+      const prev = document.getElementById("page-prev");
+      const next = document.getElementById("page-next");
+      // The server draws both disabled, which is the truth until the rows have been folded: it
+      // cannot know how many sheets they come to at this width.
+      if (prev) prev.disabled = page === 0;
+      if (next) next.disabled = page >= pages - 1;
+    }
+
+    /** Empty the callout host, so no callout outlives the selection it belongs to. */
+    function clearCallout() {
+      if (!host) return;
+      host.replaceChildren();
+      host.hidden = true;
+      placedNode = null;
+      // Emptied with the host, so the next callout's sentence is a change the region announces
+      // even when it is word for word the last one - re-selecting the same row, say.
+      const status = document.getElementById("callout-status");
+      if (status) status.textContent = "";
+    }
+
+    /**
+     * Put the callout beside the find-number column, just off the selected row.
+     *
+     * The host is a zero-size anchor parked at the drawing area's top-left corner, so everything
+     * below is measured in the same coordinates the folding code uses. The callout leaves every
+     * row's find number visible and clickable, and an elbow leader runs from a dot on the selected
+     * row's number into its side.
+     */
+    function placeCallout() {
+      if (!host) return;
+      const callout = host.querySelector(".bom-callout");
+      const tr = findRow(selectedId);
+      // offsetParent is null on a row folded onto a sheet that is not the one being shown.
+      if (!callout || !tr || tr.offsetParent === null) {
+        // A callout with no row under it stays hidden rather than being drawn wherever the last
+        // one happened to sit. A screen that wants a callout for something that is not a row yet
+        // - Items adding an item, the register importing a project - renders a ghost row for it
+        // and selects that, the way the mockups do; then there is something to point the leader at.
+        host.hidden = true;
+        if (!callout) placedNode = null;
+        return;
+      }
+
+      // A callout that is only being re-placed - a refold, a resize - must not replay its entry
+      // animation; a freshly swapped-in one should.
+      callout.classList.toggle("is-settled", callout === placedNode);
+      placedNode = callout;
+      host.hidden = false;
+
+      const fieldBox = field.getBoundingClientRect();
+      host.style.left = `${fieldBox.left + scrollX}px`;
+      host.style.top = `${fieldBox.top + scrollY}px`;
+
+      const rowBox = tr.getBoundingClientRect();
+      // A phone's one table is not folded into a column, and is narrower than the drawing area
+      // around it: measured against the field, the callout ran past the table's right rule.
+      const colEl = tr.closest(".bom-col") || tr.closest("table") || field;
+      const colBox = colEl.getBoundingClientRect();
+      const findBox = tr.cells[0].getBoundingClientRect();
+      const gap = GAP_REM * rem();
+      const edge = EDGE_REM * rem();
+      const left = findBox.right - fieldBox.left + edge;
+      callout.style.left = `${left}px`;
+      callout.style.width =
+        `${Math.max(MIN_CALLOUT_REM * rem(), colBox.right - fieldBox.left - edge - left)}px`;
+      // The leader runs in the space between the number and the column rule, never through a number.
+      const leaderX = findBox.right - fieldBox.left - 0.375 * rem();
+      callout.style.setProperty("--leader-dx", `${left - leaderX}px`);
+
+      const rowTop = rowBox.top - fieldBox.top;
+      const rowBottom = rowBox.bottom - fieldBox.top;
+      const bottomLimit = colEl.classList.contains("is-last") ? limits.lastColBottom : limits.bottom;
+      callout.classList.remove("is-above");
+      callout.style.setProperty("--gap", `${gap}px`);
+      const height = callout.offsetHeight;
+      if (rowBottom + gap + height <= bottomLimit) {
+        callout.style.top = `${rowBottom + gap}px`;
+      } else if (rowTop - gap - height >= 0) {
+        callout.classList.add("is-above");
+        callout.style.top = `${rowTop - gap - height}px`;
+      } else if (rowBottom + gap + height <= limits.bottom) {
+        // It fits neither side of its row within the column, but it does fit below it within the
+        // drawing area: the rightmost column's form, taller than the space above the title block.
+        // Below the row, over the title block, as the mockup draws it. Sliding it up to the
+        // column's limit instead would lay it over its own row, with the leader pointing at
+        // whichever row happened to be above the callout's top edge.
+        callout.style.top = `${rowBottom + gap}px`;
+      } else {
+        // It fits nowhere: sit it as low as the drawing area allows rather than let it be clipped
+        // away (DESIGN.md open issue). A window this short cannot show the row and its form
+        // together: the callout covers part of the row, and its leader can no longer reach it.
+        const top = Math.max(0, Math.min(rowBottom + gap, limits.bottom - height));
+        callout.style.top = `${top}px`;
+        callout.style.setProperty("--gap", `${Math.max(0, rowBottom - top)}px`);
+      }
+      // Phones scroll the long sheet; keep the callout clear of the bottom tab bar.
+      if (PHONE.matches) callout.scrollIntoView({ block: "nearest" });
+    }
+
+    /** Give the selected row the focus, without scrolling a folded sheet sideways. */
+    function focusSelected() {
+      const el = findRow(selectedId);
+      if (!el || el.offsetParent === null) return;
+      el.focus({ preventScroll: true });
+      if (PHONE.matches) el.scrollIntoView({ block: "nearest" });
+    }
+
+    /**
+     * Select a row: mark it, turn to its sheet, focus it and ask the screen for its callout.
+     *
+     * A ghost row (`.is-new`, the thing being added) that loses the selection goes with it, as the
+     * mockups draw it only while its form is open.
+     *
+     * @param {string|null} id The row's data-id.
+     * @param {object} options focus: false to leave the focus where it is. callout: an address to
+     *     fetch this one time instead of the row's own hx-get - the form a page address opens,
+     *     which a later selection of the same row must not bring back.
+     */
+    function select(id, { focus = true, callout = null } = {}) {
+      const tr = findRow(id);
+      if (!tr) return;
+      const previous = findRow(selectedId);
+      selectedId = tr.dataset.id;
+      followSelection = true;
+      // Cleared before the event rather than after the reply: the old callout belongs to the old
+      // row, and leaving it up while a new one is fetched would show it beside the wrong one.
+      clearCallout();
+      if (previous && previous !== tr && previous.classList.contains("is-new")) {
+        rows = rows.filter((row) => row !== previous);
+        previous.remove();
+        render();
+      } else {
+        finish();
+      }
+      if (focus) focusSelected();
+      // htmx issues the request, and fires htmx:configRequest, while the event is dispatched.
+      const rewrite = (e) => {
+        if (e.detail.elt === tr) e.detail.path = callout;
+      };
+      if (callout) document.body.addEventListener("htmx:configRequest", rewrite);
+      tr.dispatchEvent(new CustomEvent("sheet:select", { detail: { id: selectedId }, bubbles: true }));
+      if (callout) document.body.removeEventListener("htmx:configRequest", rewrite);
+    }
+
+    /** Drop the selection and its callout. */
+    function clear() {
+      const previous = selectedId;
+      selectedId = null;
+      clearCallout();
+      finish();
+      field.dispatchEvent(new CustomEvent("sheet:clear", { detail: { id: previous }, bubbles: true }));
+    }
+
+    /**
+     * Move the selection by whole rows, in the order the server rendered them.
+     *
+     * @param {number} delta 1 for the next row, -1 for the previous one.
+     */
+    function move(delta) {
+      if (!rows.length) return;
+      const onSheet = rows.filter((tr) => rowPage.get(tr.dataset.id) === page);
+      let i = rows.findIndex((tr) => tr.dataset.id === String(selectedId));
+      if (i < 0 || rowPage.get(String(selectedId)) !== page) {
+        // Nothing selected on this sheet: start at its first row (down) or its last row (up).
+        const start = delta > 0 ? onSheet[0] : onSheet[onSheet.length - 1];
+        i = rows.indexOf(start || rows[0]);
+      } else {
+        i = Math.max(0, Math.min(rows.length - 1, i + delta));
+      }
+      select(rows[i].dataset.id);
+    }
+
+    /**
+     * Turn to another continuation sheet.
+     *
+     * Paging only shows another sheet; it never selects, and the next arrow key starts from the
+     * sheet on screen.
+     *
+     * @param {number} next The sheet to show, from 0.
+     */
+    function setPage(next) {
+      const target = Math.max(0, Math.min(pages - 1, next));
+      if (target === page) return;
+      page = target;
+      followSelection = false;
+      finish();
+    }
+
+    // ---------- Keys ----------
+
+    /** @returns {boolean} True while the callout is one that can be cancelled: a form, a question. */
+    function modal() {
+      return !!(host && host.querySelector('[data-sheet-key~="Escape"]'));
+    }
+
+    /**
+     * Find the element a screen has put this key on.
+     *
+     * The open callout is searched first, so a form's Cancel takes Esc and its Save takes Enter
+     * ahead of anything the title block declares. A callout that can be cancelled - a form, a
+     * confirmation: anything declaring Escape - is the only scope while it is open, as the mockups
+     * ignore every verb while a form is up. Otherwise N or H pressed with the focus outside the
+     * form's fields would press the title block's Add or Retired, leave the page and lose the draft.
+     *
+     * @param {KeyboardEvent} e The key press.
+     * @returns {Element|null} The button to press.
+     */
+    function keyTarget(e) {
+      const wanted = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      const scopes = (modal() ? [host] : [host, document.getElementById("sheet")]).filter(Boolean);
+      for (const scope of scopes) {
+        for (const el of scope.querySelectorAll("[data-sheet-key]")) {
+          // getClientRects(), not offsetParent: offsetParent is null for every element in a
+          // fixed-position subtree, visible or not, so a key declared on a phone tab bar or on
+          // anything a later screen pins would be silently unpressable. Both answer "nothing is
+          // drawn here" for display:none, which is the case this is really asking about - a row
+          // folded onto a continuation sheet that is not the one on screen.
+          if (el.disabled || el.hidden || !el.getClientRects().length) continue;
+          const keys = el.dataset.sheetKey.split(/\s+/);
+          if (keys.some((k) => (k.length === 1 ? k.toLowerCase() : k) === wanted)) return el;
+        }
+      }
+      return null;
+    }
+
+    /**
+     * The shared key map, and the way a screen's own verbs reach their buttons.
+     *
+     * @param {KeyboardEvent} e The key press.
+     */
+    function onKeyDown(e) {
+      // The target is not always an element: a key pressed with nothing focused arrives on the
+      // document, which has no closest().
+      const closest = (selector) => (e.target.closest ? e.target.closest(selector) : null);
+      const inControl = !!closest("input, textarea, select, [contenteditable]");
+      for (const handler of keyHandlers) {
+        if (handler(e, inControl)) {
+          e.preventDefault();
+          return;
+        }
+      }
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+      if (e.key === "Escape") {
+        const cancel = keyTarget(e);
+        if (cancel) cancel.click();
+        else if (inControl) e.target.blur();
+        else if (selectedId != null) clear();
+        else return;
+        e.preventDefault();
+        return;
+      }
+      if (inControl) return;
+
+      switch (e.key) {
+        case "ArrowDown":
+        case "j":
+          move(1);
+          break;
+        case "ArrowUp":
+        case "k":
+          move(-1);
+          break;
+        case "Home":
+          if (rows.length) select(rows[0].dataset.id);
+          break;
+        case "End":
+          if (rows.length) select(rows[rows.length - 1].dataset.id);
+          break;
+        // Paging is the one pair of keys that changes what is on screen without changing what is
+        // selected; DESIGN.md is explicit that they never move the selection.
+        case "PageDown":
+          setPage(page + 1);
+          break;
+        case "PageUp":
+          setPage(page - 1);
+          break;
+        default: {
+          // Enter and Space on a button or a link activate it, not a row verb.
+          if ((e.key === "Enter" || e.key === " ") && closest("button, a")) return;
+          const target = keyTarget(e);
+          if (target && target.matches("input, select, textarea")) {
+            // A key declared on a field - the filter's /, a category's C - means "go to it", and
+            // clicking a field does not put the caret in it. A text field's contents are
+            // selected, so what is typed next replaces the filter rather than extending it.
+            target.focus();
+            if (target.select) target.select();
+            break;
+          }
+          if (target) {
+            target.click();
+            break;
+          }
+          // Enter's fallback is not taken while a form or a question is open either: a delete
+          // confirmation that does not declare Enter means it.
+          const tr = findRow(selectedId);
+          if (e.key === "Enter" && tr && !modal()) {
+            tr.dispatchEvent(
+              new CustomEvent("sheet:open", { detail: { id: selectedId }, bubbles: true })
+            );
+            break;
+          }
+          return;
+        }
+      }
+      e.preventDefault();
+    }
+
+    // ---------- Wiring ----------
+
+    // Clicks are taken on the document rather than on the field, because HTMX can replace the
+    // field itself and a listener bound to the old element would go with it.
+    document.addEventListener("click", (e) => {
+      const pager = e.target.closest("#page-prev, #page-next");
+      if (pager) {
+        setPage(pager.id === "page-next" ? page + 1 : page - 1);
+        return;
+      }
+      if (e.target.closest("#row-callout")) return;
+      const tr = e.target.closest("tr[data-id]");
+      if (!tr || !field.contains(tr)) return;
+      // Clicking the selected row again is Esc: close what is open, otherwise deselect.
+      if (tr.dataset.id === String(selectedId)) {
+        const cancel = host && host.querySelector('[data-sheet-key~="Escape"]');
+        if (cancel) cancel.click();
+        else clear();
+        return;
+      }
+      select(tr.dataset.id);
+    });
+
+    document.addEventListener("keydown", onKeyDown);
+
+    // Fold again whenever the drawing area changes size (window resize, scrollbar, zoom) and
+    // whenever web fonts finish loading, since both change how many rows fit. Folding never
+    // changes the drawing area's own size, so this cannot loop; the size guard below is a second
+    // lock on that, and keeps the one resize that switching to the fixed layout does cause from
+    // costing a second fold.
+    let timer;
+    let lastSize = "";
+    const refold = () => {
+      clearTimeout(timer);
+      timer = setTimeout(render, REFOLD_MS);
+    };
+    const observer = new ResizeObserver(() => {
+      const box = field.parentElement.getBoundingClientRect();
+      const size = `${Math.round(box.width)}x${Math.round(box.height)}`;
+      if (size === lastSize) return;
+      lastSize = size;
+      refold();
+    });
+    observer.observe(field.parentElement);
+    PHONE.addEventListener("change", () => {
+      lastSize = "";
+      render();
+    });
+    if (document.fonts) {
+      document.fonts.ready.then(refold);
+      document.fonts.addEventListener("loadingdone", refold);
+    }
+
+    // Remember which row had the focus before HTMX takes the table out of the page: by the time
+    // the swap is over the focused element is gone and the browser has fallen back to <body>.
+    document.body.addEventListener("htmx:beforeSwap", (e) => {
+      const tr = document.activeElement && document.activeElement.closest
+        ? document.activeElement.closest("tr[data-id]")
+        : null;
+      if (tr && (e.target === field || e.target.contains(field) || field.contains(e.target))) {
+        pendingFocusId = tr.dataset.id;
+      }
+    });
+
+    document.body.addEventListener("htmx:afterSwap", (e) => {
+      if (host && (e.target === host || host.contains(e.target))) {
+        // Only the callout changed: place it and put the focus in it if it asked for it. The rows
+        // are untouched, so nothing is refolded and nothing else moves.
+        placeCallout();
+        const first = host.querySelector("[autofocus]");
+        if (first) {
+          first.focus({ preventScroll: true });
+          // A prefilled draft is selected, so the first keystroke replaces it rather than landing
+          // in front of it - docs/mockups/projects.js:221, which is `if (!error) input.select()`.
+          // The condition is the point: a field carrying a name that was just refused holds the
+          // words the person typed, and they want to correct them, not lose them. Guarded on
+          // select() being there at all, because a callout's first field is not always a text one
+          // - the import drop zone is a <label>.
+          if (first.select && first.getAttribute("aria-invalid") !== "true") {
+            first.select();
+          }
+        }
+        // After the focus has moved, so it can tell whether the focus already said it.
+        announceCallout();
+        return;
+      }
+      const current = document.querySelector(".bom-field");
+      const touched =
+        current !== field || e.target === field || field.contains(e.target) || e.target.contains(field);
+      if (!touched) return;
+      if (current && current !== field) {
+        field = current;
+        observer.disconnect();
+        lastSize = "";
+        observer.observe(field.parentElement);
+      }
+      adopt();
+      lastSize = "";
+      render();
+    });
+
+    // An error answer to one of the sheet's own GETs - a row's callout, a rows swap, a form opened
+    // into the callout - means the project changed under the page: the file was deleted, damaged
+    // or replaced by a newer version, or the item is gone. htmx swaps no 4xx or 5xx answer, so
+    // without this nothing would happen and nothing would be said. The page is loaded again at its
+    // own address (never xhr.responseURL, which names a fragment): that draws the error page, which
+    // does not load this file, or a fresh sheet if only the item went. Other requests - a POST, or
+    // a target outside the field and the callout, such as Compare's frame - are left to whoever
+    // made them. A page that errs again straight after its own reload says so rather than going
+    // round: a fragment that fails every time must not keep reloading a page that draws.
+    const RELOAD_KEY = "sheet:error-reload";
+    const RELOAD_WINDOW_MS = 10000;
+    const ours = (detail) =>
+      detail.requestConfig?.verb === "get" &&
+      !!detail.target &&
+      ((host && (detail.target === host || host.contains(detail.target))) ||
+        detail.target === field ||
+        field.contains(detail.target));
+    const say = (text) => {
+      const status = document.getElementById("callout-status");
+      if (status) status.textContent = text;
+    };
+
+    document.body.addEventListener("htmx:responseError", (e) => {
+      if (!ours(e.detail)) return;
+      const here = window.location.href;
+      let last = null;
+      try {
+        last = JSON.parse(sessionStorage.getItem(RELOAD_KEY) || "null");
+      } catch (error) {
+        last = null;
+      }
+      if (last && last.href === here && Date.now() - last.at < RELOAD_WINDOW_MS) {
+        say("The server could not answer. The page has not changed; reload it to try again.");
+        return;
+      }
+      try {
+        sessionStorage.setItem(RELOAD_KEY, JSON.stringify({ href: here, at: Date.now() }));
+      } catch (error) {
+        // No storage: the reload still happens, only without the second-error guard.
+      }
+      window.location.assign(here);
+    });
+
+    document.body.addEventListener("htmx:sendError", (e) => {
+      if (!ours(e.detail)) return;
+      say("Could not reach the server. The page has not changed; try again.");
+    });
+
+    adopt();
+
+    return {
+      /** @returns {boolean} True while the sheet is one scrolling table. */
+      isPhone: () => PHONE.matches,
+      /** Re-read the rows the server drew and fold them again. */
+      reload: () => {
+        adopt();
+        render();
+      },
+      render,
+      select,
+      clear,
+      move,
+      setPage,
+      focusSelected,
+      /** Re-place the callout after something outside the engine changed its size. */
+      place: placeCallout,
+      /**
+       * Add a key handler, tried before the shared map.
+       *
+       * @param {function} handler (event, inControl) => true when it has handled the key.
+       */
+      onKey: (handler) => keyHandlers.push(handler),
+      get selectedId() {
+        return selectedId;
+      },
+      get page() {
+        return page;
+      },
+      get pages() {
+        return pages;
+      },
+      get rowCount() {
+        return rows.length;
+      },
+    };
+  }
+
+  const field = document.querySelector(".bom-field");
+  if (field) {
+    window.sheet = createSheet(field);
+    window.sheet.render();
+  }
+})();

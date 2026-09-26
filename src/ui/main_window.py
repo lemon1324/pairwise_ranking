@@ -323,8 +323,10 @@ class MainWindow(QMainWindow):
         self._on_data_changed()
 
     def _on_skip_requested(self) -> None:
-        """Handle skip requested event - just get next pair."""
-        self._show_offer(self.session.skip())
+        """Handle skip requested event - offer a pair other than the one shown."""
+        self._show_offer(
+            self.session.skip(exclude=self.comparison_widget.current_pair_ids())
+        )
 
     def _on_undo_last_vote(self) -> None:
         """Remove the most recent vote and offer its pair again if possible."""

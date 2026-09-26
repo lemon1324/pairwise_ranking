@@ -3,6 +3,7 @@
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
+import math
 import uuid
 
 
@@ -15,6 +16,77 @@ STATUS_RETIRED = "retired"
 
 # Every status an item may hold
 VALID_STATUSES = (STATUS_ACTIVE, STATUS_RETIRED)
+
+
+def _number_text(value) -> Optional[str]:
+    """
+    Write a JSON number as the text an id or a slot would hold.
+
+    Args:
+        value: A value read from a project file.
+
+    Returns:
+        Optional[str]: ``"1"`` for ``1`` and for ``1.0``, ``"1.5"`` for
+        ``1.5``; None when the value is not a finite number (a bool is not
+        one, though Python counts it as an int).
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            return None
+        if value.is_integer():
+            return str(int(value))
+    return str(value)
+
+
+def normalize_id(value, what: str) -> str:
+    """
+    Read an id out of a project file as the text every lookup compares.
+
+    An id is compared with ``==`` in votes and replacement chains, and it is
+    carried as text in a web address, so the number ``1`` and the text
+    ``"1"`` must be one id. Numbers - which a hand-written or converted file
+    may hold - are written as text; an id that is empty, null or not a
+    scalar names nothing and the file is damaged.
+
+    Args:
+        value: The value as read.
+        what: What it is, for the message, e.g. "An item's 'id'".
+
+    Returns:
+        str: The id as text.
+
+    Raises:
+        ValueError: If the value is empty, blank, null, or neither text nor a
+            finite number.
+    """
+    text = value if isinstance(value, str) else _number_text(value)
+    if text is None or not text.strip():
+        raise ValueError(
+            f"{what} must be a non-empty string or a number, got {value!r}"
+        )
+    return text
+
+
+def normalize_id_reference(value, what: str) -> Optional[str]:
+    """
+    Read an optional reference to an id, such as ``replaced_by``.
+
+    Args:
+        value: The value as read.
+        what: What it is, for the message.
+
+    Returns:
+        Optional[str]: The id as text, or None when nothing is referenced
+        (null or empty).
+
+    Raises:
+        ValueError: If the value is neither empty, text nor a finite number.
+    """
+    if value is None or value == "":
+        return None
+    return normalize_id(value, what)
 
 
 @dataclass
@@ -185,8 +257,10 @@ class Item:
 
         Raises:
             KeyError: If 'name' key is missing from data.
-            ValueError: If 'status' is not a known status or 'retired_at' is
-                not valid ISO text.
+            ValueError: If 'status' is not a known status, 'retired_at' is
+                not valid ISO text, 'id' is present but empty, null or not
+                text or a number (see :func:`normalize_id`), or 'replaced_by'
+                or 'identifier' is neither empty, text nor a number.
         """
         retired_at = data.get("retired_at")
         if isinstance(retired_at, str) and retired_at:
@@ -194,13 +268,30 @@ class Item:
         elif not isinstance(retired_at, datetime):
             retired_at = None
 
+        # A slot is text in the slot list, so a slot number written as a
+        # number must become that text too, or it would match no slot.
+        identifier = data.get("identifier")
+        if identifier is not None and not isinstance(identifier, str):
+            number = _number_text(identifier)
+            if number is None:
+                raise ValueError(
+                    f"An item's 'identifier' must be a string or a number, got {identifier!r}"
+                )
+            identifier = number
+
         return cls(
             name=data["name"],
             description=data.get("description", ""),
-            identifier=data.get("identifier", ""),
+            identifier=identifier or "",
             category=data.get("category", DEFAULT_CATEGORY),
             status=data.get("status") or STATUS_ACTIVE,
             retired_at=retired_at,
-            replaced_by=data.get("replaced_by"),
-            id=data.get("id", str(uuid.uuid4())),
+            replaced_by=normalize_id_reference(
+                data.get("replaced_by"), "An item's 'replaced_by'"
+            ),
+            id=(
+                normalize_id(data["id"], "An item's 'id'")
+                if "id" in data
+                else str(uuid.uuid4())
+            ),
         )
