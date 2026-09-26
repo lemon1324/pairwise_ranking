@@ -28,6 +28,40 @@ SLOTS_HINT = (
     "positions on a board, shelf labels, or bin numbers"
 )
 
+# The spin boxes' ranges. The model has no upper caps
+# (src.models.settings.LIMITS), so these are only the editor's, and generous
+# enough that no sane value meets them. The top-tier count's is the largest a
+# QSpinBox holds.
+WEIGHT_MAX = 1e6
+DAYS_MAX = 1e6
+COUNT_MAX = 2**31 - 1
+
+# Places a spin box keeps. Enough for any value typed by hand (0.125, 7.25);
+# the text drops the trailing zeros, so 1.0 is not drawn as 1.000000.
+DECIMALS = 6
+
+
+class TrimmedDoubleSpinBox(QDoubleSpinBox):
+    """A QDoubleSpinBox that keeps many places but draws no trailing zeros."""
+
+    def textFromValue(self, value: float) -> str:
+        """
+        Write a value without the zeros its places would pad it with.
+
+        Args:
+            value: The value.
+
+        Returns:
+            str: At least one place: ``1.0``, ``0.125``, ``7.25``.
+        """
+        text = super().textFromValue(value)
+        point = self.locale().decimalPoint()
+        if point in text:
+            text = text.rstrip("0")
+            if text.endswith(point):
+                text += "0"
+        return text
+
 
 class SettingsWidget(QWidget):
     """
@@ -54,6 +88,9 @@ class SettingsWidget(QWidget):
         """
         super().__init__(parent)
         self._settings: Settings = Settings()
+        # Per spin box, the value it was given and the value it then showed,
+        # so an untouched box writes back exactly what the file holds.
+        self._given: dict = {}
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -90,10 +127,10 @@ class SettingsWidget(QWidget):
         decay_group = QGroupBox("Vote Decay")
         decay_layout = QFormLayout(decay_group)
 
-        self.decay_timescale_spin = QDoubleSpinBox()
-        self.decay_timescale_spin.setRange(0.0, 365.0)
+        self.decay_timescale_spin = TrimmedDoubleSpinBox()
+        self.decay_timescale_spin.setDecimals(DECIMALS)
+        self.decay_timescale_spin.setRange(0.0, DAYS_MAX)
         self.decay_timescale_spin.setSingleStep(1.0)
-        self.decay_timescale_spin.setDecimals(1)
         self.decay_timescale_spin.setSuffix(" days")
         self.decay_timescale_spin.setToolTip(
             "Half-life for vote decay. After this many days, a vote's weight is halved.\n"
@@ -116,7 +153,7 @@ class SettingsWidget(QWidget):
         top_tier_layout.addRow(self.top_tier_mode_check)
 
         self.top_tier_count_spin = QSpinBox()
-        self.top_tier_count_spin.setRange(1, 100)
+        self.top_tier_count_spin.setRange(1, COUNT_MAX)
         self.top_tier_count_spin.setToolTip("Number of items considered 'top tier'")
         top_tier_layout.addRow("Top-tier count:", self.top_tier_count_spin)
 
@@ -130,10 +167,10 @@ class SettingsWidget(QWidget):
         category_group = QGroupBox("Category Comparisons")
         category_layout = QFormLayout(category_group)
 
-        self.cross_category_rate_spin = QDoubleSpinBox()
+        self.cross_category_rate_spin = TrimmedDoubleSpinBox()
+        self.cross_category_rate_spin.setDecimals(DECIMALS)
         self.cross_category_rate_spin.setRange(0.0, 1.0)
         self.cross_category_rate_spin.setSingleStep(0.05)
-        self.cross_category_rate_spin.setDecimals(2)
         self.cross_category_rate_spin.setToolTip(
             "Fraction of comparisons that cross category boundaries.\n"
             "Cross-category votes calibrate ELO so ratings are comparable across categories\n"
@@ -207,11 +244,67 @@ class SettingsWidget(QWidget):
         Returns:
             QDoubleSpinBox: Configured spin box.
         """
-        spin = QDoubleSpinBox()
-        spin.setRange(0.0, 20.0)
+        spin = TrimmedDoubleSpinBox()
+        spin.setDecimals(DECIMALS)
+        spin.setRange(0.0, WEIGHT_MAX)
         spin.setSingleStep(0.5)
-        spin.setDecimals(1)
         return spin
+
+    def _spins(self) -> dict:
+        """
+        Pair each numeric setting with the spin box that edits it.
+
+        Returns:
+            dict: Setting name to its spin box.
+        """
+        return {
+            "weight_uncertainty": self.weight_uncertainty_spin,
+            "weight_connectivity": self.weight_connectivity_spin,
+            "weight_freshness": self.weight_freshness_spin,
+            "weight_uncompared": self.weight_uncompared_spin,
+            "decay_timescale_days": self.decay_timescale_spin,
+            "top_tier_count": self.top_tier_count_spin,
+            "top_tier_weight": self.top_tier_weight_spin,
+            "cross_category_rate": self.cross_category_rate_spin,
+        }
+
+    def _show_value(self, name: str, spin, value) -> None:
+        """
+        Put a stored value in its spin box, clamped into the box's range.
+
+        A QSpinBox raises OverflowError for a value of 2**31 or more, and any
+        box silently cuts a value to its range and places; the clamp keeps the
+        first from happening, and remembering the value lets
+        :meth:`get_settings` undo the second for a box nobody edited.
+
+        Args:
+            name: The setting's name.
+            spin: Its spin box.
+            value: The stored value.
+        """
+        shown = min(max(value, spin.minimum()), spin.maximum())
+        if isinstance(spin, QSpinBox):
+            shown = int(shown)
+        spin.setValue(shown)
+        self._given[name] = (value, spin.value())
+
+    def _read_value(self, name: str, spin):
+        """
+        Read a spin box back as the setting it edits.
+
+        Args:
+            name: The setting's name.
+            spin: Its spin box.
+
+        Returns:
+            The box's value, or the stored value exactly when the box still
+            shows what it was given.
+        """
+        value = spin.value()
+        given = self._given.get(name)
+        if given is not None and value == given[1]:
+            return given[0]
+        return value
 
     def set_slots(self, slots: list[str]) -> None:
         """
@@ -249,18 +342,28 @@ class SettingsWidget(QWidget):
 
     def _refresh_ui(self) -> None:
         """Refresh UI from current settings."""
-        self.weight_uncertainty_spin.setValue(self._settings.weight_uncertainty)
-        self.weight_connectivity_spin.setValue(self._settings.weight_connectivity)
-        self.weight_freshness_spin.setValue(self._settings.weight_freshness)
-        self.weight_uncompared_spin.setValue(self._settings.weight_uncompared)
-        self.decay_timescale_spin.setValue(self._settings.decay_timescale_days)
+        for name, spin in self._spins().items():
+            self._show_value(name, spin, getattr(self._settings, name))
         self.top_tier_mode_check.setChecked(self._settings.top_tier_mode)
-        self.top_tier_count_spin.setValue(self._settings.top_tier_count)
-        self.top_tier_weight_spin.setValue(self._settings.top_tier_weight)
         self.blinded_mode_check.setChecked(self._settings.blinded_comparison_mode)
-        self.cross_category_rate_spin.setValue(self._settings.cross_category_rate)
 
         self._on_top_tier_toggled(self._settings.top_tier_mode)
+
+    def get_settings(self) -> Settings:
+        """
+        Read the settings as the widget holds them.
+
+        Returns:
+            Settings: The edited values. A spin box nobody changed gives back
+            the value it was set with, exactly, even one beyond its range or
+            places.
+        """
+        values = {name: self._read_value(name, spin) for name, spin in self._spins().items()}
+        return Settings(
+            top_tier_mode=self.top_tier_mode_check.isChecked(),
+            blinded_comparison_mode=self.blinded_mode_check.isChecked(),
+            **values,
+        )
 
     def _on_top_tier_toggled(self, checked: bool) -> None:
         """Handle top-tier mode checkbox toggle."""
@@ -269,18 +372,7 @@ class SettingsWidget(QWidget):
 
     def _on_save_clicked(self) -> None:
         """Handle save button click."""
-        new_settings = Settings(
-            weight_uncertainty=self.weight_uncertainty_spin.value(),
-            weight_connectivity=self.weight_connectivity_spin.value(),
-            weight_freshness=self.weight_freshness_spin.value(),
-            weight_uncompared=self.weight_uncompared_spin.value(),
-            decay_timescale_days=self.decay_timescale_spin.value(),
-            top_tier_mode=self.top_tier_mode_check.isChecked(),
-            top_tier_count=self.top_tier_count_spin.value(),
-            top_tier_weight=self.top_tier_weight_spin.value(),
-            blinded_comparison_mode=self.blinded_mode_check.isChecked(),
-            cross_category_rate=self.cross_category_rate_spin.value(),
-        )
+        new_settings = self.get_settings()
 
         self._settings = new_settings
         self.settings_changed.emit(new_settings)
