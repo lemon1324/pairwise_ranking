@@ -604,6 +604,10 @@ textarea.input {
 
 .strip-detail .detail-desc {
   grid-column: 1 / -1;
+  /* The mockup's <p>, which a <dl> may not hold, is a <dd> here: back to words from the
+     figures' mono. */
+  font-family: var(--font-ui);
+  font-variant-numeric: normal;
   margin: var(--s-2) 0 0;
   font-size: 0.875rem;
   color: var(--ink-2);
