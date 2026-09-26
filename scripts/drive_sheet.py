@@ -2346,6 +2346,7 @@ def check_settings_slots(devtools: DevTools, base: str) -> str:
     drawn alike with the collision warning, which does not block Save. A label
     typed on a tile that another slot already shows is refused with the
     server's sentence, disables Save, and Ctrl+S puts the caret on that tile;
+    of two tiles typed alike the edited one is refused, as the server refuses it;
     typing keeps the caret in the tile (the board is not redrawn). A label that
     resolves the collision clears it, and Ctrl+S saves the list and the label.
     The file is put back.
@@ -2388,6 +2389,25 @@ def check_settings_slots(devtools: DevTools, base: str) -> str:
         slots_type(devtools, '.slot-label[name="label:toString"]', "")
         back = slots_type(devtools, "#slots", saved_text)
         expect(not back["panelChanged"] and back["errors"] == "", "the odd names left the table changed")
+
+        # Owner ruling R8-2: an earlier tile typed like a saved label is the one refused;
+        # two edited labels alike refuse the later one.
+        edited = slots_type(devtools, '.slot-label[name="label:1"]', "'")
+        server = server_settings(devtools, {"label:1": "'"})
+        expect(
+            edited["errors"] == "Slot 1: Slot Apostrophe already shows '." == server["slotErrors"],
+            f"the script drew {edited['errors']!r}, the server {server['slotErrors']!r}",
+        )
+        both = slots_type(devtools, '.slot-label[name="label:Apostrophe"]', "q")
+        both = slots_type(devtools, '.slot-label[name="label:1"]', "q")
+        server = server_settings(devtools, {"label:1": "q", "label:Apostrophe": "q"})
+        expect(
+            both["errors"] == "Slot Apostrophe: Slot 1 already shows q." == server["slotErrors"],
+            f"the script drew {both['errors']!r}, the server {server['slotErrors']!r}",
+        )
+        slots_type(devtools, '.slot-label[name="label:1"]', "")
+        back = slots_type(devtools, '.slot-label[name="label:Apostrophe"]', "'")
+        expect(not back["panelChanged"] and back["errors"] == "", "the edited labels left the table changed")
 
         dup = slots_type(devtools, "#slots", f"{saved_text}, 7, Esc")
         expect(len(dup["tiles"]) == 61, f"the list with a repeat drew {len(dup['tiles'])} tiles")

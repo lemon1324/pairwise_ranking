@@ -103,6 +103,11 @@
       if (label && label !== derivedOf(name)) entered.set(name, label);
     }
     const shown = (name) => (entered.has(name) ? chars(entered.get(name)).slice(0, labelMax).join("") : derivedOf(name));
+    // _label_precedence: of two slots typed alike, an unchanged label keeps it over a changed
+    // one (owner ruling R8-2), else the earlier slot does.
+    const changed = (name) => entered.get(name) !== savedLabels.get(name);
+    const givesWay = (other, otherPosition, name, position) =>
+      changed(other) === changed(name) ? otherPosition > position : changed(other);
     // A Map, not an object: an object would put names like "12" before the others.
     const errors = new Map();
     names.forEach((name, position) => {
@@ -112,10 +117,21 @@
         errors.set(name, board.dataset.errorLong);
         return;
       }
-      const owner = names.find(
+      const candidates = names.filter(
         (other, otherPosition) =>
-          other !== name && !(entered.has(other) && otherPosition > position) && shown(other) === label
+          other !== name &&
+          !(entered.has(other) && givesWay(other, otherPosition, name, position)) &&
+          shown(other) === label
       );
+      // label_owner: the slot that keeps the label, a derived one first, else the entered one
+      // that gives way to none of the others.
+      const owner =
+        candidates.find((other) => !entered.has(other)) ??
+        candidates.find((other) =>
+          candidates.every(
+            (rival) => rival === other || !entered.has(rival) || givesWay(rival, names.indexOf(rival), other, names.indexOf(other))
+          )
+        );
       if (owner !== undefined) errors.set(name, fill(board.dataset.errorTaken, { slot: owner, label }));
     });
     const groups = new Map();
