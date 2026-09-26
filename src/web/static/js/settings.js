@@ -59,7 +59,9 @@
 
   const slotsText = $("slots");
   const board = $("slot-board");
-  const savedLabels = JSON.parse(board.dataset.savedLabels || "{}");
+  // Maps, never plain objects, for anything looked up by slot name: a slot may be named
+  // "toString" or "__proto__", which an object would answer from Object.prototype.
+  const savedLabels = new Map(Object.entries(JSON.parse(board.dataset.savedLabels || "{}")));
   const usedSlots = new Set(JSON.parse(board.dataset.used || "[]"));
   const labelMax = Number(board.dataset.labelMax);
   // What each slot's tile holds, kept across redraws so a label survives editing the list.
@@ -88,20 +90,23 @@
   }
 
   // A slot's typed label, else the one it was saved with.
-  const typedOf = (name) => (typedLabels.has(name) ? typedLabels.get(name) : savedLabels[name] ?? "").trim();
+  const typedOf = (name) => (typedLabels.has(name) ? typedLabels.get(name) : savedLabels.get(name) ?? "").trim();
+
+  // The server's str.format: each name filled in once, as given, "$" patterns and all.
+  const fill = (sentence, values) => sentence.replace(/\{(slot|label)\}/g, (_, key) => values[key]);
 
   // check_slot_labels: the labels worth storing, and the refused ones with their sentences.
   function checkLabels(names) {
-    const entered = {};
+    const entered = new Map();
     for (const name of names) {
       const label = typedOf(name);
-      if (label && label !== derivedOf(name)) entered[name] = label;
+      if (label && label !== derivedOf(name)) entered.set(name, label);
     }
-    const shown = (name) => (entered[name] ? chars(entered[name]).slice(0, labelMax).join("") : derivedOf(name));
+    const shown = (name) => (entered.has(name) ? chars(entered.get(name)).slice(0, labelMax).join("") : derivedOf(name));
     // A Map, not an object: an object would put names like "12" before the others.
     const errors = new Map();
     names.forEach((name, position) => {
-      const label = entered[name];
+      const label = entered.get(name);
       if (label === undefined) return;
       if (chars(label).length > labelMax) {
         errors.set(name, board.dataset.errorLong);
@@ -109,9 +114,9 @@
       }
       const owner = names.find(
         (other, otherPosition) =>
-          other !== name && !(other in entered && otherPosition > position) && shown(other) === label
+          other !== name && !(entered.has(other) && otherPosition > position) && shown(other) === label
       );
-      if (owner !== undefined) errors.set(name, board.dataset.errorTaken.replace("{slot}", owner).replace("{label}", label));
+      if (owner !== undefined) errors.set(name, fill(board.dataset.errorTaken, { slot: owner, label }));
     });
     const groups = new Map();
     for (const name of names) {
@@ -123,8 +128,7 @@
     return { entered, errors, collisions };
   }
 
-  const sameLabels = (a, b) =>
-    Object.keys(a).length === Object.keys(b).length && Object.keys(a).every((k) => a[k] === b[k]);
+  const sameLabels = (a, b) => a.size === b.size && [...a].every(([name, label]) => b.get(name) === label);
 
   const tileTitle = (name, dup) => `Slot ${name}, ${usedSlots.has(name) ? "in use" : "free"}${dup ? ", listed twice" : ""}`;
 
@@ -136,7 +140,7 @@
     board.innerHTML = names
       .map((name) => {
         const title = esc(tileTitle(name, dups.includes(name)));
-        return `<li class="balloon" title="${title}"><input class="slot-label" name="${esc(LABEL_PREFIX + name)}" form="settings" value="${esc(typedLabels.get(name) ?? savedLabels[name] ?? "")}" placeholder="${esc(derivedOf(name))}" maxlength="${labelMax}" autocomplete="off" spellcheck="false" aria-label="Short label, ${title}"></li>`;
+        return `<li class="balloon" title="${title}"><input class="slot-label" name="${esc(LABEL_PREFIX + name)}" form="settings" value="${esc(typedLabels.get(name) ?? savedLabels.get(name) ?? "")}" placeholder="${esc(derivedOf(name))}" maxlength="${labelMax}" autocomplete="off" spellcheck="false" aria-label="Short label, ${title}"></li>`;
       })
       .join("");
   }

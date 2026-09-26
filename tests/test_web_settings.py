@@ -761,6 +761,13 @@ class TestSlotDrafts(SettingsTestCase):
                 self.assertTrue(status_of(body).startswith("Fix 1 value before saving."))
                 self.assertNotIn("autofocus", tile_input(body, "Apostrophe"))
 
+    def test_prototype_names_and_dollar_signs_are_plain_names(self):
+        """Test the server's side of R8 F3: the sentence settings.js must match."""
+        body = self.sheet("draft=1&slots=1, toString, __proto__, Price $$&label:toString=Pr")
+        self.assertEqual(tile_names(body), ["1", "toString", "__proto__", "Price $$"])
+        self.assertIn('value=""', tile_input(body, "__proto__"))
+        self.assertIn("Slot toString: Slot Price $$ already shows Pr.", status_of(body))
+
     def test_a_refused_post_puts_the_caret_on_the_tile(self):
         """Test that submitted=1 focuses the first tile in error when no value is."""
         body = self.sheet("draft=1&submitted=1&label:Apostrophe=abc")
