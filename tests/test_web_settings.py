@@ -913,6 +913,53 @@ class TestSlotSaves(SettingsTestCase):
         self.assertEqual(self.redirect_of(self.save(form))[1], {"done": DONE_SAVED})
         self.assertEqual(self.stored_labels(), {"1": "'"})
 
+    def test_odd_slot_names_survive_a_refusal_and_a_save(self):
+        """Test R8 F4: label:<slot> fields for names an address or a page must escape."""
+        labels = {
+            "A=B": "=",
+            "C&D": "&",
+            "50%": "%",
+            "two words": "2w",
+            "+plus": "+",
+            "x#y": "#",
+            'q"uote': '"',
+            "Clé": "é",
+        }
+        names = SLOTS + list(labels)
+        text = ", ".join(names)
+        form = dict(valid_form(top_tier_count="0"), slots=text)
+        form.update({f"label:{name}": label for name, label in labels.items()})
+
+        # Refused: every label rides the redirect's query as posted.
+        response = self.save(form)
+        location = response.headers["location"]
+        _, query = self.redirect_of(response)
+        self.assertEqual(query["slots"], text)
+        for name, label in labels.items():
+            self.assertEqual(query[f"label:{name}"], label)
+
+        # The draft draws each tile under its own name, holding its label.
+        body = self.client.get(location).text
+        tiles = {
+            html.unescape(name): html.unescape(value)
+            for name, value in re.findall(
+                r'<input class="slot-label" name="label:([^"]*)" form="settings" value="([^"]*)"', body
+            )
+        }
+        self.assertEqual(list(tiles), names)
+        self.assertEqual({name: tiles[name] for name in labels}, labels)
+        classes = re.findall(r'<li class="([^"]*)"[^>]*>\s*<input class="slot-label"', body)
+        self.assertEqual(len(classes), len(names))
+        self.assertFalse(any("is-error" in state.split() for state in classes))
+        # Only the count is refused; no label is.
+        self.assertTrue(status_of(body).startswith("Fix 1 value before saving."))
+
+        # Saved once the value is fixed: the file holds the names and labels as typed.
+        form["top_tier_count"] = valid_form()["top_tier_count"]
+        self.assertEqual(self.redirect_of(self.save(form))[1], {"done": DONE_SAVED})
+        self.assertEqual(self.stored_slots(), names)
+        self.assertEqual(self.stored_labels(), labels)
+
     def test_an_emptied_saved_label_travels_in_the_draft(self):
         """Test that clearing a saved label survives a refusal as an empty field."""
         self.write(PROJECT, settings_data(slot_labels={"Apostrophe": "'"}))
