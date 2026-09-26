@@ -154,12 +154,34 @@ GROUPS = (
 )
 FIELDS = tuple(field for _, group in GROUPS for field in group)
 
-# What a number may look like when typed: digits with an optional point and
-# exponent. Deliberately narrower than float(), which also takes "nan", "inf"
-# and "1_000"; settings.js tests the same pattern, so the two agree on what a
-# number is.
-NUMBER_PATTERN = r"^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$"
-_NUMBER = re.compile(NUMBER_PATTERN)
+# What a number may look like when typed: ASCII digits with an optional point
+# and exponent. Deliberately narrower than float(), which also takes "nan",
+# "inf", "1_000" and other scripts' digits ("３", "٣"); settings.js tests the
+# same pattern, so the two agree on what a number is. [0-9], not \d, because
+# Python's \d matches any Unicode digit and JavaScript's only ASCII ones.
+NUMBER_PATTERN = r"^[+-]?([0-9]+\.?[0-9]*|\.[0-9]+)([eE][+-]?[0-9]+)?$"
+_NUMBER = re.compile(NUMBER_PATTERN, re.ASCII)
+
+# The characters JavaScript's String.prototype.trim() removes, which is what
+# settings.js strips a typed value of. Python's str.strip() takes a different
+# set (it also strips U+001C-U+001F and U+0085, and keeps U+FEFF).
+JS_WHITESPACE = (
+    "\t\n\v\f\r          "
+    "        　﻿"
+)
+
+
+def trim(text: str) -> str:
+    """
+    Strip a typed value as settings.js does.
+
+    Args:
+        text: The text.
+
+    Returns:
+        str: The text without the whitespace JavaScript's ``trim()`` removes.
+    """
+    return text.strip(JS_WHITESPACE)
 
 # The two errors that do not depend on the field. settings.js writes the same
 # sentences; the per-field ones travel on each input.
@@ -316,10 +338,10 @@ def parse_value(field: Field, raw: str):
     """
     if field.kind == KIND_SWITCH:
         return raw.strip().lower() in SWITCH_ON, None
-    text = raw.strip()
+    text = trim(raw)
     if not text:
         return None, empty_error(field)
-    if not _NUMBER.match(text):
+    if not _NUMBER.fullmatch(text):
         return None, ERROR_NUMBER
     number = float(text)
     if not math.isfinite(number):
@@ -401,7 +423,7 @@ def build_rows(saved: Settings, draft: dict) -> list:
         raw = draft.get(field.key, saved_raw)
         value, error = parse_value(field, raw)
         if error:
-            changed = raw.strip() != saved_raw
+            changed = trim(raw) != saved_raw
         else:
             changed = value != stored
         rows.append(

@@ -25,9 +25,11 @@ from src.models.settings import Settings
 from src.web.app import DAMAGED_STATUS, NEWER_FORMAT_STATUS, create_app
 from src.web.routes.settings import (
     DONE_SAVED,
+    ERROR_NUMBER,
     FIELDS,
     NOTE_RESET,
     NOTE_SAVED,
+    NUMBER_PATTERN,
     SETTINGS_KEYS,
     format_value,
     parse_value,
@@ -496,6 +498,21 @@ class TestDrafts(SettingsTestCase):
         )
         self.assertIn('class="tb-cell tb-status span-6 phone-wide is-error"', body)
 
+    def test_a_full_width_digit_is_drawn_as_no_number(self):
+        """Test the draft a refused "３" lands on: the error settings.js draws (R8 F2)."""
+        body = self.sheet("draft=1&top_tier_count=３")
+        self.assertEqual(row_state(body, "top_tier_count"), {"is-changed", "is-error"})
+        self.assertEqual(error_of(body, "top_tier_count"), ERROR_NUMBER)
+        self.assertEqual(status_of(body), f"Fix 1 value before saving. Top-tier size: {ERROR_NUMBER}")
+
+    def test_a_posted_full_width_digit_is_refused(self):
+        """Test that the server does not save what the script refuses."""
+        before = self.snapshot()
+        path, query = self.redirect_of(self.save(valid_form(top_tier_count="３")))
+        self.assertEqual(self.snapshot(), before)
+        self.assertEqual(query["top_tier_count"], "３")
+        self.assertEqual(query["submitted"], "1")
+
     def test_a_draft_merely_drawn_takes_no_focus(self):
         """Test that only a refused save moves the caret, so the page stays at the top."""
         body = self.sheet("draft=1&cross_category_rate=1.5")
@@ -932,6 +949,29 @@ class TestParsing(unittest.TestCase):
                     parsed, error = parse_value(field, format_value(field, value))
                     self.assertIsNone(error)
                     self.assertEqual(parsed, value)
+
+    def test_other_scripts_digits_are_no_number(self):
+        """Test that only ASCII digits make a number, as settings.js reads them (R8 F2)."""
+        for key in ("weight_freshness", "top_tier_count", "cross_category_rate"):
+            for raw in ("３", "٣", "२", "1٣", "0.５", "1e٣"):
+                with self.subTest(key=key, raw=raw):
+                    self.assertEqual(parse_value(BY_KEY[key], raw), (None, ERROR_NUMBER))
+
+    def test_the_number_pattern_holds_no_unicode_class(self):
+        """Test that the pattern sent to settings.js means the same in both languages."""
+        self.assertNotIn("\\d", NUMBER_PATTERN)
+        self.assertNotIn("\\s", NUMBER_PATTERN)
+
+    def test_values_are_stripped_as_javascript_trims_them(self):
+        """Test the whitespace set: JavaScript's trim(), not Python's strip()."""
+        field = BY_KEY["top_tier_count"]
+        for raw in ("﻿3", "　 3 ", "\t3\n"):
+            with self.subTest(raw=raw):
+                self.assertEqual(parse_value(field, raw), (3, None))
+        # Python strips these and JavaScript does not.
+        for raw in ("\x1c3", "3\x85"):
+            with self.subTest(raw=raw):
+                self.assertEqual(parse_value(field, raw), (None, ERROR_NUMBER))
 
     def test_switches_read_on_from_a_form_or_an_address(self):
         """Test the values a switch takes as on."""

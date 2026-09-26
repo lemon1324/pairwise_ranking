@@ -2082,6 +2082,38 @@ def settings_type(devtools: DevTools, key: str, text: str) -> dict:
     return devtools.evaluate(SETTINGS_STATE)
 
 
+def server_settings(devtools: DevTools, query: dict) -> dict:
+    """
+    Fetch the Settings sheet the server draws for a draft address, unscripted.
+
+    What settings.js draws as a value is typed must be what the server draws
+    at the address a refused save of it lands on; this reads the latter.
+
+    Args:
+        devtools: The CDP session, on the Settings sheet.
+        query: The address's query, ``draft=1`` added.
+
+    Returns:
+        dict: ``status``, ``error`` (the first parameter error) and
+        ``slotErrors``, whitespace collapsed.
+    """
+    return devtools.evaluate(
+        f"""
+        (async () => {{
+          const query = new URLSearchParams({json.dumps(dict(query, draft="1"))});
+          const response = await fetch(`${{location.pathname}}?${{query}}`);
+          const page = new DOMParser().parseFromString(await response.text(), "text/html");
+          const text = (el) => (el ? el.textContent.replace(/\\s+/g, " ").trim() : "");
+          return {{
+            status: text(page.getElementById("status")),
+            error: text(page.querySelector("#params tr.is-error .spec-error")),
+            slotErrors: text(page.getElementById("slot-errors")),
+          }};
+        }})()
+        """
+    )
+
+
 def settings_ctrl_s(devtools: DevTools) -> bool:
     """
     Press Ctrl+S on the Settings sheet, where the person is.
@@ -2140,8 +2172,9 @@ def check_settings_keys(devtools: DevTools, base: str) -> str:
 
     Typing redraws the marks and the Status cell against the saved values the
     page carries, and Save is enabled only while there is something to save
-    and nothing to fix; the error drawn as typed is the server's sentence.
-    Ctrl+S is taken from the browser, does nothing with nothing to save, and
+    and nothing to fix; the error drawn as typed is the server's sentence, and
+    another script's digits (full-width, Arabic-Indic, Devanagari) are no
+    number to either, the Status matching the server's draft. Ctrl+S is taken from the browser, does nothing with nothing to save, and
     puts the caret in the first field in error when there is one; Esc leaves
     a field. Reset fills the defaults in place without a request and leaves
     the slot list alone. Ctrl+S then saves, landing on "Saved." with the
@@ -2191,6 +2224,20 @@ def check_settings_keys(devtools: DevTools, base: str) -> str:
         settings_type(devtools, "cross_category_rate", ".1")
         same = settings_type(devtools, "weight_freshness", "0.50")
         expect(same["changed"] == [] and same["saveDisabled"], "the saved values respelled read as changes")
+
+        # Other scripts' digits are no number to the script, nor to the server (F8, R8 F2).
+        count = devtools.evaluate('document.getElementById("f-top_tier_count").dataset.saved')
+        for digits in ("３", "٣", "२"):
+            other = settings_type(devtools, "top_tier_count", digits)
+            server = server_settings(devtools, {"top_tier_count": digits})
+            expect(other["errors"] == ["top_tier_count"], f"{digits!r} put {other['errors']} in error")
+            expect(other["error"].strip() == "Enter a number.", f"{digits!r} read {other['error']!r}")
+            expect(
+                other["error"].strip() == server["error"]
+                and " ".join(other["status"].split()) == server["status"],
+                f"{digits!r}: the script drew {other['status']!r}, the server {server['status']!r}",
+            )
+        settings_type(devtools, "top_tier_count", count)
 
         devtools.evaluate('document.getElementById("reset").click(), true')
         time.sleep(CALLOUT_WAIT_S)
