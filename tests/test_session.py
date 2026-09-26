@@ -930,6 +930,46 @@ class TestProjectSessionSettings(unittest.TestCase):
         self.assertEqual(self.session.project.slots, ["A0", "A1"])
         self.assertEqual(self.saves, [])
 
+    def test_apply_settings_keeps_the_labels_when_given_none(self):
+        """Test the desktop's call: the stored labels stay with their slots."""
+        self.session.project.set_slot_labels({"A1": "x"})
+
+        self.session.apply_settings(Settings(), ["A0", "A1", "B1"])
+
+        self.assertEqual(self.session.project.slot_labels, {"A1": "x"})
+
+    def test_apply_settings_stores_the_board_labels(self):
+        """Test the web's call: labels kept as entered_slot_labels keeps them."""
+        self.session.apply_settings(
+            Settings(), ["Apex", "Apostrophe", "7"],
+            {"Apex": "Ap", "Apostrophe": "'", "7": "", "Gone": "g"},
+        )
+
+        self.assertEqual(self.session.project.slot_labels, {"Apostrophe": "'"})
+        self.assertEqual(len(self.saves), 1)
+
+    def test_apply_settings_drops_the_label_of_a_slot_that_goes(self):
+        """Test that a label posted for a removed slot is not stored."""
+        self.session.project.set_slot_labels({"A1": "x"})
+
+        self.session.apply_settings(Settings(), ["A0"], {"A0": "", "A1": "x"})
+
+        self.assertEqual(self.session.project.slot_labels, {})
+
+    def test_apply_settings_refuses_a_colliding_label(self):
+        """Test that a refused label changes nothing and saves nothing."""
+        for labels in ({"A1": "A0"}, {"A1": "abc"}):
+            with self.subTest(labels=labels):
+                with self.assertRaises(ValueError):
+                    self.session.apply_settings(
+                        Settings(weight_freshness=4.0), ["A0", "A1", "B1"], labels
+                    )
+
+                self.assertEqual(self.session.project.settings, Settings())
+                self.assertEqual(self.session.project.slots, ["A0", "A1"])
+                self.assertEqual(self.session.project.slot_labels, {})
+                self.assertEqual(self.saves, [])
+
     def test_reset_settings_restores_the_defaults(self):
         """Test that reset returns every algorithm setting to its default."""
         self.session.apply_settings(

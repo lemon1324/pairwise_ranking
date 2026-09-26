@@ -24,6 +24,7 @@ from src.models.project import (
     Project,
     active_identifiers as active_identifiers_of,
     free_slots as free_slots_of,
+    normalize_slots,
 )
 from src.models.ranking import (
     BradleyTerryModel,
@@ -40,6 +41,7 @@ from .confidence import (
     ConfidenceReading,
 )
 from .record import WeightedRecord, weighted_record
+from .slots import check_slot_labels
 
 
 # Rankings need at least this many items before the model is fitted at all.
@@ -684,31 +686,55 @@ class ProjectSession:
         total = len(self._project.slots)
         return SlotSummary(total=total, used=total - len(free), free=free)
 
-    def apply_settings(self, settings: Settings, raw_slots: list[str]) -> list[str]:
+    def apply_settings(
+        self,
+        settings: Settings,
+        raw_slots: list[str],
+        slot_labels: Optional[dict] = None,
+    ) -> list[str]:
         """
-        Apply the settings and the slot list from one Save.
+        Apply the settings, the slot list and its short labels from one Save.
 
         The slot list arrives raw, as the user typed it, and is normalized on
         the way in; the normalized list comes back so the caller can show what
-        was actually stored. Taking both in one call is what makes one Save
-        exactly one save.
+        was actually stored. Taking everything in one call is what makes one
+        Save exactly one save.
 
         Args:
             settings: The settings as entered.
             raw_slots: Slot labels as entered. They are stripped, emptied
                 entries are dropped and duplicates are removed.
+            slot_labels: The short labels entered on the slot board, slot
+                name to label, or None to keep the stored ones (the desktop
+                does not edit them). Kept as
+                :func:`~src.app.slots.entered_slot_labels` keeps them: empty
+                labels, labels equal to the derived one and labels for slots
+                not in the new list are dropped. A label for a slot that goes
+                is dropped either way.
 
         Returns:
             list[str]: The slot list as it was stored.
 
         Raises:
             ValueError: If a setting is out of range
-                (:meth:`~src.models.settings.Settings.validate`). Nothing is
-                applied or saved.
+                (:meth:`~src.models.settings.Settings.validate`), or a label
+                is refused by :func:`~src.app.slots.check_slot_labels`. Nothing
+                is applied or saved.
         """
         settings.validate()
+        labels = None
+        if slot_labels is not None:
+            verdict = check_slot_labels(normalize_slots(raw_slots), slot_labels)
+            if not verdict.ok:
+                refused = ", ".join(
+                    f"{slot} ({error.value})" for slot, error in verdict.errors.items()
+                )
+                raise ValueError(f"Slot labels refused: {refused}")
+            labels = verdict.labels
         self._project.settings = settings
         self._project.set_slots(raw_slots)
+        if labels is not None:
+            self._project.set_slot_labels(labels)
         self._changed()
         return list(self._project.slots)
 

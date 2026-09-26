@@ -151,6 +151,101 @@ def validate_slot_labels(slots: list[str], labels: dict) -> SlotLabelVerdict:
     return SlotLabelVerdict(labels=cleaned, errors=errors)
 
 
+def entered_slot_labels(slots: list[str], labels: dict) -> dict[str, str]:
+    """
+    Keep only the labels worth storing from what was entered on a slot board.
+
+    Cleaned as :func:`clean_slot_labels` cleans them, and a label equal to the
+    one the slot would be drawn with anyway is dropped too: it says nothing the
+    slot name does not, and storing it would stop the label following a later
+    rename of the slot.
+
+    Args:
+        slots: The slot names the labels belong to.
+        labels: Slot name to short label, as entered; an empty label means
+            "use the first two characters".
+
+    Returns:
+        dict[str, str]: The labels to store, in slot order, not truncated.
+    """
+    cleaned = clean_slot_labels(slots, labels)
+    return {
+        slot: label
+        for slot, label in cleaned.items()
+        if label != short_label(slot)
+    }
+
+
+def check_slot_labels(slots: list[str], labels: dict) -> SlotLabelVerdict:
+    """
+    Check the labels entered on a slot board before they are stored.
+
+    Stricter than :func:`validate_slot_labels`: an entered label must also
+    differ from every label the *other* slots are drawn with, derived ones
+    included, because a label the user typed is a choice and a choice that
+    collides can be refused. Two derived labels colliding is still no error
+    (nobody chose them); :func:`label_collisions` reports it as a warning.
+
+    When two entered labels are the same, the first slot keeps it and the
+    later one is refused, as :func:`validate_slot_labels` does.
+
+    Args:
+        slots: The slot names, already normalized.
+        labels: Slot name to short label, as entered.
+
+    Returns:
+        SlotLabelVerdict: ``labels`` as :func:`entered_slot_labels` keeps them
+        and an error for each slot whose label is refused.
+    """
+    entered = entered_slot_labels(slots, labels)
+    names = [slot.strip() for slot in slots or [] if slot.strip()]
+
+    errors: dict[str, SlotLabelError] = {}
+    for position, slot in enumerate(names):
+        label = entered.get(slot)
+        if label is None:
+            continue
+        if len(label) > SLOT_LABEL_MAX_LENGTH:
+            errors[slot] = SlotLabelError.LABEL_TOO_LONG
+            continue
+        for other_position, other in enumerate(names):
+            if other == slot:
+                continue
+            if other in entered and other_position > position:
+                # A later entered label is the one refused, not this one.
+                continue
+            if short_label(other, entered) == label:
+                errors[slot] = SlotLabelError.LABEL_IN_USE
+                break
+
+    return SlotLabelVerdict(labels=entered, errors=errors)
+
+
+def label_owner(slots: list[str], labels: dict, slot: str) -> Optional[str]:
+    """
+    Name the slot whose label a refused label collides with.
+
+    Args:
+        slots: The slot names.
+        labels: The entered labels, as :func:`entered_slot_labels` keeps them.
+        slot: A slot whose label was refused as in use.
+
+    Returns:
+        Optional[str]: The first other slot drawn with the same label, or
+        None when there is none.
+    """
+    labels = labels or {}
+    label = labels.get(slot)
+    names = list(slots or [])
+    after = names[names.index(slot) + 1:] if slot in names else []
+    for other in names:
+        if other == slot or (other in labels and other in after):
+            continue
+        if short_label(other, labels) == label:
+            return other
+    return None
+
+
 def label_collisions(
     slots: list[str], labels: Optional[dict[str, str]] = None
 ) -> dict[str, list[str]]:
