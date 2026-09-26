@@ -318,6 +318,17 @@ class TestTheAddressedPair(CompareTestCase):
 
         self.assertEqual(response.status_code, DAMAGED_STATUS)
 
+    def test_two_items_with_one_id_land_on_the_damaged_page(self):
+        """Test that the core's refusal reaches the browser as damage, not a loop."""
+        twins = [dict(ITEMS[0]), dict(ITEMS[1], id=ITEMS[0]["id"])] + [dict(entry) for entry in ITEMS[2:]]
+        self.write("Twins.pairrank", project_data(items=twins))
+
+        for sheet in ("compare", "items"):
+            with self.subTest(sheet=sheet):
+                response = self.client.get(f"/projects/Twins.pairrank/{sheet}", follow_redirects=False)
+
+                self.assertEqual(response.status_code, DAMAGED_STATUS)
+
 
 class TestTheSheet(CompareTestCase):
     """Test cases for what one drawn pair carries."""

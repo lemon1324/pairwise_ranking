@@ -111,6 +111,19 @@ class TestLegacyCsvStorageItems(LegacyStorageTestCase):
         self.assertEqual(loaded[0].name, "Item 1")
         self.assertEqual(loaded[1].description, "Desc 2")
 
+    def test_a_repeated_id_keeps_the_first_row(self):
+        """Test that a second row with an id already read is skipped, not loaded."""
+        self._write_items_csv([
+            {"id": "id-1", "name": "Item 1", "identifier": "", "description": ""},
+            {"id": "id-1", "name": "Item 1 again", "identifier": "", "description": ""},
+            {"id": "id-2", "name": "Item 2", "identifier": "", "description": ""},
+        ])
+
+        with self.assertLogs("src.data.legacy_storage", level="WARNING"):
+            loaded = self.storage.load_items()
+
+        self.assertEqual([(item.id, item.name) for item in loaded], [("id-1", "Item 1"), ("id-2", "Item 2")])
+
     def test_load_item_with_identifier(self):
         """Test loading an item that has an identifier."""
         self._write_items_csv([

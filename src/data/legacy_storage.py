@@ -71,11 +71,19 @@ class LegacyCsvStorage:
             return []
 
         items = []
+        seen_ids = set()
         with open(self.items_file, "r", newline="", encoding="utf-8") as f:
             reader = csv.DictReader(f)
             for row in reader:
                 try:
-                    items.append(Item.from_dict(row))
+                    item = Item.from_dict(row)
+                    # A project refuses two items with one id, so a repeated
+                    # row would leave a migrated file that never opens. The
+                    # first row keeps the id, as a lookup would have found it.
+                    if item.id in seen_ids:
+                        raise ValueError(f"an item with the id {item.id!r} came earlier")
+                    seen_ids.add(item.id)
+                    items.append(item)
                 except (KeyError, ValueError) as e:
                     # Skipped rather than refused, and logged rather than
                     # printed: the web frontend migrates the data directory as

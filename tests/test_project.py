@@ -198,6 +198,40 @@ class TestProject(unittest.TestCase):
         with self.assertRaises(ValueError):
             Project.from_dict([])
 
+    def test_from_dict_refuses_two_items_with_one_id(self):
+        """Test that a file whose items share an id is damaged, not loaded."""
+        data = {
+            "name": "Test Project",
+            "items": [
+                Item(id="same", name="First").to_dict(),
+                Item(id="other", name="Second").to_dict(),
+                Item(id="same", name="Third").to_dict(),
+            ],
+        }
+
+        with self.assertRaises(ValueError) as ctx:
+            Project.from_dict(data)
+
+        self.assertIn("'same'", str(ctx.exception))
+
+    def test_add_item_refuses_an_id_already_held(self):
+        """Test that the project cannot be made to hold two items with one id."""
+        project = Project(name="Test Project")
+        project.add_item(Item(id="same", name="First"))
+
+        with self.assertRaises(ValueError):
+            project.add_item(Item(id="same", name="Second"))
+
+        self.assertEqual([item.name for item in project.items], ["First"])
+
+    def test_new_items_get_distinct_ids(self):
+        """Test that items built without an id each get their own."""
+        project = Project(name="Test Project")
+        for n in range(50):
+            project.add_item(Item(name=f"Item {n}"))
+
+        self.assertEqual(len({item.id for item in project.items}), 50)
+
     def test_to_dict_includes_format_version(self):
         """Test that to_dict stamps the current format version."""
         project = Project(name="Test Project")

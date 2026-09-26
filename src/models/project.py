@@ -298,7 +298,15 @@ class Project:
 
         Returns:
             Item: The item that was added.
+
+        Raises:
+            ValueError: If the project already has an item with its id. A new
+                item's id is a fresh UUID, so only a caller re-adding an item
+                it already holds can meet this; a file with two such items
+                would not load again.
         """
+        if self.find_item(item.id) is not None:
+            raise ValueError(f"The project already has an item with the id {item.id!r}")
         self.items.append(item)
         return item
 
@@ -518,6 +526,14 @@ class Project:
             modified = datetime.now()
 
         items = [Item.from_dict(item_data) for item_data in item_entries]
+        # An id names one item everywhere - in votes, in a replacement chain,
+        # in a web address - so two items sharing one leave every one of those
+        # pointing at whichever is found first. Such a file is damaged.
+        seen_ids = set()
+        for item in items:
+            if item.id in seen_ids:
+                raise ValueError(f"Project data has more than one item with the id {item.id!r}")
+            seen_ids.add(item.id)
         votes = [Vote.from_dict(vote_data) for vote_data in vote_entries]
         settings = Settings.from_dict(settings_data)
         slots = normalize_slots(slot_entries)
