@@ -169,6 +169,14 @@ What is checked, and why each one is here:
     leaves a field, Reset fills the defaults in place and leaves the slots
     alone, and Ctrl+S then saves and lands on "Saved.". The file is put back.
 
+``settings-slots``
+    The Settings slot table on the same project: typing the list redraws the
+    board, marks a repeated slot and warns of it, flags two slots drawn alike
+    without blocking Save; a label typed on a tile that another slot shows is
+    refused with the server's sentence and Ctrl+S focuses that tile; a free
+    label clears the collision and Ctrl+S saves the list and the label. The
+    file is put back.
+
 Each check leaves the page as it found it by navigating afresh, so they are
 independent and ``--check`` can run any one of them alone.
 """
@@ -2213,6 +2221,158 @@ def check_settings_keys(devtools: DevTools, base: str) -> str:
     )
 
 
+# What the Settings slot table shows: the tiles in order with their state
+# classes and label text, the warning and the label errors, the focused tile.
+SLOTS_STATE = """
+(() => {
+  const tiles = Array.from(document.querySelectorAll("#slot-board .balloon"), (tile) => {
+    const input = tile.querySelector(".slot-label");
+    return {
+      name: input.name.slice("label:".length),
+      value: input.value,
+      placeholder: input.placeholder,
+      classes: Array.from(tile.classList).filter((c) => c !== "balloon"),
+    };
+  });
+  const warning = document.getElementById("slot-warning");
+  return {
+    tiles,
+    count: document.getElementById("slots-count").textContent.trim(),
+    panelChanged: document.getElementById("slots-panel").classList.contains("is-changed"),
+    warning: warning.hidden ? "" : warning.textContent.replace(/\\s+/g, " ").trim(),
+    errors: document.getElementById("slot-errors").textContent.replace(/\\s+/g, " ").trim(),
+    focused: (document.activeElement || {}).name || "",
+    saveDisabled: document.getElementById("save").disabled,
+    status: document.getElementById("status").textContent.trim(),
+    kept: window.__driveMarker === 1,
+  };
+})()
+"""
+
+
+def slots_type(devtools: DevTools, selector: str, text: str) -> dict:
+    """
+    Type into the slot list or a tile, as the browser reports an edit.
+
+    Args:
+        devtools: The CDP session.
+        selector: The field's CSS selector.
+        text: The field's new text.
+
+    Returns:
+        dict: The slot table's state afterwards.
+    """
+    devtools.evaluate(
+        f"""
+        (() => {{
+          const input = document.querySelector({json.dumps(selector)});
+          input.focus();
+          input.value = {json.dumps(text)};
+          input.dispatchEvent(new Event("input", {{ bubbles: true }}));
+          return true;
+        }})()
+        """
+    )
+    return devtools.evaluate(SLOTS_STATE)
+
+
+def tile_of(state: dict, name: str) -> dict:
+    """
+    Find one tile in a slot table's state.
+
+    Args:
+        state: What SLOTS_STATE returned.
+        name: The slot's name.
+
+    Returns:
+        dict: The tile, or an empty dict when the board has none.
+    """
+    return next((tile for tile in state["tiles"] if tile["name"] == name), {})
+
+
+def check_settings_slots(devtools: DevTools, base: str) -> str:
+    """
+    Check the Settings slot table: the board as the list is typed, the labels.
+
+    Typing the list redraws the board with a tile per distinct slot, marks a
+    repeat and warns of it (the mockup's dupslots state), and flags two slots
+    drawn alike with the collision warning, which does not block Save. A label
+    typed on a tile that another slot already shows is refused with the
+    server's sentence, disables Save, and Ctrl+S puts the caret on that tile;
+    typing keeps the caret in the tile (the board is not redrawn). A label that
+    resolves the collision clears it, and Ctrl+S saves the list and the label.
+    The file is put back.
+    """
+    path = Path(DATA_DIR["path"]) / SETTINGS_FILE
+    original = path.read_bytes()
+    try:
+        size(devtools, *NARROW)
+        devtools.call("Page.navigate", {"url": f"{base}{SETTINGS_PATH}"})
+        wait_for_settings(devtools, "true", "the Settings sheet")
+        devtools.evaluate("window.__driveMarker = 1, true")
+        start = devtools.evaluate(SLOTS_STATE)
+        saved_text = devtools.evaluate('document.getElementById("slots").value')
+        expect(len(start["tiles"]) == 60, f"the board drew {len(start['tiles'])} tiles")
+        expect(tile_of(start, "Apostrophe").get("value") == "'", "Apostrophe's saved label is not on its tile")
+        expect(tile_of(start, "Enter").get("placeholder") == "En", "Enter's tile has no derived placeholder")
+        expect(not start["panelChanged"] and start["warning"] == "", "a saved slot table drew a mark or a warning")
+
+        dup = slots_type(devtools, "#slots", f"{saved_text}, 7, Esc")
+        expect(len(dup["tiles"]) == 61, f"the list with a repeat drew {len(dup['tiles'])} tiles")
+        expect("is-dup" in tile_of(dup, "7").get("classes", []), "the repeated slot is not marked")
+        expect(dup["warning"].startswith("Slot 7 is listed twice."), f"the warning read {dup['warning']!r}")
+        expect(dup["panelChanged"] and "Slots." in dup["status"], f"the Status said {dup['status']!r}")
+        expect(dup["count"] == "61 slots · 56 in use", f"the count read {dup['count']!r}")
+
+        clash = slots_type(devtools, "#slots", f"{saved_text}, 7, Esc, Enterprise")
+        expect(
+            all("is-clash" in tile_of(clash, name).get("classes", []) for name in ("Enter", "Enterprise")),
+            "Enter and Enterprise are not flagged",
+        )
+        expect(
+            "Slots Enter and Enterprise both show En." in clash["warning"],
+            f"the warning read {clash['warning']!r}",
+        )
+        expect(not clash["saveDisabled"], "a collision nobody chose disabled Save")
+
+        taken = slots_type(devtools, '.slot-label[name="label:Enterprise"]', "Sp")
+        expect("is-error" in tile_of(taken, "Enterprise").get("classes", []), "the taken label is not in error")
+        expect(
+            taken["errors"] == "Slot Enterprise: Slot Space already shows Sp.",
+            f"the error read {taken['errors']!r}",
+        )
+        expect(taken["saveDisabled"], "Save was enabled with a label to fix")
+        expect(taken["status"].startswith("Fix 1 value before saving."), f"the Status said {taken['status']!r}")
+        expect(taken["focused"] == "label:Enterprise", f"typing on a tile moved the caret to {taken['focused']!r}")
+        devtools.evaluate("document.activeElement.blur(), true")
+        settings_ctrl_s(devtools)
+        time.sleep(CALLOUT_WAIT_S)
+        refused = devtools.evaluate(SLOTS_STATE)
+        expect(refused["kept"], "Ctrl+S with a label to fix left the page")
+        expect(refused["focused"] == "label:Enterprise", f"Ctrl+S focused {refused['focused']!r}")
+
+        fixed = slots_type(devtools, '.slot-label[name="label:Enterprise"]', "E2")
+        expect(fixed["errors"] == "" and not fixed["saveDisabled"], "a free label was still refused")
+        expect("is-clash" not in tile_of(fixed, "Enter").get("classes", []), "the label left the collision flagged")
+        expect("both show" not in fixed["warning"], f"the warning read {fixed['warning']!r}")
+
+        settings_ctrl_s(devtools)
+        wait_for_settings(devtools, 'location.search.includes("done=saved")', "the save land")
+        written = json.loads(path.read_text(encoding="utf-8"))
+        expect(written["slots"][-2:] == ["Esc", "Enterprise"], f"the save wrote the slots {written['slots'][-3:]}")
+        expect(
+            written["slot_labels"] == {"Apostrophe": "'", "Enterprise": "E2"},
+            f"the save wrote the labels {written['slot_labels']}",
+        )
+    finally:
+        time.sleep(0.05)
+        path.write_bytes(original)
+    return (
+        "the board follows the list, a repeat and a collision are warned of, a taken label is "
+        "refused and focused by Ctrl+S, a free one saves with the list"
+    )
+
+
 CHECKS = {
     "fold": check_fold,
     "swap-empty": check_swap_empty,
@@ -2238,6 +2398,7 @@ CHECKS = {
     "items-error": check_items_error,
     "rankings-keys": check_rankings_keys,
     "settings-keys": check_settings_keys,
+    "settings-slots": check_settings_slots,
 }
 
 
