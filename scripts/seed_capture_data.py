@@ -97,22 +97,47 @@ address at every size; **just undone** (``cmp-undone``) - press Ctrl+Z on
 that and ``capture`` its landed address. Seed again afterwards: the votes are
 real.
 
-**The Settings pass (chunks 8b and 8c).** Four of ``docs/mockups/settings.html``'s
-five states have an address on ``switches-sample-settings``, which holds the
-mockup's saved values (``S`` is
-``/projects/switches-sample-settings.pairrank/settings``)::
+**The Rankings pass (chunks 8a and 8c).** Every state of
+``docs/mockups/rankings.html`` has an address (``R`` is
+``/projects/switches-sample.pairrank/rankings``)::
+
+    capture_web.py --data-dir .scratch/capture-data \\
+        "rk-normal=$R" "rk-expanded=$R?selected=it1" \\
+        "rk-filtered=$R?category=Tactile" "rk-retired=$R?retired=1" \\
+        "rk-novotes=/projects/switches-sample-fresh.pairrank/rankings" \\
+        "rk-toofew=/projects/switches-sample-one.pairrank/rankings"
+
+    capture_web.py --base-url "file:///$(wslpath -m docs/mockups)" \\
+        "mock-rk-normal=/rankings.html?state=normal" ...
+
+with one ``mock-rk-<state>`` per mockup state: normal, expanded, filtered,
+retired, novotes, toofew. The labels carry no ``web-``: the harness adds it.
+A selected row's detail is open only at ``selected=`` (see the plan's
+Rankings contract), which is what the callout probe needs.
+
+**The Settings pass (chunks 8b and 8c).** Every state of
+``docs/mockups/settings.html`` has an address on ``switches-sample-settings``,
+which holds the mockup's saved values and slot list (``S`` is
+``/projects/switches-sample-settings.pairrank/settings``; ``L`` is its slot
+list, ``1,%20...,%2056,%20Apostrophe,%20Enter,%20Space,%20Backspace``,
+written out in full)::
 
     capture_web.py --data-dir .scratch/capture-data \\
         "set-normal=$S" \\
         "set-changed=$S?draft=1&weight_freshness=0.75&top_tier_mode=1&blinded_comparison_mode=1" \\
         "set-invalid=$S?draft=1&weight_freshness=0.75&top_tier_mode=1&blinded_comparison_mode=1&cross_category_rate=1.5" \\
-        "set-reset=$S?reset=1"
+        "set-reset=$S?reset=1" \\
+        "set-dupslots=$S?draft=1&slots=$L,%207,%20Esc" \\
+        "set-clash=$S?draft=1&slots=$L,%20Enterprise" \\
+        "set-labelerr=$S?draft=1&slots=$L,%20Enterprise&label:Enterprise=Sp"
 
     capture_web.py --base-url "file:///$(wslpath -m docs/mockups)" \\
         "mock-set-normal=/settings.html?state=normal" ...
 
-with one ``mock-set-<state>`` per mockup state: normal, changed, invalid, reset
-(and dupslots, whose app state is the slot table's, 8c). ``capture_web.py``'s
+with one ``mock-set-<state>`` per mockup state: normal, changed, invalid,
+reset, dupslots. ``set-clash`` (two derived labels alike: the collision
+warning) and ``set-labelerr`` (a label another slot shows: the tile's error)
+are the owner's tile editor and have no mockup state. ``capture_web.py``'s
 Settings probe refuses a sheet whose table, controls, Status cell or script is
 missing. "Saved." after a save is the page a POST lands on, so like a Last
 change sentence it needs driving in the server that saved.
