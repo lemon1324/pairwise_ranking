@@ -525,6 +525,65 @@ class ProjectRegistry:
                 logger.info("Opened %s", path.name)
             return entry
 
+    def open_fresh(self, project_id: str) -> OpenProject:
+        """
+        Return the open project for an id, as its file holds it now.
+
+        What every screen's GET reads through. :meth:`open` alone hands back
+        the cached entry however old it is, so a file another program changed
+        - blinded mode switched on, votes added, the file deleted - would go on
+        being drawn from memory until somebody's next edit noticed. This takes
+        the file's lock and compares its stamp (one ``stat``), reloading and
+        leaving the changed-on-disk notice when it moved, exactly as
+        :meth:`mutate` does before an edit.
+
+        Args:
+            project_id: The project's file name.
+
+        Returns:
+            OpenProject: The cached entry, reloaded if its file changed.
+
+        Raises:
+            ProjectNotFoundError: If the id names no project in the directory,
+                or its file has since been deleted.
+            ProjectFormatError: If the file's format version is unusable.
+            ProjectUnreadableError: If the file cannot be read or parsed. In
+                each case nothing stays cached, so every later request answers
+                the same way until the file is put right.
+        """
+        path = self.resolve(project_id)
+        with self.locked(path):
+            entry = self.open(project_id)
+            self._reload_or_drop(path, entry)
+            return entry
+
+    def _reload_or_drop(self, path: Path, entry: OpenProject) -> None:
+        """
+        Reload an entry whose file changed, or drop it if the file won't load.
+
+        Called under the file's lock. A reload that raises leaves the entry
+        holding a project the file no longer is; kept, it would go on being
+        drawn by every read that does not check, so it goes, and the error
+        goes on to the caller.
+
+        Args:
+            path: The entry's resolved path.
+            entry: The cached entry.
+
+        Raises:
+            ProjectNotFoundError: If the file has since been deleted.
+            ProjectFormatError: If its format version is now unusable.
+            ProjectUnreadableError: If it can no longer be read.
+        """
+        try:
+            entry.reload_if_changed()
+        except (LookupError, ValueError, OSError) as error:
+            logger.warning("Dropped %s: it no longer loads: %s", path.name, error)
+            with self._guard:
+                if self._entries.get(path) is entry:
+                    del self._entries[path]
+            raise
+
     def session(self, project_id: str) -> ProjectSession:
         """
         Return the session for an id, for reading.
@@ -581,7 +640,7 @@ class ProjectRegistry:
         path = self.resolve(project_id)
         with self.locked(path):
             entry = self.open(project_id)
-            entry.reload_if_changed()
+            self._reload_or_drop(path, entry)
             try:
                 # The session is read off the entry after the reload, because
                 # a reload replaces it wholesale.

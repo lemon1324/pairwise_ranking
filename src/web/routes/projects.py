@@ -1031,7 +1031,7 @@ async def open_project(
         ProjectFormatError: If the file's format version cannot be reached.
         ProjectUnreadableError: If the file will not read as a project.
     """
-    entry = registry.open(project_id)
+    entry = registry.open_fresh(project_id)
     return RedirectResponse(
         project_url(request, entry.path.name, DEFAULT_SHEET), status_code=303
     )

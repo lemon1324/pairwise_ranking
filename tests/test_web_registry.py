@@ -456,6 +456,57 @@ class TestRegistryMutation(RegistryTestCase):
                 pass
 
 
+class TestRegistryOpenFresh(RegistryTestCase):
+    """Test cases for the read every screen's GET goes through."""
+
+    def test_an_untouched_file_is_the_cached_entry(self):
+        """Test that nothing is reloaded or noticed when nothing moved."""
+        entry = self.registry.open(self.project_id)
+        session = entry.session
+
+        self.assertIs(self.registry.open_fresh(self.project_id), entry)
+        self.assertIs(entry.session, session)
+        self.assertFalse(entry.take_reload_notice())
+
+    def test_a_file_changed_on_disk_is_reloaded_with_a_notice(self):
+        """Test that a GET sees another program's save without waiting for an edit."""
+        entry = self.registry.open(self.project_id)
+        self.rewrite_with_name("Tasting, revised elsewhere")
+
+        self.assertIs(self.registry.open_fresh(self.project_id), entry)
+        self.assertEqual(entry.session.project.name, "Tasting, revised elsewhere")
+        self.assertTrue(entry.take_reload_notice())
+
+    def test_a_failed_reload_drops_the_entry(self):
+        """Test that a file that no longer loads leaves nothing cached to draw."""
+        for label, spoil in (
+            ("deleted", lambda: self.path.unlink()),
+            ("damaged", lambda: self.write_raw("{ not json")),
+        ):
+            with self.subTest(label):
+                ProjectStorage.create_new("Tasting", self.path)
+                entry = self.registry.open(self.project_id)
+                spoil()
+
+                with self.assertRaises((ProjectNotFoundError, ProjectUnreadableError)):
+                    self.registry.open_fresh(self.project_id)
+
+                self.assertNotIn(entry.path, self.registry._entries)
+
+    def test_a_failed_reload_before_an_edit_drops_the_entry_too(self):
+        """Test mutate's reload: the stale project is not kept for the next read."""
+        entry = self.registry.open(self.project_id)
+        data = json.loads(self.path.read_text(encoding="utf-8"))
+        data[FORMAT_VERSION_KEY] = CURRENT_FORMAT_VERSION + 1
+        self.write_raw(data)
+
+        with self.assertRaises(NewerFormatError):
+            with self.registry.mutate(self.project_id):
+                self.fail("The edit ran over a file that did not load.")
+
+        self.assertNotIn(entry.path, self.registry._entries)
+
+
 class TestRegistryFailedEdit(RegistryTestCase):
     """Test cases for an edit whose save fails: memory goes back to the file."""
 

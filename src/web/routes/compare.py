@@ -625,19 +625,24 @@ async def compare_sheet(
         ProjectFormatError: If the file's format version cannot be reached.
         ProjectUnreadableError: If the file will not read as a project.
     """
-    entry = registry.open(project_id)
+    # Fresh, not merely cached: a file another program switched to blinded
+    # mode must stop drawing names on the very next page, not after a vote.
+    entry = registry.open_fresh(project_id)
     session = entry.session
     project = session.project
     pid = entry.path.name
 
     offer: Optional[PairOffer] = session.offer_pair(a, b) if a and b else None
+    pair = offer.pair if offer is not None else None
     if offer is None:
         offer = session.next_pair()
-        if offer.has_pair:
+        # Redirect only to an address that will draw: a pair the session
+        # chose but cannot put back on offer would send the browser round
+        # forever. Such a pair is drawn as the empty state instead.
+        if offer.has_pair and session.offer_pair(*(item.id for item in offer.pair)):
             return _redirect(_sheet_url(request, pid, offer.pair))
 
     blinded = project.settings.blinded_comparison_mode
-    pair = offer.pair
     votes = project.votes
     today = datetime.now().date()
     vote_url = project_url(request, pid, f"{SHEET}/{ACTION_VOTE}")
@@ -664,7 +669,11 @@ async def compare_sheet(
         "blinded": blinded,
         "pair_ids": {"a": pair[0].id, "b": pair[1].id} if pair else {"a": "", "b": ""},
         "views": [_view(item, blinded) for item in pair] if pair else [],
-        "empty": _empty_state(project, offer.reason) if pair is None else None,
+        "empty": (
+            _empty_state(project, offer.reason or NoPairReason.TOO_FEW_ITEMS)
+            if pair is None
+            else None
+        ),
         "readings": _readings(session, blinded),
         "vote_count": len(votes),
         "today_count": sum(1 for vote in votes if vote.timestamp.date() == today),
@@ -719,7 +728,7 @@ async def vote(
     """
     chosen = _station(station)
     if chosen is None or chosen.side == SIDE_EQUAL:
-        entry = registry.open(project_id)
+        entry = registry.open_fresh(project_id)
         pid = entry.path.name
         if chosen is None:
             logger.info("Refused a vote on station %r in %s", station, pid)
