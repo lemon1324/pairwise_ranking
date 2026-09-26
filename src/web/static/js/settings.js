@@ -8,6 +8,10 @@
 // for the address it was asked, so this only keeps them true while the values change, and
 // disables Save while there is nothing to save or something to fix. Saving is the form's own
 // post: no htmx, so no swap to guard.
+//
+// The slot table (8c) is redrawn the same way: a tile per distinct slot as the list is typed,
+// each an input for its short label, with the duplicate and collision warnings and the label
+// errors. The board carries the saved labels, the slots in use and the two label sentences.
 
 (() => {
   const form = document.getElementById("settings");
@@ -22,6 +26,8 @@
   const save = $("save");
   const reset = $("reset");
   const RESET_NOTE = "Defaults filled in; the slot list is unchanged. Save to apply.";
+  // A tile's field name is this followed by its slot's name (LABEL_PREFIX in the route).
+  const LABEL_PREFIX = "label:";
 
   // The sentence a save or a reset leads the cell with, until the next edit.
   let note = status.dataset.note || "";
@@ -47,6 +53,148 @@
     return isSwitch(el) ? el.dataset.saved === "1" : Number(el.dataset.saved);
   }
 
+  // ---- The slot table: the list, one label input per tile, the warnings. ----
+  // src/web/routes/settings.py build_slot_panel, rule for rule; src/app/slots.py
+  // check_slot_labels for the labels.
+
+  const slotsText = $("slots");
+  const board = $("slot-board");
+  const savedLabels = JSON.parse(board.dataset.savedLabels || "{}");
+  const usedSlots = new Set(JSON.parse(board.dataset.used || "[]"));
+  const labelMax = Number(board.dataset.labelMax);
+  // What each slot's tile holds, kept across redraws so a label survives editing the list.
+  const typedLabels = new Map();
+  for (const input of board.querySelectorAll(".slot-label")) {
+    typedLabels.set(input.name.slice(LABEL_PREFIX.length), input.value);
+  }
+
+  // Characters, not UTF-16 units, as Python counts them.
+  const chars = (s) => Array.from(s);
+  const derivedOf = (name) => chars(name).slice(0, labelMax).join("");
+
+  function parseSlotText(text) {
+    const names = [];
+    const dups = [];
+    for (const part of text.split(/[\n,]/)) {
+      const name = part.trim();
+      if (!name) continue;
+      if (names.includes(name)) {
+        if (!dups.includes(name)) dups.push(name);
+        continue;
+      }
+      names.push(name);
+    }
+    return { names, dups };
+  }
+
+  // A slot's typed label, else the one it was saved with.
+  const typedOf = (name) => (typedLabels.has(name) ? typedLabels.get(name) : savedLabels[name] ?? "").trim();
+
+  // check_slot_labels: the labels worth storing, and the refused ones with their sentences.
+  function checkLabels(names) {
+    const entered = {};
+    for (const name of names) {
+      const label = typedOf(name);
+      if (label && label !== derivedOf(name)) entered[name] = label;
+    }
+    const shown = (name) => (entered[name] ? chars(entered[name]).slice(0, labelMax).join("") : derivedOf(name));
+    // A Map, not an object: an object would put names like "12" before the others.
+    const errors = new Map();
+    names.forEach((name, position) => {
+      const label = entered[name];
+      if (label === undefined) return;
+      if (chars(label).length > labelMax) {
+        errors.set(name, board.dataset.errorLong);
+        return;
+      }
+      const owner = names.find(
+        (other, otherPosition) =>
+          other !== name && !(other in entered && otherPosition > position) && shown(other) === label
+      );
+      if (owner !== undefined) errors.set(name, board.dataset.errorTaken.replace("{slot}", owner).replace("{label}", label));
+    });
+    const groups = new Map();
+    for (const name of names) {
+      const label = shown(name);
+      if (!groups.has(label)) groups.set(label, []);
+      groups.get(label).push(name);
+    }
+    const collisions = [...groups].filter(([, members]) => members.length > 1);
+    return { entered, errors, collisions };
+  }
+
+  const sameLabels = (a, b) =>
+    Object.keys(a).length === Object.keys(b).length && Object.keys(a).every((k) => a[k] === b[k]);
+
+  const tileTitle = (name, dup) => `Slot ${name}, ${usedSlots.has(name) ? "in use" : "free"}${dup ? ", listed twice" : ""}`;
+
+  // Draws a tile per distinct slot listed; only when the list changes, so a tile keeps the focus.
+  // The server drew the first board; it is kept (and so is its autofocus) until the list changes.
+  let boardNames = [...typedLabels.keys()];
+  function drawBoard(names, dups) {
+    boardNames = names;
+    board.innerHTML = names
+      .map((name) => {
+        const title = esc(tileTitle(name, dups.includes(name)));
+        return `<li class="balloon" title="${title}"><input class="slot-label" name="${esc(LABEL_PREFIX + name)}" form="settings" value="${esc(typedLabels.get(name) ?? savedLabels[name] ?? "")}" placeholder="${esc(derivedOf(name))}" maxlength="${labelMax}" autocomplete="off" spellcheck="false" aria-label="Short label, ${title}"></li>`;
+      })
+      .join("");
+  }
+
+  // Marks the tiles and writes the errors and warnings; returns what the Status cell needs.
+  function updateSlots() {
+    const { names, dups } = parseSlotText(slotsText.value);
+    if (names.join("\n") !== boardNames.join("\n")) drawBoard(names, dups);
+    const { entered, errors, collisions } = checkLabels(names);
+    const clashing = new Set(collisions.flatMap(([, members]) => members));
+    board.querySelectorAll(".balloon").forEach((tile, i) => {
+      const name = names[i];
+      const input = tile.querySelector(".slot-label");
+      const dup = dups.includes(name);
+      tile.classList.toggle("is-used", usedSlots.has(name));
+      tile.classList.toggle("is-dup", dup);
+      tile.classList.toggle("is-clash", clashing.has(name));
+      tile.classList.toggle("is-error", errors.has(name));
+      tile.title = tileTitle(name, dup);
+      input.setAttribute("aria-label", `Short label, ${tile.title}`);
+      if (errors.has(name)) {
+        input.setAttribute("aria-invalid", "true");
+        input.setAttribute("aria-describedby", "slot-errors");
+      } else {
+        input.removeAttribute("aria-invalid");
+        input.removeAttribute("aria-describedby");
+      }
+    });
+    $("slot-errors").innerHTML = [...errors]
+      .map(
+        ([name, error]) =>
+          `<p class="spec-error"><svg class="icon" aria-hidden="true"><use href="#i-warn"/></svg><span><strong>Slot ${esc(name)}:</strong> ${esc(error)}</span></p>`
+      )
+      .join("");
+
+    const quiet = collisions.filter(([, members]) => !members.some((m) => errors.has(m)));
+    const parts = [];
+    if (dups.length) {
+      parts.push(
+        `<strong>${dups.length === 1 ? `Slot ${esc(dups[0])} is` : `Slots ${dups.map(esc).join(", ")} are`} listed twice.</strong> Duplicates are dropped when you save.`
+      );
+    }
+    if (quiet.length) {
+      const sentences = quiet.map(
+        ([label, members]) =>
+          `<strong>Slots ${members.slice(0, -1).map(esc).join(", ")} and ${esc(members[members.length - 1])} both show ${esc(label)}.</strong>`
+      );
+      parts.push(`${sentences.join(" ")} Type a short label on one of their tiles.`);
+    }
+    $("slot-warning").hidden = !parts.length;
+    $("slot-warning-text").innerHTML = parts.join(" ");
+    $("slots-count").textContent = `${names.length} slots · ${names.filter((n) => usedSlots.has(n)).length} in use`;
+
+    const changed = names.join(", ") !== slotsText.dataset.saved || !sameLabels(entered, savedLabels);
+    $("slots-panel").classList.toggle("is-changed", changed);
+    return { changed, errors: [...errors].map(([name, error]) => `Slot ${name}: ${error}`) };
+  }
+
   function update() {
     const changed = [];
     const errors = [];
@@ -68,6 +216,9 @@
       if (isChanged) changed.push(el.dataset.name);
       if (error) errors.push(`${el.dataset.name}: ${error}`);
     }
+    const slots = updateSlots();
+    if (slots.changed) changed.push("Slots");
+    errors.push(...slots.errors);
 
     $("status-cell").classList.toggle("is-error", errors.length > 0);
     let text;
@@ -92,7 +243,7 @@
     if (submitting) return;
     update();
     if (save.disabled) {
-      document.querySelector(".is-error .input")?.focus();
+      document.querySelector(".is-error .input, .slot-board .is-error .slot-label")?.focus();
       return;
     }
     form.requestSubmit(save);
@@ -113,6 +264,14 @@
     el.addEventListener("input", edited);
     el.addEventListener("change", edited);
   }
+  slotsText.addEventListener("input", edited);
+  // Tiles are redrawn, so their typing is heard on the board.
+  board.addEventListener("input", (event) => {
+    const input = event.target.closest(".slot-label");
+    if (!input) return;
+    typedLabels.set(input.name.slice(LABEL_PREFIX.length), input.value);
+    edited();
+  });
 
   form.addEventListener("submit", (event) => {
     if (submitting) {

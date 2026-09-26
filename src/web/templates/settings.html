@@ -20,8 +20,9 @@
   draws the defaults unsaved, and Save is never disabled, because nothing would
   enable it again.
 
-  **The slot panel is read only** (8b): its textarea has no name, so a save
-  leaves the slots alone. The slot table is 8c's.
+  **The slot table** (8c) posts the list as `slots` and each tile's label as
+  `label:<slot name>`; the board carries the saved labels, the slots in use
+  and the two label sentences, so settings.js redraws it as the list is typed.
 #}
 {% extends "base.html" %}
 {% from "macros/title_block.html" import title_block, keys_block, tb_title, tb_file, tb_sheet %}
@@ -103,17 +104,50 @@
     </table>
   </section>
 
-  {# Read only until the slot table (8c): no name on the textarea, so a save
-     leaves the slots alone. #}
-  <section class="spec-slots" id="slots-panel" aria-labelledby="slots-title">
+  {# The slot table (8c): the list is plain names; each tile on the board is
+     its slot's short label, an input whose placeholder is the derived one
+     (owner answer 1). settings.js redraws the board as the list is typed. #}
+  <section class="spec-slots{% if slots.changed %} is-changed{% endif %}" id="slots-panel" aria-labelledby="slots-title">
     <div class="spec-slots-head">
       <h2 id="slots-title">Slots</h2>
       <span class="field-hint" id="slots-count">{{ slots.total }} slots &middot; {{ slots.used }} in use</span>
     </div>
     <div class="spec-slots-body">
       <label class="visually-hidden" for="slots">Slot list, comma separated</label>
-      <textarea class="input" id="slots" rows="4" spellcheck="false" readonly>{{ slots.text }}</textarea>
-      <p class="field-hint">Comma separated. Shown read only on this sheet for now.</p>
+      <textarea class="input" id="slots" name="slots" form="settings" rows="4" spellcheck="false"
+                data-saved="{{ slots.saved_text }}">{{ slots.text }}</textarea>
+      <p class="field-hint">Comma separated, names only. Type a short label on a tile to show it in lists; an empty tile shows the first two characters.</p>
+      <ul class="slot-board" id="slot-board" aria-label="Slot board"
+          data-saved-labels="{{ saved_labels_json }}" data-used="{{ used_slots_json }}"
+          data-label-max="{{ label_max }}" data-error-long="{{ error_label_long }}"
+          data-error-taken="{{ error_label_taken }}">
+        {%- for tile in slots.tiles %}
+        <li class="balloon{{ ' is-used' if tile.used }}{{ ' is-dup' if tile.dup }}{{ ' is-clash' if tile.clash }}{{ ' is-error' if tile.error }}" title="{{ tile.title }}">
+          <input class="slot-label" name="{{ tile.field_name }}" form="settings" value="{{ tile.label }}"
+                 placeholder="{{ tile.derived }}" maxlength="{{ label_max }}" autocomplete="off" spellcheck="false"
+                 aria-label="Short label, {{ tile.title }}"{% if tile.error %} aria-invalid="true" aria-describedby="slot-errors"{% endif %}
+                 {%- if tile.field_name == first_error %} autofocus{% endif %}>
+        </li>
+        {%- endfor %}
+      </ul>
+      <p class="slot-legend" aria-hidden="true">
+        <span><span class="balloon is-used"></span> in use</span>
+        <span><span class="balloon"></span> free</span>
+      </p>
+      <div id="slot-errors">
+        {%- for tile in slots.tiles if tile.error %}
+        <p class="spec-error">{{ icon("warn") }}<span><strong>Slot {{ tile.name }}:</strong> {{ tile.error }}</span></p>
+        {%- endfor %}
+      </div>
+      <div class="slot-warning" id="slot-warning" role="status"{% if not slots.dups and not slots.collisions %} hidden{% endif %}>
+        {{ icon("warn") }}
+        <p id="slot-warning-text" style="margin:0">
+          {%- if slots.dups %}<strong>{% if slots.dups|length == 1 %}Slot {{ slots.dups[0] }} is{% else %}Slots {{ slots.dups|join(", ") }} are{% endif %} listed twice.</strong> Duplicates are dropped when you save.{% endif %}
+          {%- if slots.dups and slots.collisions %} {% endif %}
+          {%- for label, members in slots.collisions.items() %}{% if not loop.first %} {% endif %}<strong>Slots {{ members[:-1]|join(", ") }} and {{ members[-1] }} both show {{ label }}.</strong>{% endfor %}
+          {%- if slots.collisions %} Type a short label on one of their tiles.{% endif -%}
+        </p>
+      </div>
     </div>
   </section>
 

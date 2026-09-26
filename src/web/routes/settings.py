@@ -36,13 +36,21 @@ the values are typed, and disables Save while there is nothing to save or
 something to fix. It never validates by rules of its own beyond those sentences
 and :data:`NUMBER_PATTERN`.
 
-**The slot panel is drawn read-only** (phase 8b). Its textarea has no name, so
-a save never touches the slots; the slot table's editing, labels and board are
-phase 8c's. A post that carries ``slots`` does apply them, through
-:meth:`~src.app.session.ProjectSession.apply_settings`, so 8c only has to name
-the field.
+**The slot table** (phase 8c) is the comma-separated list, plain names only,
+and a board of one tile per listed slot. Each tile is a small input holding the
+slot's short label (owner answer 1): empty, it shows the first two characters
+as its placeholder and stores nothing. Tiles post as ``label:<slot name>``. A
+draft carries the list as ``slots`` and each label that differs from the saved
+one under the same names; a slot with no ``label:`` entry keeps its saved
+label, so a slot added without JavaScript (no tile yet) gets none, and a tile
+posted for a slot no longer listed is dropped. The labels are checked by
+:func:`~src.app.slots.check_slot_labels`: at most two characters, and never a
+label another slot is drawn with, derived ones included. Two *derived* labels
+colliding is a warning on the tiles, not a refusal. A slot listed twice is a
+warning too; saving drops the repeat.
 """
 
+import json
 import logging
 import math
 import re
@@ -54,8 +62,17 @@ from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
-from src.app.slots import format_slot_list, parse_slot_list
-from src.models.project import Project
+from src.app.slots import (
+    SlotLabelError,
+    check_slot_labels,
+    entered_slot_labels,
+    format_slot_list,
+    label_collisions,
+    label_owner,
+    parse_slot_list,
+    short_label,
+)
+from src.models.project import SLOT_LABEL_MAX_LENGTH, Project
 from src.models.settings import LIMITS, Limit, Settings
 
 from ..deps import Principal, get_current_user, get_registry
@@ -166,6 +183,17 @@ CHANGE_TIME_FORMAT = "%H:%M"
 # The sentences the Status cell leads with after a save and after Reset.
 NOTE_SAVED = "Saved."
 NOTE_RESET = "Defaults filled in; the slot list is unchanged. Save to apply."
+
+# What the Status cell calls the slot table when its list or labels changed.
+SLOTS_NAME = "Slots"
+
+# A tile's field name is this followed by the slot's name.
+LABEL_PREFIX = "label:"
+
+# The two ways a tile's label is refused. settings.js reads both from the
+# board and fills in the same names.
+ERROR_LABEL_LONG = f"Use at most {SLOT_LABEL_MAX_LENGTH} characters."
+ERROR_LABEL_TAKEN = "Slot {slot} already shows {label}."
 
 
 def _templates(request: Request) -> Jinja2Templates:
@@ -391,7 +419,7 @@ def build_rows(saved: Settings, draft: dict) -> list:
     return rows
 
 
-def status_of(rows: list, note: str, last_saved: str) -> dict:
+def status_of(rows: list, note: str, last_saved: str, panel: Optional["SlotPanel"] = None) -> dict:
     """
     Write the Status cell: errors first, then changes, then all saved.
 
@@ -400,24 +428,30 @@ def status_of(rows: list, note: str, last_saved: str) -> dict:
         note: A sentence leading the cell ("Saved.", the reset note), dropped
             while there are errors.
         last_saved: When the file was last saved, as the cell writes it.
+        panel: The slot table, whose refused labels count as values to fix
+            and whose changes are named "Slots"; None leaves it out.
 
     Returns:
         dict: ``lead`` in bold and ``text`` after it; ``error`` when the cell
         reports values to fix.
     """
-    errors = [row for row in rows if row.error]
-    changed = [row for row in rows if row.changed]
+    errors = [f"{row.field.name}: {row.error}" for row in rows if row.error]
+    changed = [row.field.name for row in rows if row.changed]
+    if panel is not None:
+        errors += [f"Slot {tile.name}: {tile.error}" for tile in panel.tiles if tile.error]
+        if panel.changed:
+            changed.append(SLOTS_NAME)
     if errors:
         count = len(errors)
         return {
             "lead": f"Fix {count} {'value' if count == 1 else 'values'} before saving.",
-            "text": " ".join(f"{row.field.name}: {row.error}" for row in errors),
+            "text": " ".join(errors),
             "note": "",
             "error": True,
         }
     if changed:
         count = len(changed)
-        names = ", ".join(row.field.name for row in changed)
+        names = ", ".join(changed)
         return {
             "lead": f"{count} unsaved {'change' if count == 1 else 'changes'}:",
             "text": f"{names}. Changed values are marked with a triangle.",
@@ -449,16 +483,18 @@ def _saved_change(entry: OpenProject, done: str) -> Optional[LastChange]:
     return change
 
 
-def _draft_query(form) -> dict:
+def _draft_query(form, project: Project) -> dict:
     """
     Spell a draft as the address that draws it.
 
     Args:
         form: The posted form, or any mapping of field names to text.
+        project: The project, whose saved labels a tile need not repeat.
 
     Returns:
         dict: ``draft=1``, every numeric field posted, each switch that is
-        on as "1", and the slot text when it was posted.
+        on as "1", the slot text when it was posted, and each tile's label
+        that differs from the saved one (an emptied one as empty).
     """
     query = {"draft": YES, "submitted": YES}
     for field in FIELDS:
@@ -472,6 +508,9 @@ def _draft_query(form) -> dict:
             query[field.key] = str(raw)
     if form.get("slots") is not None:
         query["slots"] = str(form.get("slots"))
+    for name, label in label_fields(form).items():
+        if label.strip() != project.slot_labels.get(name, ""):
+            query[f"{LABEL_PREFIX}{name}"] = label
     return query
 
 
@@ -491,23 +530,165 @@ def _sheet_url(request: Request, project_id: str, query: Optional[dict] = None) 
     return f"{base}?{urlencode(query)}" if query else base
 
 
-def _slot_panel(project: Project) -> dict:
+@dataclass(frozen=True)
+class Tile:
     """
-    Describe the slot list for the read-only panel.
+    One slot on the board.
+
+    Attributes:
+        name: The slot's name.
+        label: What its label input holds: the label typed or saved, or empty.
+        derived: The label the slot is drawn with when its input is empty.
+        used: Whether an active item holds the slot.
+        dup: Whether the list names the slot more than once.
+        clash: Whether another slot is drawn with the same label.
+        error: The sentence refusing its label, or empty.
+    """
+
+    name: str
+    label: str
+    derived: str
+    used: bool
+    dup: bool
+    clash: bool
+    error: str
+
+    @property
+    def field_name(self) -> str:
+        """The name its input posts under."""
+        return f"{LABEL_PREFIX}{self.name}"
+
+    @property
+    def title(self) -> str:
+        """What the tile says of itself on hover and to a screen reader."""
+        state = "in use" if self.used else "free"
+        return f"Slot {self.name}, {state}{', listed twice' if self.dup else ''}"
+
+
+@dataclass(frozen=True)
+class SlotPanel:
+    """
+    The slot table as drawn.
+
+    Attributes:
+        text: What the list's textarea holds.
+        saved_text: The saved list as one line, for settings.js's marks.
+        saved_labels: The saved labels worth storing, for the same.
+        used_slots: Every slot an active item holds, for the board's fills.
+        tiles: One per distinct slot listed, in list order.
+        dups: The slots listed more than once.
+        collisions: Label to the slots drawn with it, for each label two or
+            more slots share and none of them is refused.
+        changed: Whether the list or the labels differ from the saved ones.
+    """
+
+    text: str
+    saved_text: str
+    saved_labels: dict
+    used_slots: list
+    tiles: list
+    dups: list
+    collisions: dict
+    changed: bool
+
+    @property
+    def total(self) -> int:
+        """How many slots the list names."""
+        return len(self.tiles)
+
+    @property
+    def used(self) -> int:
+        """How many of them an active item holds."""
+        return sum(1 for tile in self.tiles if tile.used)
+
+
+def label_fields(form) -> dict:
+    """
+    Pick the tiles' labels out of a form or a query.
 
     Args:
-        project: The project.
+        form: The posted form or the query parameters.
 
     Returns:
-        dict: ``text``, the list as one comma-separated line; ``total`` and
-        ``used``, the counts the panel's head gives.
+        dict: Slot name to the label as typed, for every tile it carries.
     """
-    free = project.free_slots()
     return {
-        "text": format_slot_list(project.slots),
-        "total": len(project.slots),
-        "used": len(project.slots) - len(free),
+        key[len(LABEL_PREFIX):]: str(value)
+        for key, value in form.items()
+        if key.startswith(LABEL_PREFIX)
     }
+
+
+def build_slot_panel(project: Project, text: Optional[str], labels: dict) -> SlotPanel:
+    """
+    Read the slot table against the saved list and labels.
+
+    Args:
+        project: The project, holding the saved list and labels.
+        text: The list as typed, or None for the saved list.
+        labels: Slot name to label for each tile the draft carries; a slot
+            without one holds its saved label.
+
+    Returns:
+        SlotPanel: The table, its tiles' states and whether it changed.
+    """
+    saved_text = format_slot_list(project.slots)
+    if text is None:
+        text = saved_text
+    names: list[str] = []
+    dups: list[str] = []
+    for entry in parse_slot_list(text):
+        name = entry.strip()
+        if not name:
+            continue
+        if name in names:
+            if name not in dups:
+                dups.append(name)
+            continue
+        names.append(name)
+
+    typed = {name: labels.get(name, project.slot_labels.get(name, "")) for name in names}
+    verdict = check_slot_labels(names, typed)
+    used = project.active_identifiers()
+    groups = label_collisions(names, verdict.labels)
+    clashing = {name for members in groups.values() for name in members}
+
+    tiles = []
+    for name in names:
+        error = ""
+        problem = verdict.errors.get(name)
+        if problem is SlotLabelError.LABEL_TOO_LONG:
+            error = ERROR_LABEL_LONG
+        elif problem is SlotLabelError.LABEL_IN_USE:
+            owner = label_owner(names, verdict.labels, name) or ""
+            error = ERROR_LABEL_TAKEN.format(slot=owner, label=verdict.labels[name])
+        tiles.append(
+            Tile(
+                name=name,
+                label=typed[name].strip(),
+                derived=short_label(name),
+                used=name in used,
+                dup=name in dups,
+                clash=name in clashing,
+                error=error,
+            )
+        )
+
+    saved_labels = entered_slot_labels(project.slots, project.slot_labels)
+    return SlotPanel(
+        text=text,
+        saved_text=saved_text,
+        saved_labels=saved_labels,
+        used_slots=sorted(used),
+        tiles=tiles,
+        dups=dups,
+        collisions={
+            label: members
+            for label, members in groups.items()
+            if not any(member in verdict.errors for member in members)
+        },
+        changed=names != list(project.slots) or verdict.labels != saved_labels,
+    )
 
 
 @router.get(f"{PROJECTS_PREFIX}/{{project_id}}/{SHEET}", name="settings_sheet")
@@ -549,13 +730,20 @@ async def settings_sheet(
     pid = entry.path.name
     saved = project.settings
 
+    # The slot table is drawn from the draft on a draft and after Reset, which
+    # without JavaScript carries the form's fields, slots and tiles included.
+    params = request.query_params
+    if draft == YES or reset == YES:
+        panel = build_slot_panel(project, params.get("slots"), label_fields(params))
+    else:
+        panel = build_slot_panel(project, None, {})
+
     note = ""
     if reset == YES:
         defaults = Settings()
         values = {field.key: _raw_of(field, getattr(defaults, field.key)) for field in FIELDS}
         note = NOTE_RESET
     elif draft == YES:
-        params = request.query_params
         values = {
             field.key: params.get(field.key, "")
             for field in FIELDS
@@ -564,7 +752,7 @@ async def settings_sheet(
     else:
         values = {}
 
-    change = _saved_change(entry, done) if not values else None
+    change = _saved_change(entry, done) if not values and not panel.changed else None
     if change is not None:
         note = NOTE_SAVED
         last_saved = change.time.strftime(CHANGE_TIME_FORMAT)
@@ -579,9 +767,13 @@ async def settings_sheet(
         position += len(fields)
     # A refused save puts the caret in the first field to fix, as the mockup's
     # Save does; a draft merely drawn at its address is left at the top.
-    first_error = (
-        next((row.field.key for row in rows if row.error), "") if submitted == YES else ""
-    )
+    first_error = ""
+    if submitted == YES:
+        first_error = next((row.field.key for row in rows if row.error), "")
+        if not first_error:
+            first_error = next(
+                (tile.field_name for tile in panel.tiles if tile.error), ""
+            )
 
     context = {
         "project_id": pid,
@@ -589,10 +781,15 @@ async def settings_sheet(
         "file_name": pid,
         "groups": groups,
         "keys": SETTINGS_KEYS,
-        "status": status_of(rows, note, last_saved),
+        "status": status_of(rows, note, last_saved, panel),
         "last_saved": last_saved,
         "first_error": first_error,
-        "slots": _slot_panel(project),
+        "slots": panel,
+        "saved_labels_json": json.dumps(panel.saved_labels, ensure_ascii=False),
+        "used_slots_json": json.dumps(panel.used_slots, ensure_ascii=False),
+        "label_max": SLOT_LABEL_MAX_LENGTH,
+        "error_label_long": ERROR_LABEL_LONG,
+        "error_label_taken": ERROR_LABEL_TAKEN,
         "settings_url": project_url(request, pid, SHEET),
         "number_pattern": NUMBER_PATTERN,
         "error_number": ERROR_NUMBER,
@@ -639,16 +836,22 @@ async def settings_save(
             if field.kind == KIND_SWITCH or field.key in form
         }
         rows = build_rows(project.settings, draft)
-        if any(row.error for row in rows):
+        text = str(form.get("slots")) if form.get("slots") is not None else None
+        posted_labels = label_fields(form)
+        panel = build_slot_panel(project, text, posted_labels)
+        if any(row.error for row in rows) or any(tile.error for tile in panel.tiles):
             logger.info("Refused the settings of %s", pid)
-            return RedirectResponse(_sheet_url(request, pid, _draft_query(form)), status_code=303)
+            return RedirectResponse(
+                _sheet_url(request, pid, _draft_query(form, project)), status_code=303
+            )
         settings = Settings(**{row.field.key: row.value for row in rows})
-        slots = (
-            parse_slot_list(str(form.get("slots")))
-            if form.get("slots") is not None
-            else list(project.slots)
-        )
-        mutation.session.apply_settings(settings, slots)
+        slots = parse_slot_list(text) if text is not None else list(project.slots)
+        labels = None
+        if text is not None or posted_labels:
+            # A slot with no tile posted keeps its saved label; a tile posted
+            # for a slot no longer listed is dropped by the session.
+            labels = {**project.slot_labels, **posted_labels}
+        mutation.session.apply_settings(settings, slots, labels)
         mutation.record_change(DONE_SAVED, "", "Settings")
     logger.info("Saved the settings of %s", pid)
     return RedirectResponse(_sheet_url(request, pid, {"done": DONE_SAVED}), status_code=303)

@@ -143,6 +143,66 @@ def status_of(body: str) -> str:
     return re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", "", match.group(1)))).strip()
 
 
+def tile_input(body: str, slot: str) -> str:
+    """
+    Cut one slot tile's label input out of the board.
+
+    Args:
+        body: The page.
+        slot: The slot's name (no characters HTML escapes).
+
+    Returns:
+        str: The ``<input>`` tag, or an empty string.
+    """
+    return element(body, rf'<input class="slot-label" name="label:{re.escape(slot)}"')
+
+
+def tile_state(body: str, slot: str) -> set:
+    """
+    Read a tile's state classes.
+
+    Args:
+        body: The page.
+        slot: The slot's name.
+
+    Returns:
+        set: The balloon's classes.
+    """
+    match = re.search(
+        rf'<li class="([^"]*)"[^>]*>\s*<input class="slot-label" name="label:{re.escape(slot)}"', body
+    )
+    return set(match.group(1).split()) if match else set()
+
+
+def tile_names(body: str) -> list:
+    """
+    List the board's tiles in order.
+
+    Args:
+        body: The page.
+
+    Returns:
+        list: The slot name of each tile.
+    """
+    return [html.unescape(name) for name in re.findall(r'<input class="slot-label" name="label:([^"]*)"', body)]
+
+
+def warning_of(body: str) -> str:
+    """
+    Read the slot warning as text.
+
+    Args:
+        body: The page.
+
+    Returns:
+        str: The warning, whitespace collapsed; empty when it is hidden.
+    """
+    if "hidden" in element(body, r'<div class="slot-warning"'):
+        return ""
+    match = re.search(r'<p id="slot-warning-text"[^>]*>(.*?)</p>', body, re.S)
+    return re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", "", match.group(1)))).strip()
+
+
 def valid_form(**changes) -> dict:
     """
     Build the form a browser posts for the saved settings, with changes.
@@ -359,13 +419,27 @@ class TestTheSavedSheet(SettingsTestCase):
         self.assertIn('<span class="num" id="sheet-no">1 of 1</span>', self.body)
         self.assertIn('style="--tb-rows: 3"', self.body)
 
-    def test_the_slot_panel_is_read_only_and_posts_nothing(self):
-        """Test that 8b's slot panel shows the list and cannot change it."""
+    def test_the_slot_table_is_editable_and_joins_the_form(self):
+        """Test the list, its saved line, the count and a tile per slot."""
         textarea = element(self.body, r'<textarea[^>]*id="slots"')
-        self.assertIn("readonly", textarea)
-        self.assertNotIn("name=", textarea)
+        self.assertNotIn("readonly", textarea)
+        self.assertIn('name="slots" form="settings"', textarea)
+        self.assertIn('data-saved="1, 2, 3, Apostrophe"', textarea)
         self.assertIn(">1, 2, 3, Apostrophe</textarea>", self.body)
         self.assertIn('id="slots-count">4 slots &middot; 1 in use<', self.body)
+        self.assertEqual(tile_names(self.body), SLOTS)
+        self.assertNotIn("is-changed", element(self.body, r'<section class="spec-slots'))
+
+    def test_each_tile_is_a_label_input_with_the_derived_placeholder(self):
+        """Test owner answer 1's tile: empty, placeholder the first two characters."""
+        tile = tile_input(self.body, "Apostrophe")
+        self.assertIn('placeholder="Ap"', tile)
+        self.assertIn('value=""', tile)
+        self.assertIn('form="settings"', tile)
+        self.assertIn('maxlength="2"', tile)
+        self.assertIn("is-used", tile_state(self.body, "1"))
+        self.assertNotIn("is-used", tile_state(self.body, "2"))
+        self.assertIn("hidden", element(self.body, r'<div class="slot-warning"'))
 
     def test_the_page_loads_its_script_and_not_the_sheet_engine(self):
         """Test that settings.js is loaded and sheet.js (no parts list) is not."""
@@ -590,6 +664,200 @@ class TestSaveRefusals(SettingsTestCase):
         _, query = self.redirect_of(self.save(dict(valid_form(top_tier_count="0"), slots="A, B")))
         self.assertEqual(query["slots"], "A, B")
         self.assertEqual(self.stored_slots(), SLOTS)
+
+
+class TestSlotDrafts(SettingsTestCase):
+    """Test cases for the slot table drawn from a draft: board, marks and warnings."""
+
+    def test_a_drafted_list_draws_its_board_and_marks_the_table(self):
+        """Test that a draft's slots are drawn, counted and named in the Status."""
+        body = self.sheet("draft=1&slots=1, 2, Esc")
+        self.assertIn(">1, 2, Esc</textarea>", body)
+        self.assertEqual(tile_names(body), ["1", "2", "Esc"])
+        self.assertIn('id="slots-count">3 slots &middot; 1 in use<', body)
+        self.assertIn("is-changed", element(body, r'<section class="spec-slots'))
+        self.assertEqual(
+            status_of(body), "1 unsaved change: Slots. Changed values are marked with a triangle."
+        )
+
+    def test_slots_outside_a_draft_are_ignored(self):
+        """Test that the saved list is drawn without draft=1."""
+        self.assertEqual(tile_names(self.sheet("slots=A, B")), SLOTS)
+
+    def test_the_mockups_duplicate_slots_state(self):
+        """Test dupslots: each repeat marked on its tile and warned of once."""
+        body = self.sheet("draft=1&slots=1, 2, 3, Apostrophe, 3, 1, Esc")
+        self.assertEqual(tile_names(body), ["1", "2", "3", "Apostrophe", "Esc"])
+        self.assertIn("is-dup", tile_state(body, "1"))
+        self.assertIn("is-dup", tile_state(body, "3"))
+        self.assertNotIn("is-dup", tile_state(body, "2"))
+        self.assertEqual(warning_of(body), "Slots 3, 1 are listed twice. Duplicates are dropped when you save.")
+        self.assertNotIn("is-error", element(body, r'<div class="tb-cell tb-status'))
+
+    def test_derived_labels_colliding_are_flagged_not_refused(self):
+        """Test the collision warning on the tiles, and that nothing is in error."""
+        body = self.sheet("draft=1&slots=Apex, Apostrophe, 7")
+        self.assertIn("is-clash", tile_state(body, "Apex"))
+        self.assertIn("is-clash", tile_state(body, "Apostrophe"))
+        self.assertNotIn("is-clash", tile_state(body, "7"))
+        self.assertEqual(
+            warning_of(body),
+            "Slots Apex and Apostrophe both show Ap. Type a short label on one of their tiles.",
+        )
+        self.assertNotIn("is-error", body)
+
+    def test_a_label_drafted_on_a_tile_is_drawn_and_marked(self):
+        """Test a label in the draft's address, and that it resolves the collision."""
+        body = self.sheet("draft=1&slots=Apex, Apostrophe&label:Apostrophe='")
+        self.assertIn('value="&#39;"', tile_input(body, "Apostrophe"))
+        self.assertEqual(warning_of(body), "")
+        self.assertNotIn("is-clash", tile_state(body, "Apex"))
+
+    def test_a_label_change_alone_is_a_slot_change(self):
+        """Test that the Status names Slots when only a label changed."""
+        body = self.sheet("draft=1&label:Apostrophe=AP")
+        self.assertIn("is-changed", element(body, r'<section class="spec-slots'))
+        self.assertIn("Slots.", status_of(body))
+
+    def test_the_saved_label_is_drawn_on_its_tile(self):
+        """Test a saved label in its tile, with the derived label as placeholder."""
+        self.write(PROJECT, settings_data(slot_labels={"Apostrophe": "'"}))
+        body = self.sheet()
+        tile = tile_input(body, "Apostrophe")
+        self.assertIn('value="&#39;"', tile)
+        self.assertIn('placeholder="Ap"', tile)
+        self.assertIn("&#34;Apostrophe&#34;: &#34;&#39;&#34;", element(body, r'<ul class="slot-board"'))
+
+    def test_a_refused_label_is_drawn_with_its_error(self):
+        """Test each refusal's sentence, its tile, and the Status count."""
+        cases = (
+            ("draft=1&label:Apostrophe=abc", "Use at most 2 characters."),
+            ("draft=1&label:Apostrophe=1", "Slot 1 already shows 1."),
+            ("draft=1&label:2=x&label:Apostrophe=x", "Slot 2 already shows x."),
+        )
+        for query, sentence in cases:
+            with self.subTest(query=query):
+                body = self.sheet(query)
+                self.assertIn("is-error", tile_state(body, "Apostrophe"))
+                self.assertIn('aria-invalid="true"', tile_input(body, "Apostrophe"))
+                self.assertIn(f"Slot Apostrophe: {sentence}", status_of(body))
+                self.assertTrue(status_of(body).startswith("Fix 1 value before saving."))
+                self.assertNotIn("autofocus", tile_input(body, "Apostrophe"))
+
+    def test_a_refused_post_puts_the_caret_on_the_tile(self):
+        """Test that submitted=1 focuses the first tile in error when no value is."""
+        body = self.sheet("draft=1&submitted=1&label:Apostrophe=abc")
+        self.assertIn("autofocus", tile_input(body, "Apostrophe"))
+        body = self.sheet("draft=1&submitted=1&label:Apostrophe=abc&top_tier_count=0")
+        self.assertNotIn("autofocus", tile_input(body, "Apostrophe"))
+        self.assertIn("autofocus", element(body, r'<input[^>]*id="f-top_tier_count"'))
+
+    def test_reset_keeps_a_drafted_slot_table(self):
+        """Test the no-JS Reset: the form's slots and tiles come back as typed."""
+        body = self.sheet("reset=1&slots=1, 2, Esc&label:Esc=X")
+        self.assertIn(">1, 2, Esc</textarea>", body)
+        self.assertIn('value="X"', tile_input(body, "Esc"))
+
+
+class TestSlotSaves(SettingsTestCase):
+    """Test cases for saving the slot list and its labels, and every refusal."""
+
+    def stored_labels(self) -> dict:
+        """
+        Read the short labels from the file.
+
+        Returns:
+            dict: The file's slot_labels.
+        """
+        return json.loads((self.data_dir / PROJECT).read_text(encoding="utf-8")).get("slot_labels", {})
+
+    def test_a_list_and_a_label_are_saved_together(self):
+        """Test one save writing the list, a label and the settings."""
+        form = dict(valid_form(weight_freshness="0.75"), slots="1, 2, Apex, Apostrophe")
+        form["label:Apostrophe"] = "'"
+        form["label:Apex"] = ""
+        self.assertEqual(self.redirect_of(self.save(form))[1], {"done": DONE_SAVED})
+        self.assertEqual(self.stored_slots(), ["1", "2", "Apex", "Apostrophe"])
+        self.assertEqual(self.stored_labels(), {"Apostrophe": "'"})
+        self.assertEqual(self.stored()["weight_freshness"], 0.75)
+
+    def test_a_label_equal_to_the_derived_one_is_not_stored(self):
+        """Test that typing a slot's own first two characters stores nothing."""
+        self.save(dict(valid_form(), slots="1, Apostrophe", **{"label:Apostrophe": "Ap", "label:1": "1"}))
+        self.assertEqual(self.stored_labels(), {})
+
+    def test_a_label_for_a_removed_slot_is_dropped(self):
+        """Test that a tile posted for a slot no longer listed stores nothing."""
+        self.write(PROJECT, settings_data(slot_labels={"Apostrophe": "'"}))
+        self.save(dict(valid_form(), slots="1, 2, 3", **{"label:Apostrophe": "'"}))
+        self.assertEqual(self.stored_labels(), {})
+        self.assertEqual(self.stored_slots(), ["1", "2", "3"])
+
+    def test_an_emptied_tile_removes_the_label(self):
+        """Test that clearing a tile goes back to the derived label."""
+        self.write(PROJECT, settings_data(slot_labels={"Apostrophe": "'"}))
+        self.save(dict(valid_form(), slots="1, 2, 3, Apostrophe", **{"label:Apostrophe": " "}))
+        self.assertEqual(self.stored_labels(), {})
+
+    def test_a_slot_without_a_tile_keeps_its_saved_label(self):
+        """Test the no-JS post: a slot with no tile field keeps what it had."""
+        self.write(PROJECT, settings_data(slot_labels={"Apostrophe": "'"}))
+        self.save(dict(valid_form(), slots="1, 2, 3, Apostrophe, Esc"))
+        self.assertEqual(self.stored_labels(), {"Apostrophe": "'"})
+        self.assertEqual(self.stored_slots(), ["1", "2", "3", "Apostrophe", "Esc"])
+
+    def test_a_post_without_slots_or_tiles_keeps_both(self):
+        """Test the lenient post: only the settings change."""
+        self.write(PROJECT, settings_data(slot_labels={"Apostrophe": "'"}))
+        self.save(valid_form(weight_freshness="0.75"))
+        self.assertEqual(self.stored_labels(), {"Apostrophe": "'"})
+        self.assertEqual(self.stored_slots(), SLOTS)
+
+    def test_duplicates_and_derived_collisions_are_saved(self):
+        """Test that the two warnings do not block a save."""
+        self.save(dict(valid_form(), slots="Apex, Apostrophe, Apex"))
+        self.assertEqual(self.stored_slots(), ["Apex", "Apostrophe"])
+
+    def test_each_label_refusal_writes_nothing_and_lands_on_the_draft(self):
+        """Test the file, the redirect's query and the error each refusal draws."""
+        cases = (
+            ({"label:Apostrophe": "abc"}, "Use at most 2 characters."),
+            ({"label:Apostrophe": "1"}, "Slot 1 already shows 1."),
+            ({"label:3": "q", "label:Apostrophe": "q"}, "Slot 3 already shows q."),
+            ({"label:Apostrophe": "Es"}, "Slot Esc already shows Es."),
+        )
+        for labels, sentence in cases:
+            with self.subTest(labels=labels):
+                before = self.snapshot()
+                form = dict(valid_form(weight_freshness="0.75"), slots="1, 2, 3, Apostrophe, Esc", **labels)
+                form["label:2"] = ""
+
+                path, query = self.redirect_of(self.save(form))
+
+                self.assertEqual(self.snapshot(), before)
+                self.assertIsNone(self.app.state.registry.open(PROJECT).last_change)
+                self.assertEqual(path, SETTINGS_URL)
+                self.assertEqual(query["submitted"], "1")
+                self.assertEqual(query["slots"], "1, 2, 3, Apostrophe, Esc")
+                self.assertEqual(query["weight_freshness"], "0.75")
+                for key, value in labels.items():
+                    self.assertEqual(query[key], value)
+                # An empty tile that was empty before is not carried.
+                self.assertNotIn("label:2", query)
+
+                body = self.client.get(self.save(form).headers["location"]).text
+                self.assertIn(f"Slot Apostrophe: {sentence}", status_of(body))
+                self.assertIn("is-error", tile_state(body, "Apostrophe"))
+                self.assertIn("autofocus", tile_input(body, "Apostrophe"))
+
+    def test_an_emptied_saved_label_travels_in_the_draft(self):
+        """Test that clearing a saved label survives a refusal as an empty field."""
+        self.write(PROJECT, settings_data(slot_labels={"Apostrophe": "'"}))
+        form = dict(valid_form(top_tier_count="0"), slots="1, 2, 3, Apostrophe", **{"label:Apostrophe": ""})
+        location = self.save(form).headers["location"]
+        self.assertIn("label%3AApostrophe=&", location + "&")
+        body = self.client.get(location).text
+        self.assertIn('value=""', tile_input(body, "Apostrophe"))
 
 
 class TestReset(SettingsTestCase):
