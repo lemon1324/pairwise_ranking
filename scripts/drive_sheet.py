@@ -114,6 +114,14 @@ What is checked, and why each one is here:
     Enter in the filter, pressed inside its 200 ms delay, waits for the new
     rows and selects the first of them, not the first of the old ones.
 
+``compare-keys``
+    Not the folding engine: the Compare sheet's own keys
+    (``static/js/compare.js``), which live outside the frame htmx swaps. ``2``
+    votes and the frame is swapped in place with the address following, the
+    station marked across the swap and the new revision announced; Ctrl+Z
+    undoes it and the pair comes back on its sides; a held key's repeat votes
+    nothing, and ``S`` moves on without a vote.
+
 Each check leaves the page as it found it by navigating afresh, so they are
 independent and ``--check`` can run any one of them alone.
 """
@@ -1358,6 +1366,132 @@ def check_filter_enter(devtools: DevTools, base: str) -> str:
     return "Enter inside the delay waited for its rows and chose Candidate 2; after it, at once"
 
 
+# A project no other check counts on: the vote this check casts it also undoes,
+# but the file's modified time moves either way.
+COMPARE_PATH = "/projects/switches-sample-full.pairrank/compare"
+
+# What the Compare checks read off the sheet, in one round trip. `swapped` is a
+# marker set on the window before a key is pressed: still there afterwards, the
+# page was swapped in place by htmx rather than loaded again.
+COMPARE_STATE = """
+(() => {
+  const text = (el) => (el ? el.textContent.replace(/\\s+/g, " ").trim() : "");
+  const rows = Array.from(document.querySelectorAll("#rev-rows .rev-row"));
+  return {
+    search: location.search,
+    swapped: window.__driveMarker === 1,
+    votes: text(document.getElementById("votes")),
+    latest: rows.length ? rows[rows.length - 1].className + " | " + text(rows[rows.length - 1]) : "",
+    marked: Array.from(document.querySelectorAll(".station.is-marked"), (el) => el.dataset.key),
+    status: text(document.getElementById("callout-status")),
+    nameA: text(document.getElementById("name-a")),
+  };
+})()
+"""
+
+
+def compare_key(devtools: DevTools, key: str, ctrl: bool = False, repeat: bool = False) -> None:
+    """
+    Press a key on the Compare sheet, as the browser sends it to the page.
+
+    Args:
+        devtools: The CDP session.
+        key: A UI Events key value.
+        ctrl: Whether Control is held.
+        repeat: Whether it is an auto-repeat of a held key.
+    """
+    devtools.evaluate(
+        f"""
+        (() => {{
+          (document.activeElement || document.body).dispatchEvent(new KeyboardEvent("keydown", {{
+            key: "{key}", ctrlKey: {str(ctrl).lower()}, repeat: {str(repeat).lower()},
+            bubbles: true, cancelable: true
+          }}));
+          return true;
+        }})()
+        """
+    )
+
+
+def wait_for_compare(devtools: DevTools, condition: str, what: str) -> dict:
+    """
+    Wait until the Compare sheet satisfies a condition, and read it.
+
+    Args:
+        devtools: The CDP session.
+        condition: A JavaScript expression over the page.
+        what: What was expected, for the failure message.
+
+    Returns:
+        dict: The sheet's state once it holds.
+
+    Raises:
+        CheckError: If it never does.
+    """
+    deadline = time.monotonic() + READY_TIMEOUT_S
+    while time.monotonic() < deadline:
+        try:
+            arrived = devtools.evaluate(
+                f'document.readyState === "complete" && !!window.htmx && ({condition})'
+            )
+        except CaptureError:
+            arrived = False
+        if arrived:
+            return devtools.evaluate(COMPARE_STATE)
+        time.sleep(POLL_INTERVAL_S)
+    raise CheckError(f"never saw {what}")
+
+
+def check_compare_keys(devtools: DevTools, base: str) -> str:
+    """
+    Check the Compare keys end to end: a vote, its undo, a held key and Skip.
+
+    ``2`` votes A better through htmx and the frame is swapped in place, the
+    address following the redirect; the receipt's new row is said in the
+    status region and the station is marked. Ctrl+Z takes it back, the pair
+    returning on the sides it was drawn on. A held key's repeats vote nothing,
+    and ``S`` moves on without a vote. The vote is undone, so the project ends
+    with the votes it began with.
+    """
+    size(devtools, *NARROW)
+    devtools.call("Page.navigate", {"url": f"{base}{COMPARE_PATH}?a=it1&b=it2"})
+    before = wait_for_compare(devtools, 'document.getElementById("station-2")', "the Compare sheet")
+    expect(before["nameA"] == "Gateron Oil King", f"View A drew {before['nameA']!r}")
+    devtools.evaluate("window.__driveMarker = 1, true")
+
+    compare_key(devtools, "2")
+    voted = wait_for_compare(devtools, 'location.search.includes("done=voted")', "the vote land")
+    expect(voted["swapped"], "the vote reloaded the page instead of swapping the frame")
+    expect(int(voted["votes"]) == int(before["votes"]) + 1, f"votes went {before['votes']} -> {voted['votes']}")
+    expect(
+        "is-new" in voted["latest"] and "Gateron Oil King over Cherry MX Black" in voted["latest"],
+        f"the receipt's latest row is {voted['latest']!r}",
+    )
+    expect(voted["marked"] == ["2"], f"station 2 was not marked across the swap: {voted['marked']}")
+    expect("Gateron Oil King over" in voted["status"], f"the status region said {voted['status']!r}")
+
+    compare_key(devtools, "z", ctrl=True)
+    undone = wait_for_compare(devtools, 'location.search.includes("done=undone")', "the undo land")
+    expect(undone["swapped"], "the undo reloaded the page")
+    expect(undone["votes"] == before["votes"], f"votes after the undo: {undone['votes']}")
+    expect("a=it1&b=it2" in undone["search"], f"the undone pair came back as {undone['search']!r}")
+    expect(
+        "is-undone" in undone["latest"] and "pair re-offered" in undone["latest"],
+        f"the receipt's latest row is {undone['latest']!r}",
+    )
+
+    compare_key(devtools, "3", repeat=True)
+    time.sleep(CALLOUT_WAIT_S)
+    held = devtools.evaluate(COMPARE_STATE)
+    expect(held["search"] == undone["search"], "a held key's repeat voted")
+
+    compare_key(devtools, "s")
+    skipped = wait_for_compare(devtools, '!location.search.includes("done=")', "Skip land")
+    expect(skipped["swapped"], "Skip reloaded the page")
+    expect(skipped["votes"] == before["votes"], f"Skip recorded a vote: {skipped['votes']}")
+    return "2 voted and swapped the frame, marked and announced; Ctrl+Z put it back on its sides; a repeat and S voted nothing"
+
+
 CHECKS = {
     "fold": check_fold,
     "swap-empty": check_swap_empty,
@@ -1376,6 +1510,7 @@ CHECKS = {
     "form-once": check_form_once,
     "filter-callout": check_filter_callout,
     "filter-enter": check_filter_enter,
+    "compare-keys": check_compare_keys,
 }
 
 
