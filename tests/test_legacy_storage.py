@@ -111,6 +111,31 @@ class TestLegacyCsvStorageItems(LegacyStorageTestCase):
         self.assertEqual(loaded[0].name, "Item 1")
         self.assertEqual(loaded[1].description, "Desc 2")
 
+    def test_a_repeated_id_keeps_the_first_row(self):
+        """Test that a second row with an id already read is skipped, not loaded."""
+        self._write_items_csv([
+            {"id": "id-1", "name": "Item 1", "identifier": "", "description": ""},
+            {"id": "id-1", "name": "Item 1 again", "identifier": "", "description": ""},
+            {"id": "id-2", "name": "Item 2", "identifier": "", "description": ""},
+        ])
+
+        with self.assertLogs("src.data.legacy_storage", level="WARNING"):
+            loaded = self.storage.load_items()
+
+        self.assertEqual([(item.id, item.name) for item in loaded], [("id-1", "Item 1"), ("id-2", "Item 2")])
+
+    def test_an_empty_id_skips_the_row(self):
+        """Test that a row with no id is skipped, as a project would refuse it."""
+        self._write_items_csv([
+            {"id": "", "name": "Item 1", "identifier": "", "description": ""},
+            {"id": "id-2", "name": "Item 2", "identifier": "", "description": ""},
+        ])
+
+        with self.assertLogs("src.data.legacy_storage", level="WARNING"):
+            loaded = self.storage.load_items()
+
+        self.assertEqual([item.id for item in loaded], ["id-2"])
+
     def test_load_item_with_identifier(self):
         """Test loading an item that has an identifier."""
         self._write_items_csv([
@@ -148,6 +173,25 @@ class TestLegacyCsvStorageItems(LegacyStorageTestCase):
         self.assertEqual(len(loaded), 1)
         self.assertEqual(loaded[0].name, 'Item with "quotes" and, commas')
         self.assertEqual(loaded[0].description, "Line 1\nLine 2")
+
+    def test_load_items_skips_invalid_rows_and_says_so(self):
+        """
+        Test that a row with no name is skipped, and logged rather than printed.
+
+        The web frontend runs this migration as the server starts, so a row
+        dropped from someone's data has to land somewhere it can be found
+        afterwards. Stdout is not that place.
+        """
+        self.storage.items_file.write_text(
+            "id,name,identifier,description\n" "i1,,,\n" "i2,Item 2,,\n",
+            encoding="utf-8",
+        )
+
+        with self.assertLogs("src.data.legacy_storage", "WARNING") as logged:
+            loaded = self.storage.load_items()
+
+        self.assertEqual([item.name for item in loaded], ["Item 2"])
+        self.assertIn("Skipping invalid item row", logged.output[0])
 
     def test_load_items_gets_default_category(self):
         """Test that legacy rows without a category get the default category."""
@@ -216,9 +260,16 @@ class TestLegacyCsvStorageVotes(LegacyStorageTestCase):
              "timestamp": "2024-01-02T00:00:00", "weight": "2.0"},
         ])
 
-        loaded = self.storage.load_votes()
+        # The skip goes through logging rather than to stdout, because the web
+        # frontend runs this migration as it starts and is a server process
+        # whose stdout nobody reads. Asserting on it here is what keeps it from
+        # quietly going back.
+        with self.assertLogs("src.data.legacy_storage", "WARNING") as logged:
+            loaded = self.storage.load_votes()
+
         self.assertEqual(len(loaded), 1)
         self.assertEqual(loaded[0].id, "v2")
+        self.assertIn("Skipping invalid vote row", logged.output[0])
 
 
 class TestLegacyCsvStorageSettings(LegacyStorageTestCase):
@@ -258,9 +309,13 @@ class TestLegacyCsvStorageSettings(LegacyStorageTestCase):
         """Test loading settings with invalid JSON returns defaults."""
         self.storage.settings_file.write_text("not valid json {", encoding="utf-8")
 
-        settings = self.storage.load_settings()
+        with self.assertLogs("src.data.legacy_storage", "WARNING") as logged:
+            settings = self.storage.load_settings()
+
         default = Settings()
         self.assertEqual(settings.weight_uncertainty, default.weight_uncertainty)
+        self.assertIn("using defaults", logged.output[0])
+
 
 
 if __name__ == "__main__":

@@ -1,0 +1,38 @@
+{#
+  The shell every error page shares.
+
+  A sheet of the same set as every other screen, so that something going wrong
+  does not look like it happened in a different application: the frame and its
+  zones are drawn as usual and the message sits in the drawing area as a dashed
+  ghost box, the device an empty parts list already uses.
+
+  There are no sheet tabs and no title block. An error page is reached without
+  an open project - often without knowing which project was meant - so there is
+  nothing for the tabs to switch between and nothing to put in a TITLE cell.
+
+  `home_url` comes from `_render_error` in src/web/app.py rather than from
+  url_for, because the picker route it points at does not exist until phase 5
+  and an error page that errors while rendering is no use to anybody.
+#}
+{% extends "base.html" %}
+
+{% block title %}Error{% endblock %}
+
+{% block body_class %}error-page{% endblock %}
+
+{% block sheet_title %}
+  {# A brand mark rather than a heading: the page's own <h1> is below, and this
+     bar is shown at every width, so an <h1> here would be a second one on
+     screen. The register does the same thing for the same reason. #}
+  <div class="sheet-title is-app">
+    <p class="sheet-title-text">Pairwise Ranking</p>
+  </div>
+{% endblock %}
+
+{% block sheet_body %}
+  <div class="error-sheet">
+    <h1>{% block heading %}{{ self.title() }}{% endblock %}</h1>
+    {% block body %}{% endblock %}
+    <p class="error-actions"><a href="{{ home_url }}">Back to the drawing register</a></p>
+  </div>
+{% endblock %}

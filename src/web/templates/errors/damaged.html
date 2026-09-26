@@ -1,0 +1,19 @@
+{% extends "errors/_layout.html" %}
+
+{% block title %}This project file is damaged{% endblock %}
+
+{% block body %}
+  <p>
+    This project file could not be read. It is not in a format this application
+    recognises, or part of it has been lost.
+  </p>
+  {% if reason %}
+    <p class="error-detail">{{ reason }}</p>
+  {% endif %}
+  <p>
+    Pairwise Ranking keeps a backup beside each project as it saves. Look next
+    to the file for one ending in <code>.pairrank.bak</code>, or in a
+    <code>.pairrank.v1.bak</code> or <code>.pairrank.v2.bak</code> left behind
+    by a format upgrade, and restore it by renaming it over the damaged file.
+  </p>
+{% endblock %}

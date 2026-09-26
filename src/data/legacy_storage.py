@@ -7,11 +7,15 @@ older versions; it deliberately provides no write operations.
 
 import csv
 import json
+import logging
 from pathlib import Path
 
 from src.models.item import Item
 from src.models.vote import Vote
 from src.models.settings import Settings
+
+
+logger = logging.getLogger(__name__)
 
 
 class LegacyCsvStorage:
@@ -67,14 +71,26 @@ class LegacyCsvStorage:
             return []
 
         items = []
+        seen_ids = set()
         with open(self.items_file, "r", newline="", encoding="utf-8") as f:
             reader = csv.DictReader(f)
             for row in reader:
                 try:
-                    items.append(Item.from_dict(row))
+                    item = Item.from_dict(row)
+                    # A project refuses two items with one id, so a repeated
+                    # row would leave a migrated file that never opens. The
+                    # first row keeps the id, as a lookup would have found it.
+                    if item.id in seen_ids:
+                        raise ValueError(f"an item with the id {item.id!r} came earlier")
+                    seen_ids.add(item.id)
+                    items.append(item)
                 except (KeyError, ValueError) as e:
-                    # Skip invalid rows but continue loading
-                    print(f"Warning: Skipping invalid item row: {e}")
+                    # Skipped rather than refused, and logged rather than
+                    # printed: the web frontend migrates the data directory as
+                    # it starts, and it is a server process whose stdout
+                    # nobody is watching. A row that was dropped from someone's
+                    # data is exactly what they go looking for in a log.
+                    logger.warning("Skipping invalid item row: %s", e)
         return items
 
     def load_votes(self) -> list[Vote]:
@@ -101,8 +117,8 @@ class LegacyCsvStorage:
                     }
                     votes.append(Vote.from_dict(vote_data))
                 except (KeyError, ValueError) as e:
-                    # Skip invalid rows but continue loading
-                    print(f"Warning: Skipping invalid vote row: {e}")
+                    # Skipped and logged, as above.
+                    logger.warning("Skipping invalid vote row: %s", e)
         return votes
 
     def load_settings(self) -> Settings:
@@ -120,5 +136,5 @@ class LegacyCsvStorage:
                 data = json.load(f)
                 return Settings.from_dict(data)
         except (json.JSONDecodeError, ValueError) as e:
-            print(f"Warning: Error loading settings, using defaults: {e}")
+            logger.warning("Could not read legacy settings, using defaults: %s", e)
             return Settings()

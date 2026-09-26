@@ -1,0 +1,124 @@
+{#
+  The parts list: the ruled table Items, Rankings and the drawing register are
+  all drawn as.
+
+  The server always renders one long table. That is the whole sheet on phones
+  and with JavaScript off, and it is what phase 5a's folding engine reads when
+  it folds the rows into columns and continuation sheets. So these macros emit
+  the rows once, in document order, and say nothing about where they end up.
+#}
+{% from "macros/sheet.html" import tag as tag_macro %}
+
+{#
+  parts_list(columns, label)
+
+    columns  a sequence of column definitions, each a mapping with:
+               label   the header text (drawn as a drafting label).
+               width   a CSS width for the fixed table layout, e.g. "6.5rem".
+               class   header and cell classes: "c-find" for the centred find
+                       number, "n" for right-aligned mono figures, "c-cat" and
+                       "c-phone-hide" for columns phones drop.
+    label    the accessible name of the table.
+
+  Called with {% call %}; the caller emits the rows.
+
+  role="grid", because the rows are selected. `aria-selected` on a row of a
+  plain table is ignored by assistive technology - a table is for reading, and
+  nothing in one is selectable - so the selection the sheet draws in markup
+  blue was never announced. A grid is the table whose rows can be: the arrow
+  keys move through it, the row that has the selection is the one that takes
+  focus, and `aria-selected` then means what it says. sheet.js copies the role
+  onto every column it folds the rows into, so the split tables stay grids too.
+#}
+{% macro parts_list(columns, label) -%}
+<table class="bom" role="grid" aria-label="{{ label }}">
+  <thead>
+    <tr>
+      {% for column in columns %}
+      <th{% if column.class %} class="{{ column.class }}"{% endif %}{% if column.width %} style="width:{{ column.width }}"{% endif %}>{{ column.label }}</th>
+      {% endfor %}
+    </tr>
+  </thead>
+  <tbody>
+    {{ caller() }}
+  </tbody>
+</table>
+{%- endmacro %}
+
+{#
+  parts_row(id, selected=false, retired=false, is_new=false, callout_url=none)
+
+    id           the item, ranking or project the row stands for; the folding
+                 engine and every row action address the row by it.
+    selected     true for the row the callout is tied to.
+    retired      true for a retired item, which also carries a RETIRED tag.
+    is_new       true for the ghost row of an item being added.
+    callout_url  where this row's callout comes from, when it has one.
+
+  Called with {% call %}; the caller emits the cells.
+
+  tabindex="-1" because selection moves with the arrow keys rather than Tab:
+  the table is one stop, and the row that has the selection is the one that
+  takes focus.
+
+  `callout_url` is the whole hookup between a row and its callout, written
+  once here rather than three times across Items, Rankings and the register:
+  the engine fires `sheet:select` on the row it has just selected, htmx hears
+  it, fetches the fragment and puts it in `#row-callout` - the host base.html
+  keeps outside every swapped region. A row without one is selectable and does
+  nothing else. Selecting clears the host first, so the callout on screen is
+  never the one that belonged to the row before.
+
+  The same row also says so to assistive technology: `aria-controls` names the
+  host its callout lands in, because the host is not beside the row in the
+  document - it sits outside every swapped region, at the end of the page - and
+  nothing else ties the two together for someone who cannot see the leader.
+  The callout's arrival is announced through the polite status region
+  base.html keeps next to the host; sheet.js writes it.
+#}
+{% macro parts_row(id, selected=false, retired=false, is_new=false, callout_url=none) -%}
+<tr class="bom-row{% if selected %} is-selected{% endif %}{% if retired %} is-retired{% endif %}{% if is_new %} is-new{% endif %}"
+    data-id="{{ id }}" tabindex="-1" aria-selected="{{ 'true' if selected else 'false' }}"
+    {%- if callout_url %} hx-get="{{ callout_url }}" hx-target="#row-callout" hx-trigger="sheet:select" aria-controls="row-callout"{% endif %}>
+  {{ caller() }}
+</tr>
+{%- endmacro %}
+
+{#
+  name_cell(name, description=none, tags=(), description_class="")
+
+    name               the item or project name; the only part that truncates.
+    description        the second line, in ink 2: an item's description, or the
+                       file name on the register.
+    tags               tags drawn after the name, e.g. ("Retired",).
+    description_class  extra classes on that second line - "num" on the
+                       register, where the second line is a file name and every
+                       file name in the set is set in mono.
+
+  The tags are siblings of the name rather than inside it, so the ellipsis that
+  cuts a long name can never cut a tag off with it. That matters because the
+  tag is the non-colour half of the retired signal, and ink 3 on its own is not
+  a signal a reader with a colour-vision deficiency or low contrast sensitivity
+  can rely on.
+#}
+{% macro name_cell(name, description=none, tags=(), description_class="") -%}
+<span class="bom-nameline"><span class="bom-name">{{ name }}</span>{% for text in tags %}{{ tag_macro(text) }}{% endfor %}</span>
+{%- if description %}<span class="bom-desc{% if description_class %} {{ description_class }}{% endif %}">{{ description }}</span>{% endif %}
+{%- endmacro %}
+
+{#
+  empty_state(lead, detail=none)
+
+    lead    the one-sentence statement of what is not there.
+    detail  the line under it, in ink 2, saying what to do about it.
+
+  Called with {% call %} when there is somewhere to go; the caller emits the
+  cell buttons.
+#}
+{% macro empty_state(lead, detail=none) -%}
+<div class="bom-empty">
+  <p class="lead">{{ lead }}</p>
+  {% if detail %}<p class="detail">{{ detail }}</p>{% endif %}
+  {% if caller %}{{ caller() }}{% endif %}
+</div>
+{%- endmacro %}

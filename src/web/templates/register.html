@@ -1,0 +1,142 @@
+{#
+  The drawing register: the index sheet of the set, and the app's front door.
+
+  A parts-list sheet whose parts are projects. Ported from
+  docs/mockups/projects.html; see src/web/routes/projects.py for how the states
+  it can be in are addressed.
+
+  Two things here are not in any other parts list.
+
+  **The top bar carries the app name.** No project is open, so there are no
+  sheet tabs to switch between and nothing to put in the title block's TITLE
+  cell but the register's own name. The tabs macro draws nothing when it is
+  given no project, which is exactly this case.
+
+  **There is sometimes a ghost row.** New and Import have no project to hang a
+  callout on, so the sheet draws a NEW row for them at the top and selects it,
+  which is what the folding engine needs before it can place a popover. The
+  selection is made by the script at the bottom of this file: the engine owns
+  the selection and clears the callout host whenever it changes, so a callout
+  rendered into the host by the server would be thrown away a moment later.
+  Asking the engine to select the row, and letting the row fetch its own
+  callout the way every other row does, keeps one path instead of two.
+#}
+{% extends "base.html" %}
+{% from "macros/title_block.html" import title_block, keys_block, tb_title, tb_file, tb_sheet, tb_cell, tb_press_cell %}
+{% from "macros/parts_list.html" import parts_list, parts_row, name_cell, empty_state %}
+{% from "macros/tabs.html" import tabs %}
+{% from "macros/sheet.html" import key %}
+
+{% block title %}Projects{% endblock %}
+
+{% block styles %}
+  <link rel="stylesheet" href="{{ url_for('static', path='css/bom.css').path }}">
+{% endblock %}
+
+{% block sheet_title %}
+  {# `is-app` keeps this showing at every width, not only on phones: with no
+     project open there is nothing else for the bar to carry.
+
+     Not an <h1>, unlike the mockup and unlike the project name every other
+     screen puts here. Those screens hide this bar on desktop and the title
+     block's own <h1> is the sheet's heading; the register shows both at once,
+     and two <h1>s on one screen is two documents. The app name in the bar is a
+     brand mark - it says which application this is, not what this sheet is -
+     so the heading stays in the title block, where `tb_title` puts it, and the
+     four screens that have not been written yet inherit that. #}
+  <div class="sheet-title is-app">
+    <p class="sheet-title-text">Pairwise Ranking</p>
+  </div>
+{% endblock %}
+
+{% block tabs %}{{ tabs(request, none) }}{% endblock %}
+
+{% block frame_class %} bom-sheet{% endblock %}
+
+{% block sheet_body %}
+  <section class="bom-field" id="field" aria-label="Projects">
+    {% if rows or ghost_callout_url %}
+      {% call parts_list(columns, "Projects") %}
+        {% if ghost_callout_url %}
+          {% call parts_row(ghost_id, is_new=true, callout_url=ghost_callout_url) %}
+            <td class="c-find"><span class="bom-rank">&ndash;</span></td>
+            <td>{{ name_cell(ghost_label) }}</td>
+            <td class="n c-phone-hide"></td>
+            <td class="n"></td>
+            <td class="c-cat"></td>
+          {% endcall %}
+        {% endif %}
+        {% for row in rows %}
+          {% call parts_row(row.id, retired=row.dimmed, callout_url=row.callout_url) %}
+            <td class="c-find"><span class="bom-rank">{{ row.number }}</span></td>
+            <td>{{ name_cell(row.name, description=row.file_name,
+                             tags=(row.tag,) if row.tag else (),
+                             description_class="num") }}</td>
+            <td class="n c-phone-hide">{{ row.item_count }}</td>
+            <td class="n">{{ row.vote_count }}</td>
+            <td class="c-cat"><span class="bom-cat num">{{ row.modified }}</span></td>
+          {% endcall %}
+        {% endfor %}
+      {% endcall %}
+    {% else %}
+      {% call empty_state(
+          "No projects in " ~ data_dir ~ " yet.",
+          "Start a new project, import a .pairrank file, or copy projects from the desktop app into the appdata share.") %}
+        {# The legends the title block draws are drawn here too: with no rows
+           there is nothing to select, but N and I still work, and this box is
+           where someone standing on an empty directory is looking. #}
+        <div class="strip-buttons" style="justify-content:center">
+          <a class="cell-button" href="{{ new_url }}">New project {{ key("N") }}</a>
+          <a class="cell-button" href="{{ import_url }}">Import {{ key("I") }}</a>
+        </div>
+      {% endcall %}
+    {% endif %}
+  </section>
+
+  {% call title_block(rows=3) %}
+    {{ keys_block(keys) }}
+    {{ tb_title("Drawing register") }}
+    {{ tb_file(data_dir, caption="Data directory") }}
+
+    {% call tb_cell("Projects", span=2, phone_wide=true) %}
+      <p class="tb-text">
+        <span class="num">{{ rows|length }}</span> files
+        {%- if problem_count %} &middot; <span class="num">{{ problem_count }}</span> can&rsquo;t be opened{% endif -%}
+      </p>
+    {% endcall %}
+    {{ tb_press_cell("New", "Project", "N", "plus", register_action, params={"form": new_form}) }}
+    {{ tb_press_cell("Import", "File", "I", "upload", register_action, params={"form": import_form}) }}
+
+    {% call tb_cell("Note", span=4, phone_wide=true) %}
+      <p class="tb-text">{{ note }}</p>
+    {% endcall %}
+    {{ tb_sheet(1, 1, paged=true) }}
+  {% endcall %}
+{% endblock %}
+
+{% block scripts %}
+  {# After htmx, and deferred: the engine reads the rows htmx may later
+     replace, and wants the whole sheet in the page before it measures. #}
+  <script src="{{ url_for('static', path='js/sheet.js').path }}" defer></script>
+  {% if selected %}
+  <script>
+    // The row this page was asked to arrive on: the ghost row of an open form,
+    // or the project a mutation has just produced. The engine boots from a
+    // deferred script, which has run by the time DOMContentLoaded fires, and
+    // selecting is what fetches the row's callout and puts the focus in it.
+    //
+    // Bound on `window`, and that is not a detail. htmx wires every hx-trigger
+    // in a listener it binds on `document`, registered when its own deferred
+    // script runs - which is before this script is even parsed. DOMContentLoaded
+    // is fired at the document and bubbles, so a window listener runs in the
+    // bubble phase, strictly after every document listener: a guarantee of the
+    // spec rather than of registration order. Bind this on `document` instead
+    // and it becomes a race this side can lose - sheet:select fires before the
+    // row has an hx-trigger to hear it, htmx never asks for the callout, and
+    // the sheet comes up with the form missing. Silently, on every page load.
+    window.addEventListener("DOMContentLoaded", function () {
+      if (window.sheet) window.sheet.select({{ selected|tojson }});
+    });
+  </script>
+  {% endif %}
+{% endblock %}

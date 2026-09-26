@@ -1,0 +1,175 @@
+{#
+  The standard title block, which closes the lower-right corner of every sheet
+  in the set.
+
+  DESIGN.md fixes its grammar: 40rem wide, a full-height KEYS block at the left
+  edge, TITLE and FILE across the top, SHEET n OF N in the bottom-right cell,
+  and everything else placed into a six-column grid by spans alone. A new sheet
+  composes cells inside `title_block`; it does not invent a status panel of its
+  own.
+#}
+{% from "macros/sheet.html" import key, icon %}
+
+{#
+  title_block(rows, with_keys=true, label="Title and controls", extra_class="")
+
+    rows         how many grid rows the block has. The keys block spans them
+                 all, so it has to be told, and CSS cannot count them.
+    with_keys    false only for a sheet with no keys at all; every sheet in the
+                 set has some, so this is nearly always left alone.
+    label        the accessible name of the region.
+    extra_class  extra classes, e.g. a sheet-specific modifier.
+
+  Called with {% call %}; the caller emits the cells.
+#}
+{% macro title_block(rows, with_keys=true, label="Title and controls", extra_class="") -%}
+<section class="titleblock{% if with_keys %} tb-with-keys{% endif %}{% if extra_class %} {{ extra_class }}{% endif %}"
+         aria-label="{{ label }}" style="--tb-rows: {{ rows }}">
+  {{ caller() }}
+</section>
+{%- endmacro %}
+
+{#
+  keys_block(keys, caption="Keys")
+
+    keys     a sequence of (legends, verb) pairs, where legends is a list of key
+             legends shown together: [(["↑", "↓"], "select"), (["N"], "new")].
+    caption  the cell's drafting label.
+
+  Sits at the left edge of the title block and runs its full height, the way a
+  standard-tolerance block sits in a drawing's. Keys live here on every sheet,
+  Compare included; notes are for caveats, not shortcuts.
+#}
+{% macro keys_block(keys, caption="Keys") -%}
+<div class="tb-cell tb-keyblock">
+  <span class="label">{{ caption }}</span>
+  <ul class="tb-keylist">
+    {% for legends, verb in keys %}
+    <li><span>{% for legend in legends %}{{ key(legend) }}{% endfor %}</span> {{ verb }}</li>
+    {% endfor %}
+  </ul>
+</div>
+{%- endmacro %}
+
+{#
+  tb_title(title, caption="Title")
+
+    title    the project's name, or "Drawing register" on the picker.
+    caption  the cell's drafting label.
+
+  The first cell of the first row on every sheet. It carries the <h1>: the
+  sheet's name belongs to the drawing, not to the top bar, which only shows it
+  on phones where this cell is hidden.
+#}
+{% macro tb_title(title, caption="Title") -%}
+<div class="tb-cell tb-title span-3">
+  <span class="label">{{ caption }}</span>
+  <h1 class="tb-title-text">{{ title }}</h1>
+</div>
+{%- endmacro %}
+
+{#
+  tb_file(text, caption="File", warn=false)
+
+    text     the file name, or the data directory on the register.
+    caption  the cell's drafting label.
+    warn     true when the name itself is the problem being reported.
+#}
+{% macro tb_file(text, caption="File", warn=false) -%}
+<div class="tb-cell tb-file span-3">
+  <span class="label">{{ caption }}</span>
+  <span class="tb-file-text{% if warn %} is-warn{% endif %}">{% if warn %}{{ icon("warn") }}{% endif %}{{ text }}</span>
+</div>
+{%- endmacro %}
+
+{#
+  tb_sheet(current, total, paged=false, caption="Sheet")
+
+    current  the sheet on screen, from 1.
+    total    how many sheets the rows fold into.
+    paged    true on a sheet whose rows fold, which is every parts list; false
+             for Compare and Settings, which are one sheet by construction.
+    caption  the cell's drafting label.
+
+  Always the bottom-right cell of the title block, as on a drawing.
+
+  The server always says "1 of 1", because only the folding engine knows how
+  many sheets the rows come to at this width. So the two buttons are drawn
+  disabled, and sheet.js enables them once there is a sheet to turn to. Drawn
+  here rather than built by the engine, so the markup and its shortcuts live
+  with the rest of the title block; and disabled rather than hidden, because
+  disabled is exactly what is true in both cases - with JavaScript off there is
+  one long sheet and nowhere to page to, and the cell says so the same way it
+  does on the first sheet of a folded set.
+#}
+{% macro tb_sheet(current, total, paged=false, caption="Sheet") -%}
+<div class="tb-cell tb-sheet span-2">
+  <span class="label">{{ caption }}</span>
+  <div class="tb-pager">
+    <span class="num" id="sheet-no">{{ current }} of {{ total }}</span>
+    {% if paged %}
+    <button class="cell-button" type="button" id="page-prev" aria-label="Previous sheet" aria-keyshortcuts="PageUp"{% if current <= 1 %} disabled{% endif %}>{{ icon("up") }}</button>
+    <button class="cell-button" type="button" id="page-next" aria-label="Next sheet" aria-keyshortcuts="PageDown"{% if total <= 1 %} disabled{% endif %}>{{ icon("chevron") }}</button>
+    {% endif %}
+  </div>
+</div>
+{%- endmacro %}
+
+{#
+  tb_press_cell(caption, label, legend, icon_name, action, params={}, shortcut=none, span=2, id=none)
+
+    caption    the cell's drafting label, e.g. "New".
+    label      the words on the action line, e.g. "Project".
+    legend     the shortcut's legend, as drawn.
+    icon_name  the sprite symbol before the words, without the "i-" prefix.
+    action     where pressing the cell goes.
+    params     query parameters to carry there, as a mapping.
+    shortcut   the shortcut as a UI Events key value, when the legend is not
+               already one. See popover_actions for why the two are separate.
+    span       how many of the six columns the cell takes.
+    id         the form's id, for a cell a swap has to carry out of band
+               because its hidden fields hold a view that can change under it
+               - Items' Add, which keeps the filter it was drawn with.
+
+  A whole title-block cell that is one big press: the register's New project
+  and Import, and whatever a later sheet puts beside them.
+
+  It is a GET form rather than a button with a script on it, because pressing
+  it *is* a navigation - the sheet it lands on is a state of the register with
+  its own address, which is what makes that state reloadable, linkable and
+  photographable. The form element carries the cell's own classes, because the
+  stylesheet rules the press by `.tb-press > button` and a wrapper between them
+  would take the cell apart.
+
+  `data-sheet-key` is written from the same value aria-keyshortcuts gets, so
+  the legend drawn on the cell, what assistive technology is told, and what the
+  key actually presses are one declaration. sheet.js clicks the button; the
+  browser submits the form.
+#}
+{% macro tb_press_cell(caption, label, legend, icon_name, action, params={}, shortcut=none, span=2, id=none) -%}
+{% set declared = shortcut or (legend if legend is string and legend|length == 1 and legend.isalnum()) %}
+<form class="tb-cell tb-press span-{{ span }}"{% if id %} id="{{ id }}"{% endif %} method="get" action="{{ action }}">
+  {% for field, value in params.items() %}<input type="hidden" name="{{ field }}" value="{{ value }}">{% endfor %}
+  <button type="submit"{% if declared %} aria-keyshortcuts="{{ declared }}" data-sheet-key="{{ declared }}"{% endif %}>
+    <span class="label">{{ caption }}</span>
+    <span class="tb-act">{{ icon(icon_name) }}{{ label }}{% if legend %}{{ key(legend) }}{% endif %}</span>
+  </button>
+</form>
+{%- endmacro %}
+
+{#
+  tb_cell(caption, span=2, extra_class="", phone_wide=false)
+
+    caption      the cell's drafting label, or none for a cell with no caption.
+    span         how many of the six columns the cell takes.
+    extra_class  extra classes, e.g. tb-press for an action cell.
+    phone_wide   true for a cell that takes the full width of the phone grid.
+
+  Called with {% call %}; the caller emits the cell's content under the label.
+#}
+{% macro tb_cell(caption, span=2, extra_class="", phone_wide=false) -%}
+<div class="tb-cell span-{{ span }}{% if phone_wide %} phone-wide{% endif %}{% if extra_class %} {{ extra_class }}{% endif %}">
+  {% if caption %}<span class="label">{{ caption }}</span>{% endif %}
+  {{ caller() }}
+</div>
+{%- endmacro %}

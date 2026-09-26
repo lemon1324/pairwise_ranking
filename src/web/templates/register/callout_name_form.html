@@ -1,0 +1,56 @@
+{#
+  Name a project: the form behind New project and behind Duplicate.
+
+  One template for both, because they are the same form - a name, the file it
+  will be saved as, and a button - with different words on it. A fragment for
+  `#row-callout`; New hangs off the sheet's ghost row and Duplicate off the row
+  of the project being copied.
+
+  An ordinary POST, with no htmx on it. Every answer this form can get is a
+  page of the register: the copy selected, or the form again with the draft and
+  the reason it was refused. Both have addresses, so both survive a reload and
+  can be photographed; and a form the browser posts itself is one that works
+  with the folding engine switched off.
+
+  The file name is stated rather than derived as the user types. The mockup
+  derived it live, which meant a second copy of `safe_project_filename` in the
+  browser - the one duplication this port is in a position not to ship - and
+  the moment the name matters is the moment it is refused, which is where the
+  error says it in full.
+#}
+{% from "macros/popover.html" import popover, popover_body %}
+{% from "macros/sheet.html" import icon, key %}
+
+{% call popover(title) %}
+  {% call popover_body(title) %}
+    <form class="strip-form" method="post" action="{{ action }}">
+      <div class="field field-wide{% if error %} is-error{% endif %}">
+        <label class="label" for="f-name">{{ label }}</label>
+        <input class="input" id="f-name" name="name" value="{{ name }}" autocomplete="off"
+               autofocus{% if error %} aria-invalid="true"{% endif %} aria-describedby="f-name-note">
+        {% if error %}
+        <p class="field-error" id="f-name-note">{{ icon("warn") }}<span><strong>{{ error.lead }}</strong>{% if error.detail %} {{ error.detail }}{% endif %}</span></p>
+        {% else %}
+        <span class="field-hint" id="f-name-note">Saves as <span class="num">{{ directory }}/{{ file_name or "….pairrank" }}</span></span>
+        {% endif %}
+      </div>
+      {% if detail %}<p class="field-hint field-wide">{{ detail }}</p>{% endif %}
+      <div class="strip-buttons">
+        {# Declared, not inherited. Enter submits this form by itself only
+           while the caret is in the name field - the browser's implicit
+           submission - and the engine deliberately leaves clicks inside
+           `#row-callout` alone, so clicking anywhere in the popover that is
+           not the input takes the caret out and kills the key the legend is
+           still drawing. Nothing in sheet.js makes Enter mean Save: it
+           presses whatever carries `data-sheet-key`, which the callout is
+           searched for before the sheet. #}
+        <button class="cell-button is-primary" type="submit"
+                data-sheet-key="Enter" aria-keyshortcuts="Enter">{{ submit_label }} {{ key("↵") }}</button>
+        {# Escape belongs to the engine unless something claims it, and a form
+           with unsaved words in it is exactly what should claim it. #}
+        <a class="cell-button" href="{{ cancel_url }}" data-sheet-key="Escape"
+           aria-keyshortcuts="Escape">Cancel {{ key("Esc") }}</a>
+      </div>
+    </form>
+  {% endcall %}
+{% endcall %}

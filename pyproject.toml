@@ -29,7 +29,10 @@ python-multipart = ">=0.0.32,<1.0"
 itsdangerous = "^2.2.0"
 
 [tool.poetry.group.dev.dependencies]
-# No additional dev dependencies needed - using built-in unittest
+# The web route tests drive the app through FastAPI's TestClient, which is a
+# thin wrapper over httpx and does not work without it. Nothing else in the
+# suite needs a third-party package: the rest is still built-in unittest.
+httpx = "^0.28.0"
 
 [build-system]
 requires = ["poetry-core"]

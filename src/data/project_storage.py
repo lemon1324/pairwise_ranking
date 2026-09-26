@@ -1,14 +1,49 @@
 """Project file storage for the pairwise ranking application."""
 
 import json
+import logging
 import os
 import shutil
+import time
 from datetime import datetime
 from pathlib import Path
 
 from src.data.format_version import CURRENT_FORMAT_VERSION, upgrade
 from src.models.project import Project
 from src.models.settings import Settings
+
+
+logger = logging.getLogger(__name__)
+
+# How often, and how far apart, a refused replace is tried again. On Windows a
+# file that has just been written is briefly held open by whatever scans new
+# files - an antivirus, the search indexer - and os.replace over it fails with
+# "Access is denied" until that lets go, usually within milliseconds. Anything
+# still refused after the last attempt is a real failure and is raised.
+REPLACE_ATTEMPTS = 5
+REPLACE_BACKOFF_S = 0.05
+
+
+def _replace(source: Path, target: Path) -> None:
+    """
+    Move a file over another, waiting out a transient sharing refusal.
+
+    Args:
+        source: The file to move.
+        target: The file it replaces.
+
+    Raises:
+        OSError: If the move still fails after every attempt, or fails for
+            any reason other than a PermissionError.
+    """
+    for attempt in range(1, REPLACE_ATTEMPTS + 1):
+        try:
+            os.replace(source, target)
+            return
+        except PermissionError:
+            if attempt == REPLACE_ATTEMPTS:
+                raise
+            time.sleep(REPLACE_BACKOFF_S * attempt)
 
 
 class ProjectStorage:
@@ -80,7 +115,7 @@ class ProjectStorage:
                 backup_path = file_path.with_suffix(ProjectStorage.BACKUP_EXTENSION)
                 shutil.copy2(file_path, backup_path)
 
-            os.replace(tmp_path, file_path)
+            _replace(tmp_path, file_path)
         except BaseException:
             tmp_path.unlink(missing_ok=True)
             raise
@@ -98,7 +133,7 @@ class ProjectStorage:
         keeps the file's original modified timestamp and writes no
         ``.pairrank.bak``, so reading a file never looks like an edit. If the
         backup or the re-save cannot be written the upgraded project is still
-        returned and a warning is printed. Loading a file that is already
+        returned and a warning is logged. Loading a file that is already
         current writes nothing.
 
         Args:
@@ -174,9 +209,15 @@ class ProjectStorage:
                 project, file_path, touch_modified=False, backup=False
             )
         except OSError as e:
-            print(
-                f"Warning: could not migrate {file_path} to format version "
-                f"{CURRENT_FORMAT_VERSION}: {e}"
+            # Logged rather than printed: the web frontend is a server process
+            # whose stdout nobody is watching, and a warning about a project
+            # that would not migrate is exactly the sort of thing someone goes
+            # looking for in a log afterwards.
+            logger.warning(
+                "Could not migrate %s to format version %s: %s",
+                file_path,
+                CURRENT_FORMAT_VERSION,
+                e,
             )
 
     @staticmethod

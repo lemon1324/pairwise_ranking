@@ -33,6 +33,7 @@ directory it belongs in.
 """
 
 import json
+import os
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
@@ -129,6 +130,8 @@ class ProjectFileInfo:
         condition: Which of the four states the file is in.
         reason: Why the condition is not OK, phrased for a person. Empty when
             the condition is OK.
+        format_version: The format version the file declares. Zero when the
+            file is unreadable, which is exactly when it has none to declare.
     """
 
     path: Path
@@ -139,6 +142,29 @@ class ProjectFileInfo:
     modified: Optional[datetime]
     condition: ProjectCondition
     reason: str = ""
+    format_version: int = 0
+
+    @property
+    def backup_name(self) -> str:
+        """
+        Name the backup that opening an old-format file would leave beside it.
+
+        Migration keeps the original under the file's own name with the
+        version in the suffix - ``Foo.pairrank`` becomes ``Foo.pairrank.v1.bak``
+        - so a screen that tells someone their file will be upgraded can say
+        what it will be called afterwards rather than "a backup".
+
+        Returns:
+            str: The backup's file name, or an empty string for a file no
+            migration will be run on.
+        """
+        if self.condition is not ProjectCondition.OLD_FORMAT:
+            return ""
+        return self.path.with_suffix(
+            ProjectStorage.MIGRATION_BACKUP_TEMPLATE.format(
+                version=self.format_version
+            )
+        ).name
 
     @property
     def openable(self) -> bool:
@@ -418,6 +444,7 @@ def _info_from_bytes(
                 f"The file is in format version {version}, and this "
                 f"application understands version {CURRENT_FORMAT_VERSION}."
             ),
+            format_version=version,
         )
 
     shape_error = _top_level_shape_error(data)
@@ -442,7 +469,29 @@ def _info_from_bytes(
             if old
             else ""
         ),
+        format_version=version,
     )
+
+
+def probe_project_bytes(path: Path, raw: bytes) -> ProjectFileInfo:
+    """
+    Read a register row out of bytes that are not on disk yet.
+
+    The counterpart of :func:`probe_project_file` for a file that has been
+    uploaded but not taken in: the picker describes what is in it - the name,
+    the counts, whether it is in a format this application can read - before
+    anything is written anywhere. Nothing here touches the filesystem.
+
+    Args:
+        path: The path the bytes would be written to. Only its name is used,
+            and it need not exist.
+        raw: The file's contents.
+
+    Returns:
+        ProjectFileInfo: The row they would produce, with no modified time,
+        because bytes in flight have none. Never raises.
+    """
+    return _info_from_bytes(path, None, raw)
 
 
 def scan_directory(data_dir: Path) -> list[ProjectFileInfo]:
@@ -461,7 +510,19 @@ def scan_directory(data_dir: Path) -> list[ProjectFileInfo]:
     try:
         if not data_dir.is_dir():
             return []
-        paths = list(data_dir.glob(f"*{ProjectStorage.FILE_EXTENSION}"))
+        # The glob is case-insensitive on Windows and on the SMB shares this
+        # application is usually pointed at, so it also finds TASTING.PAIRRANK;
+        # the suffix is then checked exactly, because everything downstream
+        # checks it exactly. :meth:`~src.data.project_storage.ProjectStorage.load`
+        # refuses a differently-cased extension and so does
+        # :func:`resolve_project_path`, so a row for such a file would be one
+        # the register could draw and nothing could open - listed and
+        # unreachable, by the desktop app as much as by the web one.
+        paths = [
+            path
+            for path in data_dir.glob(f"*{ProjectStorage.FILE_EXTENSION}")
+            if path.suffix == ProjectStorage.FILE_EXTENSION
+        ]
     except OSError:
         return []
 
@@ -483,6 +544,88 @@ def _file_stem(name: str) -> str:
     """
     stem = safe_project_filename(name or "").strip()[:MAX_FILE_STEM_LENGTH].strip()
     return stem or DEFAULT_FILE_STEM
+
+
+def default_file_name(name: str) -> str:
+    """
+    Name the file a project name maps to, before collisions are considered.
+
+    :func:`unique_file_name` answers "a name nothing is using", which is what a
+    copy or an import wants. A screen offering to *create* a project wants the
+    other question - "the name this would take" - so that it can say that the
+    file already exists and let the user choose another, rather than quietly
+    saving Tasting (2) under a name they did not ask for.
+
+    Args:
+        name: The project name.
+
+    Returns:
+        str: A safe, non-empty, length-capped file name, extension included.
+    """
+    return ensure_pairrank_suffix(Path(_file_stem(name))).name
+
+
+def _taken_names(data_dir: Path) -> set:
+    """
+    List the project file names a directory already holds.
+
+    Read with :func:`os.scandir` rather than with :meth:`~pathlib.Path.glob`,
+    which is not as strict as it looks: ``glob`` returns an empty iterator for
+    a path that is not a directory and swallows a ``PermissionError`` from the
+    scan itself. Every caller here is about to write a file, and "I could not
+    read the directory" answered as "nothing is in it" is a green light for a
+    write that truncates whatever is really there.
+
+    Args:
+        data_dir: The directory to look in.
+
+    Returns:
+        set: Every ``.pairrank`` name in it, case-folded, because the
+        filesystems this runs on are case-insensitive and two names differing
+        only in case are one file on a Windows share. The suffix is matched
+        case-insensitively for the same reason, on every platform: ``X.PAIRRANK``
+        and ``X.pairrank`` are one file where this application actually runs,
+        and treating them as two is how a name is handed out that overwrites
+        one of them.
+
+    Raises:
+        OSError: If the directory is there and cannot be listed - it is not a
+            directory, or it cannot be read. A directory that is simply not
+            there yet holds nothing, and the write that follows will create it
+            or fail saying so.
+    """
+    try:
+        with os.scandir(data_dir) as entries:
+            names = [entry.name for entry in entries]
+    except FileNotFoundError:
+        return set()
+    return {
+        name.casefold()
+        for name in names
+        if name.casefold().endswith(ProjectStorage.FILE_EXTENSION)
+    }
+
+
+def name_is_taken(data_dir: Path, file_name: str) -> bool:
+    """
+    Check whether a directory already holds a project of this file name.
+
+    The register's two naming paths differ in what they do about a collision -
+    the picker's New refuses the name and asks for another, while an import
+    suffixes it - but not in what counts as one, so both ask here.
+
+    Args:
+        data_dir: The directory to look in.
+        file_name: The candidate file name.
+
+    Returns:
+        bool: True when something of that name is already there, compared
+        without regard to case.
+
+    Raises:
+        OSError: If the directory is there and cannot be listed.
+    """
+    return file_name.casefold() in _taken_names(data_dir)
 
 
 def unique_file_name(data_dir: Path, name: str) -> str:
@@ -507,16 +650,9 @@ def unique_file_name(data_dir: Path, name: str) -> str:
         currently uses.
     """
     stem = _file_stem(name)
+    taken = _taken_names(data_dir)
 
-    try:
-        taken = {
-            path.name.casefold()
-            for path in data_dir.glob(f"*{ProjectStorage.FILE_EXTENSION}")
-        }
-    except OSError:
-        taken = set()
-
-    candidate = ensure_pairrank_suffix(Path(stem)).name
+    candidate = default_file_name(name)
     if candidate.casefold() not in taken:
         return candidate
 
@@ -588,6 +724,11 @@ def _checked_file_name(file_name: str) -> str:
         raise ValueError(
             f"A project file name cannot refer to another directory: {file_name!r}"
         )
+    # Case-sensitive, and :func:`scan_directory` filters its glob the same way
+    # so that listing and addressing agree about what a project file is. See
+    # the note there: the decision is made by
+    # :meth:`~src.data.project_storage.ProjectStorage.load`, which refuses a
+    # differently-cased extension outright.
     if Path(name).suffix != ProjectStorage.FILE_EXTENSION:
         raise ValueError(
             f"A project file must have the {ProjectStorage.FILE_EXTENSION} "
@@ -630,7 +771,15 @@ def import_file(data_dir: Path, file_name: str, raw_bytes: bytes) -> ProjectFile
         raise ValueError(f"Not a readable project file: {verdict.reason}")
 
     data_dir.mkdir(parents=True, exist_ok=True)
-    path = data_dir / unique_file_name(data_dir, target.stem)
+    # The name is only re-derived when something already holds it. Putting a
+    # name that has already been through the sanitizer back through it is not a
+    # no-op - ``unique_file_name`` answers "Tasting (2)" and reading that back
+    # in gives "Tasting _2_" - so a caller that has already chosen a free name
+    # and shown it to the user, which is what the picker's import preview does,
+    # would find the file written under a third name neither of them named.
+    path = target
+    if target.name.casefold() in _taken_names(data_dir):
+        path = data_dir / unique_file_name(data_dir, target.stem)
     path.write_bytes(raw_bytes)
 
     return probe_project_file(path)

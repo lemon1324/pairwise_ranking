@@ -1,0 +1,17 @@
+{#
+  What the Items callouts share.
+#}
+
+{#
+  view_fields(fields)
+
+    fields  the view as query parameters: q, category and retired, each only
+            when it is set (`View.query()` in routes/items.py).
+
+  The view a callout was opened from, as hidden fields of the form it posts,
+  so the 303 that answers lands on the sheet the person was looking at rather
+  than on a reset one.
+#}
+{% macro view_fields(fields) -%}
+{% for field, value in fields.items() %}<input type="hidden" name="{{ field }}" value="{{ value }}">{% endfor %}
+{%- endmacro %}

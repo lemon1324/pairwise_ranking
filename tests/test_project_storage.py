@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import src.data.project_storage as project_storage_module
+from src.app.session import ProjectSession
 from src.data.format_version import CURRENT_FORMAT_VERSION, FORMAT_VERSION_KEY
 from src.data.project_storage import ProjectStorage
 from src.models.project import Project
@@ -257,6 +258,72 @@ class TestProjectStorage(unittest.TestCase):
             ProjectStorage.load(self.test_file)
 
         self.assertIn("Invalid project file", str(ctx.exception))
+
+    def test_a_briefly_refused_replace_is_tried_again(self):
+        """
+        Test that a save waits out a scanner holding the file it replaces.
+
+        Windows refuses os.replace over a file something else has open, which
+        for a file just written is usually an antivirus or the indexer, for a
+        few milliseconds.
+        """
+        ProjectStorage.save(Project(name="First"), self.test_file)
+        real_replace = project_storage_module.os.replace
+        calls = []
+
+        def refuse_twice(source, target):
+            calls.append(target)
+            if len(calls) <= 2:
+                raise PermissionError(5, "Access is denied")
+            real_replace(source, target)
+
+        with patch.object(project_storage_module, "REPLACE_BACKOFF_S", 0), \
+                patch.object(project_storage_module.os, "replace", side_effect=refuse_twice):
+            ProjectStorage.save(Project(name="Second"), self.test_file)
+
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(ProjectStorage.load(self.test_file).name, "Second")
+
+    def test_a_replace_refused_every_time_fails_and_keeps_the_file(self):
+        """Test that a lasting refusal is raised, the old file intact, no .tmp left."""
+        ProjectStorage.save(Project(name="First"), self.test_file)
+
+        with patch.object(project_storage_module, "REPLACE_BACKOFF_S", 0), \
+                patch.object(
+                    project_storage_module.os, "replace",
+                    side_effect=PermissionError(5, "Access is denied"),
+                ) as replace:
+            with self.assertRaises(PermissionError):
+                ProjectStorage.save(Project(name="Second"), self.test_file)
+
+        self.assertEqual(replace.call_count, project_storage_module.REPLACE_ATTEMPTS)
+        self.assertEqual(ProjectStorage.load(self.test_file).name, "First")
+        self.assertFalse(self.test_file.with_name("test.pairrank.tmp").exists())
+
+    def test_a_file_with_numeric_ids_opens_votes_and_saves_them_as_text(self):
+        """Test the desktop's path through a file whose ids are JSON numbers."""
+        self.test_file.write_text(
+            json.dumps({
+                FORMAT_VERSION_KEY: CURRENT_FORMAT_VERSION,
+                "name": "Numbered",
+                "items": [{"id": 1, "name": "One"}, {"id": 2, "name": "Two"}],
+                "votes": [{"id": 9, "winner_id": 1, "loser_id": 2, "weight": 2.0}],
+            }),
+            encoding="utf-8",
+        )
+
+        session = ProjectSession(ProjectStorage.load(self.test_file))
+        offer = session.next_pair()
+        self.assertEqual({item.id for item in offer.pair}, {"1", "2"})
+        session.vote("2", "1", 1.0)
+
+        saved = json.loads(self.test_file.read_text(encoding="utf-8"))
+        self.assertEqual([item["id"] for item in saved["items"]], ["1", "2"])
+        self.assertEqual(
+            [(vote["id"], vote["winner_id"], vote["loser_id"]) for vote in saved["votes"]][0],
+            ("9", "1", "2"),
+        )
+        self.assertEqual(saved["votes"][1]["winner_id"], "2")
 
 
 class TestProjectStorageCreateCopy(unittest.TestCase):
@@ -544,9 +611,14 @@ class TestProjectStorageMigration(unittest.TestCase):
         def deny(*args, **kwargs):
             raise PermissionError("simulated read-only project file")
 
+        # The warning goes through logging rather than to stdout, because the
+        # web frontend is a server process whose stdout nobody reads. Asserting
+        # on it here is what keeps it from quietly going back.
         with patch.object(ProjectStorage, "save", side_effect=deny):
-            project = ProjectStorage.load(self.test_file)
+            with self.assertLogs("src.data.project_storage", "WARNING") as logged:
+                project = ProjectStorage.load(self.test_file)
 
+        self.assertIn("simulated read-only project file", logged.output[0])
         self.assertEqual(project.name, "Legacy Project")
         self.assertEqual(project.to_dict()[FORMAT_VERSION_KEY], CURRENT_FORMAT_VERSION)
         self.assertEqual(len(project.active_items()), 2)
@@ -559,8 +631,10 @@ class TestProjectStorageMigration(unittest.TestCase):
             raise PermissionError("simulated read-only directory")
 
         with patch.object(Path, "write_bytes", side_effect=deny):
-            project = ProjectStorage.load(self.test_file)
+            with self.assertLogs("src.data.project_storage", "WARNING") as logged:
+                project = ProjectStorage.load(self.test_file)
 
+        self.assertIn("simulated read-only directory", logged.output[0])
         self.assertEqual(project.to_dict()[FORMAT_VERSION_KEY], CURRENT_FORMAT_VERSION)
         self.assertFalse(self.v1_backup.exists())
 

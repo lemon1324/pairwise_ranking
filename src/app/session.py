@@ -24,6 +24,7 @@ from src.models.project import (
     Project,
     active_identifiers as active_identifiers_of,
     free_slots as free_slots_of,
+    normalize_slots,
 )
 from src.models.ranking import (
     BradleyTerryModel,
@@ -40,6 +41,7 @@ from .confidence import (
     ConfidenceReading,
 )
 from .record import WeightedRecord, weighted_record
+from .slots import check_slot_labels, entered_slot_labels
 
 
 # Rankings need at least this many items before the model is fitted at all.
@@ -317,12 +319,16 @@ class ProjectSession:
             return active, [item for item in active if item.has_identifier()]
         return active, active
 
-    def next_pair(self) -> PairOffer:
+    def next_pair(self, exclude: Optional[tuple[str, str]] = None) -> PairOffer:
         """
         Choose the next pair to compare.
 
         A fresh :class:`~src.models.ranking.PairSelector`, and so a fresh
         random source, is built for every selection.
+
+        Args:
+            exclude: Two item ids naming a pair to pass over when any other
+                can be offered. See :meth:`skip`.
 
         Returns:
             PairOffer: The chosen pair with its comparison statistics, or the
@@ -352,7 +358,7 @@ class ProjectSession:
             self._project.settings,
             rng=self._rng_factory(),
         )
-        pair = selector.select_pair(self.rankings())
+        pair = selector.select_pair(self.rankings(), exclude=exclude)
 
         if pair is None:
             return PairOffer(
@@ -370,6 +376,50 @@ class ProjectSession:
             blinded=blinded,
         )
 
+    def offer_pair(self, first_id: str, second_id: str) -> Optional[PairOffer]:
+        """
+        Offer one particular pair, if both of its items can be compared now.
+
+        This is how a frontend that addresses its pairs puts one back on
+        screen - a reloaded page, a vote arriving from a page drawn a while
+        ago - without choosing again. Nothing is selected: the statistics are
+        the selector's for the current items and votes, which do not depend on
+        the pair, and they become the memo :meth:`comparison_stats` reads.
+
+        Args:
+            first_id: Id of the item to show first.
+            second_id: Id of the item to show second.
+
+        Returns:
+            Optional[PairOffer]: The pair in the order given, or None when the
+            two ids are the same, either item is missing, or either is not
+            eligible right now - retired, or without an identifier in blinded
+            mode.
+        """
+        if first_id == second_id:
+            return None
+
+        _, eligible = self._eligible_items()
+        by_id = {item.id: item for item in eligible}
+        first = by_id.get(first_id)
+        second = by_id.get(second_id)
+        if first is None or second is None:
+            return None
+
+        selector = PairSelector(
+            eligible,
+            self._project.votes,
+            self._project.settings,
+            rng=self._rng_factory(),
+        )
+        self._comparison_stats = selector.get_comparison_stats()
+        return PairOffer(
+            pair=(first, second),
+            stats=self._comparison_stats,
+            reason=None,
+            blinded=self._project.settings.blinded_comparison_mode,
+        )
+
     def comparison_stats(self) -> Optional[dict]:
         """
         Return the statistics of the pair currently on offer.
@@ -384,17 +434,25 @@ class ProjectSession:
             return None
         return dict(self._comparison_stats)
 
-    def skip(self) -> PairOffer:
+    def skip(self, exclude: Optional[tuple[str, str]] = None) -> PairOffer:
         """
         Pass on the current pair and choose another.
 
         Skipping records nothing, so there is no state to change and nothing to
-        save; the pair is simply chosen again.
+        save. Selection is mostly deterministic, so without ``exclude`` the
+        same pair usually comes straight back; with it, the best pair other
+        than the one passed on is offered, or that one again when it is the
+        only pair there is. Nothing is remembered between calls, so a second
+        skip may bounce back to the first pair.
+
+        Args:
+            exclude: The two item ids of the pair being skipped, in either
+                order.
 
         Returns:
             PairOffer: The next offer.
         """
-        return self.next_pair()
+        return self.next_pair(exclude=exclude)
 
     def vote(self, winner_id: str, loser_id: str, weight: float) -> Vote:
         """
@@ -628,25 +686,56 @@ class ProjectSession:
         total = len(self._project.slots)
         return SlotSummary(total=total, used=total - len(free), free=free)
 
-    def apply_settings(self, settings: Settings, raw_slots: list[str]) -> list[str]:
+    def apply_settings(
+        self,
+        settings: Settings,
+        raw_slots: list[str],
+        slot_labels: Optional[dict] = None,
+    ) -> list[str]:
         """
-        Apply the settings and the slot list from one Save.
+        Apply the settings, the slot list and its short labels from one Save.
 
         The slot list arrives raw, as the user typed it, and is normalized on
         the way in; the normalized list comes back so the caller can show what
-        was actually stored. Taking both in one call is what makes one Save
-        exactly one save.
+        was actually stored. Taking everything in one call is what makes one
+        Save exactly one save.
 
         Args:
             settings: The settings as entered.
             raw_slots: Slot labels as entered. They are stripped, emptied
                 entries are dropped and duplicates are removed.
+            slot_labels: The short labels entered on the slot board, slot
+                name to label, or None to keep the stored ones (the desktop
+                does not edit them). Kept as
+                :func:`~src.app.slots.entered_slot_labels` keeps them: empty
+                labels, labels equal to the derived one and labels for slots
+                not in the new list are dropped. A label for a slot that goes
+                is dropped either way.
 
         Returns:
             list[str]: The slot list as it was stored.
+
+        Raises:
+            ValueError: If a setting is out of range
+                (:meth:`~src.models.settings.Settings.validate`), or a label
+                is refused by :func:`~src.app.slots.check_slot_labels`. Nothing
+                is applied or saved.
         """
+        settings.validate()
+        labels = None
+        if slot_labels is not None:
+            saved = entered_slot_labels(self._project.slots, self._project.slot_labels)
+            verdict = check_slot_labels(normalize_slots(raw_slots), slot_labels, saved)
+            if not verdict.ok:
+                refused = ", ".join(
+                    f"{slot} ({error.value})" for slot, error in verdict.errors.items()
+                )
+                raise ValueError(f"Slot labels refused: {refused}")
+            labels = verdict.labels
         self._project.settings = settings
         self._project.set_slots(raw_slots)
+        if labels is not None:
+            self._project.set_slot_labels(labels)
         self._changed()
         return list(self._project.slots)
 

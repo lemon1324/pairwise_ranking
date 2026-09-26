@@ -1,0 +1,287 @@
+{#
+  The Compare sheet: one pair as View A and View B, the seven-station scale,
+  notes, and the title block's readings and receipt.
+
+  Ported from docs/mockups/compare.html; see src/web/routes/compare.py for how
+  its pairs are addressed. The mockup's state classes go on .frame-inner
+  rather than on the frame itself, which base.html owns: `is-blinded` swaps
+  the views for their slots and the readings for the "Readings hidden" cell,
+  and `is-empty` ghosts the views and lays the reason over the stations. Every
+  rule that reads them is a descendant rule, so the two places draw alike.
+
+  **Blinded mode leaves things out rather than hiding them.** The route puts
+  no name, description or category in a blinded view's context and takes no
+  reading, so the page carries nothing but slots whatever the stylesheet does.
+
+  **The frame is what htmx swaps.** Every form here posts (or, for Skip, gets)
+  the address a reload would, htmx follows the 303, picks #frame out of the
+  answer and puts it in place of this one, and the address bar follows. The
+  keys are handled by static/js/compare.js, loaded once below and outside the
+  frame, so nothing about them is lost in a swap. With JavaScript off the same
+  forms submit and the page reloads.
+#}
+{% extends "base.html" %}
+{% from "macros/title_block.html" import title_block, keys_block, tb_title, tb_file %}
+{% from "macros/tabs.html" import tabs %}
+{% from "macros/sheet.html" import key, icon, balloon %}
+
+{% block title %}Compare &middot; {{ project_name }}{% endblock %}
+
+{% block styles %}
+  <link rel="stylesheet" href="{{ url_for('static', path='css/compare.css').path }}">
+{% endblock %}
+
+{% block tabs %}{{ tabs(request, project_id, current="compare") }}{% endblock %}
+
+{#
+  The changed-on-disk strip, under the bar and outside the frame. Always drawn,
+  hidden when there is nothing to say, so that every swap can carry it out of
+  band (see frame_swap): a vote over a file another program saved lands on a
+  page that says so, and the next vote's page puts it away again. Dismiss is a
+  link to the pair's own address, which a reload draws without the notice
+  (taking it cleared it); with JavaScript it just hides the strip.
+#}
+{% block notice %}
+  <div class="notice" id="notice" role="status"{% if not notice %} hidden{% endif %}>
+    {% if notice %}
+    {{ icon("reload") }}
+    <p><strong>{{ notice.lead }}</strong> {{ notice.text }}</p>
+    <a class="cell-button" id="notice-dismiss" href="{{ here_url }}">Dismiss</a>
+    {% endif %}
+  </div>
+{% endblock %}
+
+{% block frame_class %}{% if blinded %} is-blinded{% endif %}{% if empty %} is-empty{% endif %}{% if save_failure %} is-save-failed{% endif %}{% endblock %}
+
+{#
+  What every form on the sheet asks htmx for: the answer's frame in place of
+  this one, the notice strip beside it, the address bar following the
+  redirect, and one request at a time (a second press while a vote is in
+  flight is dropped, not queued).
+#}
+{% macro frame_swap() -%}
+hx-target="#frame" hx-select="#frame" hx-select-oob="#notice" hx-swap="outerHTML" hx-replace-url="true" hx-sync="#frame:drop"
+{%- endmacro %}
+
+{# The pair's two ids, which a vote and an undo both post back. #}
+{% macro pair_fields() -%}
+<input type="hidden" name="a" value="{{ pair_ids.a }}"><input type="hidden" name="b" value="{{ pair_ids.b }}">
+{%- endmacro %}
+
+{#
+  One view. Open, the name leads, with the description, category and slot
+  under it; blinded, the slot balloon is the whole of it, at display size and
+  with its full name (Compare shows a named slot in full, as forms do).
+#}
+{% macro view_of(side, view, label) -%}
+<article class="view" aria-labelledby="{{ ('blind-' if blinded else 'name-') ~ side }}">
+  {% if view %}
+  <div class="view-body" data-side="{{ side }}">
+    {% if blinded %}
+    <div class="view-slot">
+      <span class="balloon" id="blind-{{ side }}" title="Slot {{ view.slot }}"><span aria-hidden="true">{{ view.slot }}</span><span class="visually-hidden">Slot {{ view.slot }}</span></span>
+      <span class="label">Slot</span>
+    </div>
+    {% else %}
+    <div class="view-open">
+      <h2 class="item-name" id="name-{{ side }}">{{ view.name }}</h2>
+      <p class="item-desc">{{ view.description }}</p>
+      <dl class="item-notes">
+        <div><dt class="label">Category</dt><dd>{{ view.category }}</dd></div>
+        <div><dt class="label">Slot</dt><dd>{{ balloon(view.slot) }}</dd></div>
+      </dl>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+  <div class="view-ghost">No item</div>
+  <div class="view-label">
+    {% if side == side_a %}
+    <svg class="view-mark" viewBox="0 0 14 14" aria-hidden="true"><rect x="0.5" y="0.5" width="13" height="13" fill="currentColor" stroke="currentColor"/></svg>
+    {% else %}
+    <svg class="view-mark" viewBox="0 0 14 14" aria-hidden="true">
+      <defs><pattern id="hatch" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="1.5" height="4" fill="currentColor"/></pattern></defs>
+      <rect x="0.5" y="0.5" width="13" height="13" fill="url(#hatch)" stroke="currentColor"/>
+    </svg>
+    {% endif %}
+    <span class="label">{{ label }}</span>
+  </div>
+</article>
+{%- endmacro %}
+
+{% block sheet_body %}
+  <section class="views" aria-label="Pair to compare">
+    {{ view_of(side_a, views[0] if views else none, "View A") }}
+    {{ view_of(side_b, views[1] if views else none, "View B") }}
+  </section>
+
+  <section class="scale" aria-labelledby="scale-title">
+    <h2 class="visually-hidden" id="scale-title">Which is better?</h2>
+    <div class="dimension" aria-hidden="true">
+      <span class="label">A preferred</span>
+      <span class="rule rule-a"><svg viewBox="0 0 100 9" preserveAspectRatio="none"><path d="M0 4.5H100" stroke="currentColor" stroke-width="1" vector-effect="non-scaling-stroke"/></svg><svg class="arrowhead" viewBox="0 0 9 9"><path d="M0 4.5L9 1.5V7.5Z" fill="currentColor"/></svg></span>
+      <span class="zero">0</span>
+      <span class="rule rule-b"><svg viewBox="0 0 100 9" preserveAspectRatio="none"><path d="M0 4.5H100" stroke="currentColor" stroke-width="1" vector-effect="non-scaling-stroke"/></svg><svg class="arrowhead" viewBox="0 0 9 9"><path d="M9 4.5L0 1.5V7.5Z" fill="currentColor"/></svg></span>
+      <span class="label">B preferred</span>
+    </div>
+
+    {# One form, seven submit buttons: the station pressed is the value sent.
+       Equal posts too, and records nothing. #}
+    <form id="vote-form" method="post" action="{{ vote_url }}" hx-post="{{ vote_url }}" {{ frame_swap() }}>
+      {{ pair_fields() }}
+      <div class="stations" id="stations">
+        {% for station in stations %}
+        <button class="station" type="submit" name="station" value="{{ station.key }}" id="station-{{ station.key }}"
+                data-key="{{ station.key }}" data-side="{{ station.side }}" data-weight="{{ station.weight }}"
+                aria-keyshortcuts="{{ station.shortcuts }}"{% if empty %} disabled{% endif %}>
+          <span class="key">{{ station.key }}</span>
+          {% if station.side == side_equal %}
+          <span class="strength strength-equal" aria-hidden="true"><i></i></span>
+          {% else %}
+          <span class="strength{% if station.side == side_b %} strength-b{% endif %}" aria-hidden="true">{% for _ in range(station.weight) %}<i class="fill-{{ station.side }}"></i>{% endfor %}</span>
+          {% endif %}
+          <span class="station-name">{{ station.name }}</span>
+          <span class="station-weight">{{ station.weight_text }}</span>
+        </button>
+        {% endfor %}
+      </div>
+    </form>
+
+    {% if empty %}
+    <div class="scale-empty" id="scale-empty">
+      <p id="empty-reason">{{ empty.lead }}</p>
+      <span class="detail" id="empty-detail">{{ empty.detail }}</span>
+      <a class="cell-button" href="{{ items_url }}">Open Items {{ icon("arrow") }}</a>
+    </div>
+    {% endif %}
+  </section>
+
+  <aside class="notes" aria-label="Notes">
+    <span class="label">Notes</span>
+    <ol>
+      <li>Equal records no vote and moves to the next pair.</li>
+      {% if not blinded %}
+      <li class="note-readings">Tolerance is the median rating uncertainty. Ratings are relative to the items in this project.</li>
+      {% endif %}
+      <li class="note-legend"><span class="swatch fill-a" aria-hidden="true"></span> View A, left. <span class="swatch fill-b" aria-hidden="true"></span> View B, right. Bar count is vote weight.</li>
+    </ol>
+  </aside>
+
+  {% call title_block(rows=4, label="Title and status") %}
+    {{ keys_block(keys) }}
+    {{ tb_title(project_name) }}
+    {{ tb_file(file_name, warn=save_failure is not none) }}
+
+    {% if readings %}
+    <div class="tb-cell tb-settled">
+      <span class="label">Order settled</span>
+      <div class="tb-figure">
+        <span class="num" id="settled">{{ readings.settled }}</span>
+        <span class="unit">neighbours<br>≥ 80% likely</span>
+      </div>
+    </div>
+    <div class="tb-cell tb-tolerance">
+      <span class="label">Tolerance</span>
+      <div class="tb-figure">
+        <span class="num" id="tolerance">{{ readings.tolerance }}</span>
+        <span class="unit">rating,<br>median</span>
+      </div>
+    </div>
+    {% endif %}
+    <div class="tb-cell tb-votes">
+      <span class="label">Votes</span>
+      <div class="tb-figure">
+        <span class="num" id="votes">{{ vote_count }}</span>
+        <span class="unit" id="today">{{ today_count }} today</span>
+      </div>
+    </div>
+    {% if not readings %}
+    <div class="tb-cell tb-hidden">
+      <span class="label">Readings hidden</span>
+      <p>Blinded mode hides settled order and tolerance.</p>
+    </div>
+    {% endif %}
+
+    <div class="tb-cell tb-revision">
+      <span class="label">Revisions</span>
+      <ol class="rev-rows" id="rev-rows" aria-live="polite">
+        {% if refused_note %}
+        <li class="rev-empty" id="rev-refused">{{ refused_note }}</li>
+        {% endif %}
+        {% for row in receipt %}
+        <li class="rev-row{% if row.previous %} is-previous{% endif %}{% if row.undone %} is-undone{% endif %}{% if row.new %} is-new{% endif %}">
+          <span class="rev-no">{{ row.number }}</span>
+          <span><span class="rev-text">{{ row.text }} <span class="rev-strength">&middot; {{ row.strength }}</span></span>
+            {#- The tag's margin spaces it on screen; the hidden separator is
+                for a screen reader, which would otherwise run the strength
+                and the tag into one word. -#}
+            {%- if row.undone %}<span class="visually-hidden">; </span><span class="rev-tag">Undone{% if row.reoffered %} &middot; pair re-offered{% endif %}</span>{% endif -%}
+          </span>
+          <span class="rev-time">{{ row.time }}</span>
+        </li>
+        {% else %}
+        <li class="rev-empty">{{ receipt_empty }}</li>
+        {% endfor %}
+      </ol>
+      {# In place of the receipt when the file would not take a vote or an
+         undo: what failed, why, what did not happen, and Retry, which posts
+         the same thing again. #}
+      {% if save_failure %}
+      <div class="save-warning" role="alert">
+        {{ icon("warn") }}
+        <div>
+          <p><strong>{{ save_failure.lead }}</strong> {{ save_failure.text }}</p>
+          {% if save_failure.retry %}
+          <form method="post" action="{{ save_failure.retry.url }}" hx-post="{{ save_failure.retry.url }}" {{ frame_swap() }}>
+            {{ pair_fields() }}
+            {% if save_failure.retry.station %}<input type="hidden" name="station" value="{{ save_failure.retry.station }}">{% endif %}
+            <button class="cell-button" type="submit" id="retry">Retry save</button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+    <form class="tb-cell tb-undo" method="post" action="{{ undo_url }}" hx-post="{{ undo_url }}" {{ frame_swap() }}>
+      {{ pair_fields() }}
+      <button type="submit" id="undo" aria-keyshortcuts="Control+Z"{% if not can_undo %} disabled{% endif %}>
+        <span class="label">Undo</span>
+        <span class="tb-action">{{ icon("undo") }}<span id="undo-text">{{ "Undo" if can_undo else "Nothing to undo" }}</span></span>
+        <span class="keys" aria-hidden="true">{{ key("Ctrl", "Z") }}</span>
+      </button>
+    </form>
+
+    <div class="tb-cell tb-state">
+      <span class="label">Pairs compared</span>
+      <div class="tb-figure">
+        <span class="num" id="pairs">{{ pairs_compared }}</span>
+      </div>
+    </div>
+    {#
+      A GET of the sheet with no pair, which is the session's skip. It names
+      the pair on screen as skip_a/skip_b (not a/b, which would draw it again)
+      so the session passes over it while another pair is left.
+    #}
+    <form class="tb-cell tb-skip" method="get" action="{{ compare_url }}" hx-get="{{ compare_url }}" {{ frame_swap() }}>
+      {% if pair_ids.a %}<input type="hidden" name="skip_a" value="{{ pair_ids.a }}"><input type="hidden" name="skip_b" value="{{ pair_ids.b }}">{% endif %}
+      <button type="submit" id="skip" aria-keyshortcuts="S"{% if empty %} disabled{% endif %}>
+        <span class="label">Skip</span>
+        <span class="tb-action">{{ icon("skip") }}Next pair {{ key("S") }}</span>
+      </button>
+    </form>
+    <div class="tb-cell tb-mode">
+      <a href="{{ settings_url }}" id="mode">
+        <span class="label">Mode</span>
+        <span class="mode-value">{{ icon("eye-off" if blinded else "eye") }}<span id="mode-text">{{ "Blinded" if blinded else "Open" }}</span></span>
+      </a>
+    </div>
+  {% endcall %}
+{% endblock %}
+
+{% block bottom_tabs %}{{ tabs(request, project_id, current="compare", bottom=true) }}{% endblock %}
+
+{% block scripts %}
+  {# After htmx, and outside the frame it swaps: the keys are bound once, to
+     the document, and find their buttons afresh on every press. #}
+  <script src="{{ url_for('static', path='js/compare.js').path }}" defer></script>
+{% endblock %}
