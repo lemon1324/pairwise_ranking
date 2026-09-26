@@ -121,7 +121,8 @@ What is checked, and why each one is here:
     station marked across the swap (and unmarked when its 420 ms are up) and
     the new revision announced; Ctrl+Z
     undoes it and the pair comes back on its sides; a held key's repeat votes
-    nothing, and ``S`` moves on without a vote.
+    nothing, and ``S`` moves on without a vote, to a pair other than the one
+    it was pressed on.
 
 ``compare-notice``
     The changed-on-disk notice, which sits outside the frame htmx swaps: with
@@ -150,6 +151,7 @@ import shutil
 import sys
 import time
 from pathlib import Path
+from urllib.parse import parse_qs
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -1519,7 +1521,12 @@ def check_compare_keys(devtools: DevTools, base: str) -> str:
     skipped = wait_for_compare(devtools, '!location.search.includes("done=")', "Skip land")
     expect(skipped["swapped"], "Skip reloaded the page")
     expect(skipped["votes"] == before["votes"], f"Skip recorded a vote: {skipped['votes']}")
-    return "2 voted and swapped the frame, marked and announced; Ctrl+Z put it back on its sides; a repeat and S voted nothing"
+    landed = parse_qs(skipped["search"].lstrip("?"))
+    expect(
+        {landed.get("a", [""])[0], landed.get("b", [""])[0]} != {"it1", "it2"},
+        f"Skip offered the pair it was pressed on again: {skipped['search']!r}",
+    )
+    return "2 voted and swapped the frame, marked and announced; Ctrl+Z put it back on its sides; a repeat voted nothing and S moved to another pair"
 
 
 # The data directory the server was booted on, for the one check that has to

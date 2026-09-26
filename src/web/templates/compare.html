@@ -257,8 +257,13 @@ hx-target="#frame" hx-select="#frame" hx-select-oob="#notice" hx-swap="outerHTML
         <span class="num" id="pairs">{{ pairs_compared }}</span>
       </div>
     </div>
-    {# A GET of the sheet with no pair, which is the session's skip. #}
+    {#
+      A GET of the sheet with no pair, which is the session's skip. It names
+      the pair on screen as skip_a/skip_b (not a/b, which would draw it again)
+      so the session passes over it while another pair is left.
+    #}
     <form class="tb-cell tb-skip" method="get" action="{{ compare_url }}" hx-get="{{ compare_url }}" {{ frame_swap() }}>
+      {% if pair_ids.a %}<input type="hidden" name="skip_a" value="{{ pair_ids.a }}"><input type="hidden" name="skip_b" value="{{ pair_ids.b }}">{% endif %}
       <button type="submit" id="skip" aria-keyshortcuts="S"{% if empty %} disabled{% endif %}>
         <span class="label">Skip</span>
         <span class="tb-action">{{ icon("skip") }}Next pair {{ key("S") }}</span>

@@ -317,12 +317,16 @@ class ProjectSession:
             return active, [item for item in active if item.has_identifier()]
         return active, active
 
-    def next_pair(self) -> PairOffer:
+    def next_pair(self, exclude: Optional[tuple[str, str]] = None) -> PairOffer:
         """
         Choose the next pair to compare.
 
         A fresh :class:`~src.models.ranking.PairSelector`, and so a fresh
         random source, is built for every selection.
+
+        Args:
+            exclude: Two item ids naming a pair to pass over when any other
+                can be offered. See :meth:`skip`.
 
         Returns:
             PairOffer: The chosen pair with its comparison statistics, or the
@@ -352,7 +356,7 @@ class ProjectSession:
             self._project.settings,
             rng=self._rng_factory(),
         )
-        pair = selector.select_pair(self.rankings())
+        pair = selector.select_pair(self.rankings(), exclude=exclude)
 
         if pair is None:
             return PairOffer(
@@ -428,17 +432,25 @@ class ProjectSession:
             return None
         return dict(self._comparison_stats)
 
-    def skip(self) -> PairOffer:
+    def skip(self, exclude: Optional[tuple[str, str]] = None) -> PairOffer:
         """
         Pass on the current pair and choose another.
 
         Skipping records nothing, so there is no state to change and nothing to
-        save; the pair is simply chosen again.
+        save. Selection is mostly deterministic, so without ``exclude`` the
+        same pair usually comes straight back; with it, the best pair other
+        than the one passed on is offered, or that one again when it is the
+        only pair there is. Nothing is remembered between calls, so a second
+        skip may bounce back to the first pair.
+
+        Args:
+            exclude: The two item ids of the pair being skipped, in either
+                order.
 
         Returns:
             PairOffer: The next offer.
         """
-        return self.next_pair()
+        return self.next_pair(exclude=exclude)
 
     def vote(self, winner_id: str, loser_id: str, weight: float) -> Vote:
         """
