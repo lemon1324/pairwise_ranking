@@ -583,6 +583,28 @@ def _skipped(session: ProjectSession, a: str, b: str) -> Optional[tuple[str, str
     return (a, b)
 
 
+def _addressable(session: ProjectSession, pair) -> bool:
+    """
+    Tell whether a pair's address will draw that pair again.
+
+    The address carries each id as text, and the sheet draws it back through
+    ``offer_pair`` on that text. An id that is not a non-empty ``str`` does
+    not come back as itself (``1`` returns as ``"1"``, ``""`` as nothing),
+    so a redirect to its address would choose the pair again, and again.
+
+    Args:
+        session: The project's session.
+        pair: The two items the session chose.
+
+    Returns:
+        bool: True if a redirect to the pair's address draws it.
+    """
+    ids = [item.id for item in pair]
+    if not all(isinstance(item_id, str) and item_id for item_id in ids):
+        return False
+    return session.offer_pair(*ids) is not None
+
+
 def _pairs_compared(stats: Optional[dict]) -> str:
     """
     Write the Pairs compared figure.
@@ -668,7 +690,7 @@ async def compare_sheet(
         # Redirect only to an address that will draw: a pair the session
         # chose but cannot put back on offer would send the browser round
         # forever. Such a pair is drawn as the empty state instead.
-        if offer.has_pair and session.offer_pair(*(item.id for item in offer.pair)):
+        if offer.has_pair and _addressable(session, offer.pair):
             return _redirect(_sheet_url(request, pid, offer.pair))
 
     blinded = project.settings.blinded_comparison_mode
