@@ -36,9 +36,12 @@ shapes are the register's (``routes/projects.py``), for the same reasons:
   back on the sheet with the view it was made from and the right row selected:
   the item made or changed, or after Retire and Delete the row that followed
   the one that went. ``done`` and ``item`` name what happened for the Last
-  change cell, which takes every word it prints from the project rather than
-  from the query. The one exception is a deleted item, which is no longer in
-  the project to be named: its name travels in the signed session cookie.
+  change cell, which prints nothing from the query: each mutation records its
+  sentence's words and time on the project's registry entry
+  (:class:`~src.web.registry.LastChange`), and the cell writes them only when
+  the address names that very change. Any other address - an older change, a
+  deletion's item that still exists, a restarted server - shows the stored
+  modified time.
 
 Validation is :func:`src.app.items.validate_item_form`'s, the desktop dialog's
 own: a name, and an identifier no other active item holds. Slots are a
@@ -65,7 +68,7 @@ from src.models.item import Item
 from src.models.project import Project
 
 from ..deps import Principal, get_current_user, get_registry
-from ..registry import OpenProject, ProjectRegistry
+from ..registry import LastChange, OpenProject, ProjectRegistry
 from ..urls import PROJECTS_PREFIX, project_url
 
 
@@ -154,17 +157,22 @@ OFFERED_TO = {
 ROW_FORMS = (FORM_EDIT, FORM_REPLACE, FORM_REACTIVATE, FORM_DELETE)
 
 # What the Last change cell says after a mutation, keyed by the `done` it
-# redirected with. Filled from the project, never from the query.
+# redirected with and recorded under: the verb, before the label the mutation
+# recorded. Filled from the registry's record, never from the query.
 DONE_ADDED = "added"
 DONE_EDITED = "edited"
 DONE_RETIRED = "retired"
 DONE_REPLACED = "replaced"
 DONE_REACTIVATED = "reactivated"
 DONE_DELETED = "deleted"
-
-# Where a deletion leaves the name of what it deleted, in the signed session
-# cookie: the one sentence the project can no longer supply.
-DELETED_KEY = "items_deleted"
+DONE_VERBS = {
+    DONE_ADDED: "Added",
+    DONE_EDITED: "Edited",
+    DONE_RETIRED: "Retired",
+    DONE_REPLACED: "Replaced",
+    DONE_REACTIVATED: "Reactivated",
+    DONE_DELETED: "Deleted",
+}
 
 # Said after the Last change sentence when the mutation it describes found the
 # file changed on disk and read it again first: the registry's reload notice,
@@ -722,53 +730,29 @@ def _find(entry: OpenProject, item_id: str, verb: str) -> Item:
     return item
 
 
-def _last_change(
-    request: Request, project: Project, project_id: str, done: str, subject_id: str,
-    freed: str,
-) -> Optional[str]:
+def _last_change(entry: OpenProject, done: str, subject_id: str) -> Optional[LastChange]:
     """
-    Write the Last change sentence for a mutation that has just finished.
+    Find the change the address names, if it is the project's last one.
 
-    Every word comes from the project: the query only says which mutation it
-    was and which item it was about. A sentence the project cannot back up -
-    an id it does not hold, a "retired" item that is active - is not written
-    at all, and the cell shows the modified time instead.
+    The query only says which mutation it was and which item it was about; the
+    words and the time come from the record the mutation left on the registry
+    entry. An address naming anything else - an older change, whose time a
+    later edit would otherwise relabel; a deletion of an item that is still
+    there; a change a restarted server never saw - gets no sentence, and the
+    cell shows the project's modified time.
 
     Args:
-        request: The incoming request, for a deletion's session note.
-        project: The project.
-        project_id: Its file name, which a deletion's note must match.
-        done: Which mutation finished.
-        subject_id: The item it was about.
-        freed: The slot a retirement freed. Named only when it is one of the
-            project's slots, so free text from a query never reaches the sheet.
+        entry: The open project.
+        done: Which mutation the address says finished.
+        subject_id: The item it says it was about.
 
     Returns:
-        Optional[str]: The sentence, without its time.
+        Optional[LastChange]: The record, when the address names it.
     """
-    if done == DONE_DELETED:
-        gone = request.session.get(DELETED_KEY)
-        if isinstance(gone, dict) and gone.get("project") == project_id:
-            return f"Deleted {gone.get('label', '')}{_with_votes(gone.get('votes', 0))}"
+    change = entry.last_change
+    if change is None or change.kind != done or change.item_id != subject_id:
         return None
-
-    subject = project.find_item(subject_id) if subject_id else None
-    if subject is None:
-        return None
-    if done == DONE_ADDED:
-        return f"Added {_label(subject)}"
-    if done == DONE_EDITED:
-        return f"Edited {_label(subject)}"
-    if done == DONE_REACTIVATED and subject.is_active():
-        return f"Reactivated {_label(subject)}"
-    if done == DONE_RETIRED and not subject.is_active():
-        slot = f" · slot {freed} freed" if freed and freed in project.slots else ""
-        return f"Retired {subject.name}{slot}"
-    if done == DONE_REPLACED:
-        old = next((item for item in project.items if item.replaced_by == subject.id), None)
-        if old is not None:
-            return f"Replaced {old.name} with {_label(subject)}"
-    return None
+    return change
 
 
 @router.get(f"{PROJECTS_PREFIX}/{{project_id}}/{SHEET}", name="items_sheet")
@@ -781,7 +765,6 @@ async def items_sheet(
     item: str = Query("", description="the item the form or change is about"),
     draft: Optional[Draft] = Depends(draft_query),
     done: str = Query("", description="which mutation just finished"),
-    freed: str = Query("", description="the slot a retirement freed"),
     registry: ProjectRegistry = Depends(get_registry),
     user: Principal = Depends(get_current_user),
 ) -> Response:
@@ -810,7 +793,6 @@ async def items_sheet(
         draft: The draft of a refused form: ``submitted=1`` with ``name``,
             ``cat``, ``slot`` and ``desc``.
         done: Which mutation just finished, for the Last change cell.
-        freed: The slot a retirement freed.
         registry: The open-project cache.
         user: The signed-in principal.
 
@@ -873,6 +855,7 @@ async def items_sheet(
 
     active_count = len(project.active_items())
     items_url = project_url(request, pid, SHEET)
+    change = _last_change(entry, done, item)
     context = {
         "project_id": pid,
         "project_name": project.name,
@@ -894,8 +877,14 @@ async def items_sheet(
         "active_count": active_count,
         "retired_count": len(project.items) - active_count,
         "modified": project.modified.strftime(MODIFIED_FORMAT),
-        "last_change": _last_change(request, project, pid, done, item, freed),
-        "change_time": project.modified.strftime(CHANGE_TIME_FORMAT),
+        # The recorded time of the change named, not the project's modified
+        # time, which every later edit or vote moves on.
+        "last_change": (
+            f"{DONE_VERBS[change.kind]} {change.label}{_with_votes(change.votes)}"
+            if change is not None
+            else None
+        ),
+        "change_time": change.time.strftime(CHANGE_TIME_FORMAT) if change is not None else "",
         "reloaded_note": RELOADED_NOTE if reloaded else "",
         "q": q,
         "category": category,
@@ -1203,7 +1192,7 @@ async def item_form(
 
 def _landed(
     request: Request, project_id: str, view: View, selected: str, done: str,
-    subject_id: str, **extra,
+    subject_id: str,
 ) -> Response:
     """
     Answer a mutation that went through: back to the sheet, with the view.
@@ -1213,17 +1202,15 @@ def _landed(
         project_id: The project's file name.
         view: The view the mutation was made from.
         selected: The row to arrive on, or empty for none.
-        done: Which mutation finished.
+        done: Which mutation finished, as it recorded itself.
         subject_id: The item it was about.
-        **extra: Anything else the Last change cell needs, e.g. ``freed``.
 
     Returns:
         Response: A 303 to the sheet.
     """
     return RedirectResponse(
         _sheet_url(
-            request, project_id, view,
-            selected=selected, done=done, item=subject_id, **extra,
+            request, project_id, view, selected=selected, done=done, item=subject_id
         ),
         status_code=303,
     )
@@ -1321,6 +1308,7 @@ async def add_item(
                 category=cleaned.category,
             )
         )
+        mutation.record_change(DONE_ADDED, added.id, _label(added))
     logger.info("Added %s to %s", added.id, pid)
     return _landed(request, pid, view, added.id, DONE_ADDED, added.id)
 
@@ -1362,15 +1350,15 @@ async def edit_item(
         if not verdict.ok:
             return _refused(request, pid, view, FORM_EDIT, found.id, draft)
         cleaned = verdict.form
-        mutation.session.update_item(
-            replace_fields(
-                found,
-                name=cleaned.name,
-                description=cleaned.description,
-                identifier=cleaned.identifier,
-                category=cleaned.category,
-            )
+        edited = replace_fields(
+            found,
+            name=cleaned.name,
+            description=cleaned.description,
+            identifier=cleaned.identifier,
+            category=cleaned.category,
         )
+        mutation.session.update_item(edited)
+        mutation.record_change(DONE_EDITED, item_id, _label(edited))
     logger.info("Edited %s in %s", item_id, pid)
     return _landed(request, pid, view, item_id, DONE_EDITED, item_id)
 
@@ -1421,6 +1409,9 @@ async def replace_item(
                 category=cleaned.category,
             ),
         )
+        mutation.record_change(
+            DONE_REPLACED, successor.id, f"{found.name} with {_label(successor)}"
+        )
     logger.info("Replaced %s with %s in %s", item_id, successor.id, pid)
     return _landed(request, pid, view, successor.id, DONE_REPLACED, successor.id)
 
@@ -1462,6 +1453,8 @@ async def reactivate_item(
         if not verdict.ok:
             return _refused(request, pid, view, FORM_REACTIVATE, found.id, draft)
         mutation.session.reactivate(found.id, verdict.form.identifier)
+        reactivated = mutation.session.project.find_item(found.id)
+        mutation.record_change(DONE_REACTIVATED, item_id, _label(reactivated))
     logger.info("Reactivated %s in %s", item_id, pid)
     return _landed(request, pid, view, item_id, DONE_REACTIVATED, item_id)
 
@@ -1507,10 +1500,10 @@ async def retire_item(
             found.id if view.show_retired else _following(_shown(project, view), found.id)
         )
         mutation.session.retire(found.id)
+        slot = f" · slot {freed} freed" if freed else ""
+        mutation.record_change(DONE_RETIRED, item_id, f"{found.name}{slot}")
     logger.info("Retired %s in %s", item_id, pid)
-    return _landed(
-        request, pid, view, selected, DONE_RETIRED, item_id, freed=freed
-    )
+    return _landed(request, pid, view, selected, DONE_RETIRED, item_id)
 
 
 @router.post(
@@ -1528,8 +1521,9 @@ async def delete_item(
     """
     Delete an item and every vote it took part in, after the confirmation.
 
-    The selection moves to the row that followed it. Its name is kept in the
-    session for the Last change cell, because the project no longer holds it.
+    The selection moves to the row that followed it. Its name and votes are
+    recorded for the Last change cell, like every change's, and here because
+    the project no longer holds them.
 
     Args:
         request: The incoming request.
@@ -1552,6 +1546,6 @@ async def delete_item(
         label = _label(found)
         selected = _following(_shown(project, view), found.id)
         mutation.session.delete_item(found.id)
-    request.session[DELETED_KEY] = {"project": pid, "label": label, "votes": votes}
+        mutation.record_change(DONE_DELETED, item_id, label, votes)
     logger.info("Deleted %s and %d votes from %s", item_id, votes, pid)
     return _landed(request, pid, view, selected, DONE_DELETED, item_id)
