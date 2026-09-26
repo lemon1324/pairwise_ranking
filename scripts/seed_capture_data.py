@@ -97,6 +97,26 @@ address at every size; **just undone** (``cmp-undone``) - press Ctrl+Z on
 that and ``capture`` its landed address. Seed again afterwards: the votes are
 real.
 
+**The Settings pass (chunks 8b and 8c).** Four of ``docs/mockups/settings.html``'s
+five states have an address on ``switches-sample-settings``, which holds the
+mockup's saved values (``S`` is
+``/projects/switches-sample-settings.pairrank/settings``)::
+
+    capture_web.py --data-dir .scratch/capture-data \\
+        "set-normal=$S" \\
+        "set-changed=$S?draft=1&weight_freshness=0.75&top_tier_mode=1&blinded_comparison_mode=1" \\
+        "set-invalid=$S?draft=1&weight_freshness=0.75&top_tier_mode=1&blinded_comparison_mode=1&cross_category_rate=1.5" \\
+        "set-reset=$S?reset=1"
+
+    capture_web.py --base-url "file:///$(wslpath -m docs/mockups)" \\
+        "mock-set-normal=/settings.html?state=normal" ...
+
+with one ``mock-set-<state>`` per mockup state: normal, changed, invalid, reset
+(and dupslots, whose app state is the slot table's, 8c). ``capture_web.py``'s
+Settings probe refuses a sheet whose table, controls, Status cell or script is
+missing. "Saved." after a save is the page a POST lands on, so like a Last
+change sentence it needs driving in the server that saved.
+
 Nothing here is imported by the application, and the files it writes are
 invented: names, figures and timestamps are all made up.
 """
@@ -286,8 +306,9 @@ SAMPLE_PLACED = (("it1", "12"), ("it2", "7"))
 
 # The mockup's states that are a different project rather than a different
 # address: (stem, what it changes). "full" keeps only the slots in use; the
-# last three are Compare's (7b): blinded mode, no votes yet, and exactly one
-# active item, which is the mockup's "Not enough items".
+# next three are Compare's (7b): blinded mode, no votes yet, and exactly one
+# active item, which is the mockup's "Not enough items". The last is Settings'
+# (8b): the mockup's saved values, two of them off their defaults.
 SAMPLE_PROJECTS = (
     ("switches-sample", "sample"),
     ("switches-sample-empty", "empty"),
@@ -296,7 +317,11 @@ SAMPLE_PROJECTS = (
     ("switches-sample-blinded", "blinded"),
     ("switches-sample-fresh", "fresh"),
     ("switches-sample-one", "one"),
+    ("switches-sample-settings", "settings"),
 )
+
+# The settings docs/mockups/settings.js calls saved: defaults but for these.
+SAMPLE_SAVED_SETTINGS = {"weight_uncompared": 3.0, "decay_timescale_days": 45.0}
 
 NOT_A_PROJECT = "notes.txt"
 
@@ -454,7 +479,8 @@ def sample_project(variant: str) -> dict:
         variant: "sample" as sample-data.js has it; "empty" with no items;
             "no-slots" with no slot list; "full" with only the slots in use,
             so none is free; "blinded" in blinded comparison mode; "fresh"
-            with no votes; "one" with Oil King alone.
+            with no votes; "one" with Oil King alone; "settings" with the
+            Settings mockup's saved values.
 
     Returns:
         dict: The project, ready to be written as JSON.
@@ -476,7 +502,11 @@ def sample_project(variant: str) -> dict:
         "modified": SAMPLE_MODIFIED,
         "items": items,
         "votes": votes,
-        "settings": {"blinded_comparison_mode": True} if variant == "blinded" else {},
+        "settings": (
+            {"blinded_comparison_mode": True} if variant == "blinded"
+            else dict(SAMPLE_SAVED_SETTINGS) if variant == "settings"
+            else {}
+        ),
         "slots": slots,
         "slot_labels": {
             slot: label for slot, label in SAMPLE_SLOT_LABELS.items() if slot in slots

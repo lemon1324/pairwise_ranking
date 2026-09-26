@@ -416,16 +416,20 @@ class TestDrafts(SettingsTestCase):
         self.assertEqual(error_of(body, "cross_category_rate"), "Must be between 0 and 1.")
         tag = element(body, r'<input[^>]*id="f-cross_category_rate"')
         self.assertIn('aria-invalid="true"', tag)
-        self.assertIn("autofocus", tag)
         self.assertEqual(
             status_of(body),
             "Fix 1 value before saving. Cross-category rate: Must be between 0 and 1.",
         )
         self.assertIn('class="tb-cell tb-status span-6 phone-wide is-error"', body)
 
+    def test_a_draft_merely_drawn_takes_no_focus(self):
+        """Test that only a refused save moves the caret, so the page stays at the top."""
+        body = self.sheet("draft=1&cross_category_rate=1.5")
+        self.assertNotIn("autofocus", body)
+
     def test_only_the_first_invalid_field_takes_the_focus(self):
-        """Test one autofocus, on the first error in table order."""
-        body = self.sheet("draft=1&weight_uncertainty=-1&cross_category_rate=2")
+        """Test one autofocus after a refused save, on the first error in table order."""
+        body = self.sheet("draft=1&submitted=1&weight_uncertainty=-1&cross_category_rate=2")
         self.assertEqual(body.count("autofocus"), 1)
         self.assertIn("autofocus", element(body, r'<input[^>]*id="f-weight_uncertainty"'))
         self.assertTrue(status_of(body).startswith("Fix 2 values before saving."))
@@ -563,6 +567,7 @@ class TestSaveRefusals(SettingsTestCase):
                 self.assertEqual(self.snapshot(), before)
                 self.assertEqual(path, SETTINGS_URL)
                 self.assertEqual(query["draft"], "1")
+                self.assertEqual(query["submitted"], "1")
                 # parse_qs drops an empty value, which reads back as empty.
                 self.assertEqual(query.get(key, ""), raw)
                 self.assertEqual(query["top_tier_mode"], "1")

@@ -12,7 +12,10 @@ that answers 303 (ruling A) and a refused draft has to come back drawn:
 - ``GET {settings}?draft=1&<field>=<value>...`` draws a draft: each numeric
   field as typed (a field left out reads as its saved value) and each switch on
   only when present - a form's own semantics. Every value is validated as it is
-  drawn, so a refused post and a hand-written address draw the same error.
+  drawn, so a refused post and a hand-written address draw the same error. A
+  refused post adds ``submitted=1``, which also puts the caret in the first
+  field in error, as the mockup's Save does; without it the page stays at the
+  top, so the state can be photographed.
 - ``GET {settings}?reset=1`` fills every parameter with its default and leaves
   the slot list alone, saving nothing: the mockup's Reset. With JavaScript the
   Reset cell does this in place; without it the cell is a GET submit here.
@@ -457,7 +460,7 @@ def _draft_query(form) -> dict:
         dict: ``draft=1``, every numeric field posted, each switch that is
         on as "1", and the slot text when it was posted.
     """
-    query = {"draft": YES}
+    query = {"draft": YES, "submitted": YES}
     for field in FIELDS:
         raw = form.get(field.key)
         if raw is None:
@@ -513,6 +516,7 @@ async def settings_sheet(
     project_id: str,
     draft: str = Query("", description="1 when the query holds the form's values"),
     reset: str = Query("", description="1 to fill every parameter with its default"),
+    submitted: str = Query("", description="1 when a save refused the draft"),
     done: str = Query("", description="what just finished: saved"),
     registry: ProjectRegistry = Depends(get_registry),
     user: Principal = Depends(get_current_user),
@@ -525,6 +529,8 @@ async def settings_sheet(
         project_id: The project's file name.
         draft: "1" to draw the query's field values as a draft.
         reset: "1" to draw the defaults, unsaved, over the saved values.
+        submitted: "1" on the draft a refused save lands on, which puts the
+            caret in the first field in error.
         done: "saved" on the address a save lands on.
         registry: The open-project cache.
         user: The signed-in principal.
@@ -571,7 +577,11 @@ async def settings_sheet(
     for title, fields in GROUPS:
         groups.append({"title": title, "rows": rows[position:position + len(fields)]})
         position += len(fields)
-    first_error = next((row.field.key for row in rows if row.error), "")
+    # A refused save puts the caret in the first field to fix, as the mockup's
+    # Save does; a draft merely drawn at its address is left at the top.
+    first_error = (
+        next((row.field.key for row in rows if row.error), "") if submitted == YES else ""
+    )
 
     context = {
         "project_id": pid,
