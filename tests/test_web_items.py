@@ -695,15 +695,15 @@ class TestProjectsThatCannotBeDrawn(ItemsTestCase):
 
     def test_the_register_s_open_now_lands_on_a_sheet(self):
         """
-        Test that Open ends on this sheet rather than on a 404.
+        Test that Open ends on a drawn sheet rather than on a 404.
 
-        DEFAULT_SHEET has pointed at Items since chunk 5b; until this chunk the
-        redirect went nowhere.
+        DEFAULT_SHEET pointed at Items from chunk 5b until phase 7 built
+        Compare, which it points at again (tests/test_web_compare.py).
         """
         response = self.client.get(f"/projects/{PROJECT}/open")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.url.path, ITEMS_URL)
+        self.assertEqual(response.url.path, f"/projects/{PROJECT}/compare")
 
 
 class TestItemsUnderARootPath(ItemsTestCase):

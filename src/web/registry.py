@@ -47,6 +47,7 @@ from src.app.session import ProjectSession
 from src.data.errors import ProjectFormatError
 from src.data.project_storage import ProjectStorage
 from src.models.project import Project
+from src.models.vote import Vote
 
 
 logger = logging.getLogger(__name__)
@@ -94,6 +95,11 @@ class LastChange:
         label: How the sentence names its subject, fixed at the time.
         votes: The votes that went with it; 0 unless something was deleted.
         time: When the change was made.
+        vote: For Compare's vote and undo, the vote recorded or removed, which
+            its receipt row is drawn from; None for every other change.
+        sides: For a vote, the ids of the items in View A and View B as the
+            pair was drawn, which a vote alone does not remember - it knows
+            only a winner and a loser - and which an undo puts back.
     """
 
     kind: str
@@ -101,6 +107,8 @@ class LastChange:
     label: str
     votes: int
     time: datetime
+    vote: Optional[Vote] = None
+    sides: tuple[str, ...] = ()
 
 
 def _stamp(path: Path) -> Optional[tuple[int, int]]:
@@ -316,7 +324,15 @@ class Mutation:
         """
         return self.entry.take_reload_notice()
 
-    def record_change(self, kind: str, item_id: str, label: str, votes: int = 0) -> LastChange:
+    def record_change(
+        self,
+        kind: str,
+        item_id: str,
+        label: str,
+        votes: int = 0,
+        vote: Optional[Vote] = None,
+        sides: tuple[str, ...] = (),
+    ) -> LastChange:
         """
         Remember this edit as the project's last change, timed now.
 
@@ -328,11 +344,15 @@ class Mutation:
             item_id: The item it was about.
             label: How a sentence names its subject.
             votes: The votes that went with it.
+            vote: The vote a Compare change recorded or removed.
+            sides: The ids in View A and View B, for a vote.
 
         Returns:
             LastChange: The record, which replaces the previous one.
         """
-        change = LastChange(kind, item_id, label, votes, datetime.now())
+        change = LastChange(
+            kind, item_id, label, votes, datetime.now(), vote=vote, sides=tuple(sides)
+        )
         self.entry.last_change = change
         return change
 
