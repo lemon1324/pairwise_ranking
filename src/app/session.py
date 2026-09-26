@@ -700,7 +700,13 @@ class ProjectSession:
 
         Returns:
             list[str]: The slot list as it was stored.
+
+        Raises:
+            ValueError: If a setting is out of range
+                (:meth:`~src.models.settings.Settings.validate`). Nothing is
+                applied or saved.
         """
+        settings.validate()
         self._project.settings = settings
         self._project.set_slots(raw_slots)
         self._changed()
