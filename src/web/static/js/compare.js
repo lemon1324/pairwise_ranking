@@ -60,9 +60,18 @@
     applyMark();
   }
 
-  // A click on a station, by mouse or by its key, marks it.
+  // A click on a station, by mouse or by its key, marks it. Dismiss on the
+  // changed-on-disk notice only hides the strip: its link, which reloads the
+  // pair, is for a page without JavaScript.
   document.addEventListener("click", (event) => {
-    const button = event.target.closest && event.target.closest(".station");
+    if (!event.target.closest) return;
+    const dismiss = event.target.closest("#notice-dismiss");
+    if (dismiss) {
+      event.preventDefault();
+      document.getElementById("notice").hidden = true;
+      return;
+    }
+    const button = event.target.closest(".station");
     if (button && !button.disabled) markStation(button.dataset.key);
   });
 
@@ -117,9 +126,15 @@
     figures = {};
     // The receipt's live region went out with the old frame, and a region
     // that arrives already filled is not read out; so the row the vote or
-    // undo just wrote is said in the page's own status region instead.
+    // undo just wrote is said in the page's own status region instead, after
+    // the changed-on-disk notice when one came with it (it is swapped in whole
+    // too). A failed save is an alert, which is announced as it arrives.
     const status = document.getElementById("callout-status");
+    const said = [];
+    const notice = document.getElementById("notice");
+    if (notice && !notice.hidden) said.push(notice.querySelector("p")?.textContent || "");
     const row = event.target.querySelector(".rev-row.is-new, .rev-row.is-undone, #rev-refused");
-    if (status) status.textContent = row ? row.textContent.replace(/\s+/g, " ").trim() : "";
+    if (row && !event.target.querySelector(".save-warning")) said.push(row.textContent);
+    if (status) status.textContent = said.join(" ").replace(/\s+/g, " ").trim();
   });
 })();
