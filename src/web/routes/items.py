@@ -810,7 +810,7 @@ async def items_sheet(
         ProjectFormatError: If the file's format version cannot be reached.
         ProjectUnreadableError: If the file will not read as a project.
     """
-    entry = registry.open(project_id)
+    entry = registry.open_fresh(project_id)
     session = entry.session
     project = session.project
     labels = project.slot_labels
@@ -953,7 +953,7 @@ async def item_callout(
     Raises:
         HTTPException: 404 when the project holds no such item.
     """
-    entry = registry.open(project_id)
+    entry = registry.open_fresh(project_id)
     found = _find(entry, item_id, "callout")
     pid = entry.path.name
 
@@ -1128,7 +1128,7 @@ async def new_item_form(
     Returns:
         Response: The callout.
     """
-    entry = registry.open(project_id)
+    entry = registry.open_fresh(project_id)
     context = _form_context(request, entry, FORM_NEW, None, draft, view)
     return _fragment(request, "callout_form.html", context)
 
@@ -1169,7 +1169,7 @@ async def item_form(
     """
     if verb not in ROW_FORMS:
         raise HTTPException(status_code=404, detail="No such item form.")
-    entry = registry.open(project_id)
+    entry = registry.open_fresh(project_id)
     found = _find(entry, item_id, verb)
     if verb != FORM_DELETE:
         context = _form_context(request, entry, verb, found, draft, view)

@@ -1011,6 +1011,65 @@ class TestChangedOnDisk(CompareTestCase):
         self.assertNotIn("The pair below is new.", strip)
 
 
+class TestEveryPageReadsTheFile(CompareTestCase):
+    """Test cases for a page drawn after the file changed, with no vote between."""
+
+    def test_blinded_mode_switched_on_elsewhere_hides_the_names_at_once(self):
+        """Test that the next page is blinded, and an unslotted pair is chosen again."""
+        self.compare("a=oil&b=brown")
+        self.write(
+            PROJECT,
+            project_data(votes=VOTES, settings={"blinded_comparison_mode": True}),
+        )
+
+        body = self.compare("a=oil&b=cream")
+
+        self.assertIn('class="frame-inner is-blinded"', body)
+        for entry in ITEMS:
+            self.assertNotIn(html.escape(entry["name"]), body)
+        response = self.client.get(f"{COMPARE_URL}?a=oil&b=brown", follow_redirects=False)
+        _, landed = self.redirect_of(response)
+        self.assertLessEqual({landed["a"], landed["b"]}, SLOTTED)
+
+    def test_the_page_says_the_file_was_reloaded(self):
+        """Test that a GET which finds the change takes the notice."""
+        self.compare("a=oil&b=cream")
+        self.write(PROJECT, project_data(votes=VOTES + [vote("jade", "alpaca", "x1", minutes=9)]))
+
+        strip = element(self.compare("a=oil&b=cream"), r'<div class="notice" id="notice"')
+
+        self.assertIn("reloaded: 1 vote added.", text_of(strip))
+
+    def test_a_vote_over_a_deleted_file_leaves_the_sheet_not_found(self):
+        """Test that the refused vote drops the stale project, so the GET says 404 too."""
+        self.compare("a=oil&b=cream")
+        (self.data_dir / PROJECT).unlink()
+
+        self.assertEqual(self.post("vote", a="oil", b="cream", station="2").status_code, 404)
+        self.assertEqual(self.client.get(f"{COMPARE_URL}?a=oil&b=cream").status_code, 404)
+
+    def test_a_file_replaced_by_a_newer_format_is_refused_on_the_next_page(self):
+        """Test the GET after a change the registry cannot load."""
+        self.compare("a=oil&b=cream")
+        self.write(PROJECT, project_data(votes=VOTES, format_version=99))
+
+        response = self.client.get(f"{COMPARE_URL}?a=oil&b=cream", follow_redirects=False)
+
+        self.assertEqual(response.status_code, 409)
+
+
+class TestAPairThatCannotBeAddressed(CompareTestCase):
+    """Test cases for a session pair that the address cannot draw back."""
+
+    def test_the_sheet_draws_empty_rather_than_redirecting_to_itself(self):
+        """Test the guard against a redirect loop."""
+        with mock.patch.object(ProjectSession, "offer_pair", return_value=None):
+            response = self.client.get(COMPARE_URL, follow_redirects=False)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("is-empty", response.text)
+
+
 class TestCompareUnderARootPath(CompareTestCase):
     """Test cases for the sheet behind a reverse proxy on a subpath."""
 
