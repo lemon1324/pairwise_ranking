@@ -258,6 +258,47 @@ class TestProjectStorage(unittest.TestCase):
 
         self.assertIn("Invalid project file", str(ctx.exception))
 
+    def test_a_briefly_refused_replace_is_tried_again(self):
+        """
+        Test that a save waits out a scanner holding the file it replaces.
+
+        Windows refuses os.replace over a file something else has open, which
+        for a file just written is usually an antivirus or the indexer, for a
+        few milliseconds.
+        """
+        ProjectStorage.save(Project(name="First"), self.test_file)
+        real_replace = project_storage_module.os.replace
+        calls = []
+
+        def refuse_twice(source, target):
+            calls.append(target)
+            if len(calls) <= 2:
+                raise PermissionError(5, "Access is denied")
+            real_replace(source, target)
+
+        with patch.object(project_storage_module, "REPLACE_BACKOFF_S", 0), \
+                patch.object(project_storage_module.os, "replace", side_effect=refuse_twice):
+            ProjectStorage.save(Project(name="Second"), self.test_file)
+
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(ProjectStorage.load(self.test_file).name, "Second")
+
+    def test_a_replace_refused_every_time_fails_and_keeps_the_file(self):
+        """Test that a lasting refusal is raised, the old file intact, no .tmp left."""
+        ProjectStorage.save(Project(name="First"), self.test_file)
+
+        with patch.object(project_storage_module, "REPLACE_BACKOFF_S", 0), \
+                patch.object(
+                    project_storage_module.os, "replace",
+                    side_effect=PermissionError(5, "Access is denied"),
+                ) as replace:
+            with self.assertRaises(PermissionError):
+                ProjectStorage.save(Project(name="Second"), self.test_file)
+
+        self.assertEqual(replace.call_count, project_storage_module.REPLACE_ATTEMPTS)
+        self.assertEqual(ProjectStorage.load(self.test_file).name, "First")
+        self.assertFalse(self.test_file.with_name("test.pairrank.tmp").exists())
+
 
 class TestProjectStorageCreateCopy(unittest.TestCase):
     """Test cases for ProjectStorage.create_copy."""
