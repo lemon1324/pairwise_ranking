@@ -142,6 +142,15 @@ What is checked, and why each one is here:
     file is deleted behind the server's back, ``2`` lands on "Not found", and
     the file is put back.
 
+``items-error``
+    The engine's own GETs answered with an error show the error page: the
+    Items project file is deleted behind the server's back, a row is clicked,
+    its callout's 404 makes sheet.js load the sheet's address again, that
+    lands on "Not found" (which does not boot the engine), and the file is put
+    back. Then a callout for an item that does not exist, fetched twice on a
+    sheet that draws, reloads the page once and the second time only says so
+    in the status region.
+
 Each check leaves the page as it found it by navigating afresh, so they are
 independent and ``--check`` can run any one of them alone.
 """
@@ -1776,6 +1785,65 @@ def check_compare_error(devtools: DevTools, base: str) -> str:
     return "a vote over a deleted project showed the not-found page"
 
 
+def check_items_error(devtools: DevTools, base: str) -> str:
+    """
+    Check that a row whose callout the server refuses shows the error page.
+
+    htmx swaps no 4xx answer, so without sheet.js's handler a click on a row
+    of a project deleted behind the server's back selected the row, fetched
+    nothing and said nothing. The file is taken away, a row is clicked, and
+    the not-found page must be what the browser shows: the engine loads the
+    sheet's own address again, which the server answers with that page. The
+    file is put back afterwards.
+    """
+    file_name = ITEMS_PATH.split("/")[2]
+    path = Path(DATA_DIR["path"]) / file_name
+    open_page(devtools, f"{base}{ITEMS_PATH}", *NARROW)
+    saved = path.read_bytes()
+    path.unlink()
+    try:
+        devtools.evaluate('document.querySelector("tr[data-id=item-5]").click(), true')
+        deadline = time.monotonic() + READY_TIMEOUT_S
+        shown = ""
+        while time.monotonic() < deadline:
+            try:
+                shown = devtools.evaluate(
+                    'document.readyState === "complete" && !document.querySelector(".bom-field")'
+                    ' ? document.title : ""'
+                )
+            except CaptureError:
+                shown = ""
+            if shown:
+                break
+            time.sleep(POLL_INTERVAL_S)
+        # Not window.sheet: the error page's #sheet element answers to that name.
+        page = devtools.evaluate(
+            '({ href: location.href, title: document.title,'
+            ' engine: Array.from(document.scripts).some((s) => s.src.endsWith("/sheet.js")) })'
+        )
+        expect("Not found" in shown, f"the error page never showed: {page}")
+        expect(not page["engine"], f"the error page loads the engine, which could reload it again: {page}")
+    finally:
+        path.write_bytes(saved)
+
+    # A fragment that fails on a page that still draws reloads it once, not
+    # for ever: the second failure straight after says so in the status region.
+    # Another address, because the guard remembers the one reloaded above.
+    open_page(devtools, f"{base}{ITEMS_PATH}?selected=item-2", *NARROW)
+    missing = f'htmx.ajax("GET", "{ITEMS_PATH}/no-such-item/callout", {{ target: "#row-callout" }})'
+    devtools.evaluate(f"window.__beforeReload = true, {missing}, true")
+    wait_for_page(devtools, "!window.__beforeReload", "the sheet loaded again after a 404")
+    devtools.evaluate(f"window.__beforeReload = true, {missing}, true")
+    time.sleep(2 * CALLOUT_WAIT_S)
+    after = devtools.evaluate(
+        '({ kept: window.__beforeReload === true,'
+        ' status: document.getElementById("callout-status").textContent })'
+    )
+    expect(after["kept"], "a second 404 straight after the reload loaded the page again")
+    expect("could not answer" in after["status"], f"the status region says {after['status']!r}")
+    return "a row clicked in a deleted project showed the not-found page; a repeated fragment 404 reloaded once and then said so"
+
+
 CHECKS = {
     "fold": check_fold,
     "swap-empty": check_swap_empty,
@@ -1798,6 +1866,7 @@ CHECKS = {
     "compare-notice": check_compare_notice,
     "compare-double": check_compare_double,
     "compare-error": check_compare_error,
+    "items-error": check_items_error,
 }
 
 
