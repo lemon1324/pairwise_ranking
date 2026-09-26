@@ -47,11 +47,13 @@
     }
     el.classList.add("is-marked");
     const current = mark;
+    // Clears whichever station carries the mark when it ends, not `el`: a
+    // swap in the meantime re-marks the new frame's station, and the timer
+    // set before the swap is the one that ends the mark on time.
     setTimeout(() => {
-      if (mark === current) {
-        mark = null;
-        el.classList.remove("is-marked");
-      }
+      if (mark !== current) return;
+      mark = null;
+      document.querySelectorAll(".station.is-marked").forEach((station) => station.classList.remove("is-marked"));
     }, left);
   }
 

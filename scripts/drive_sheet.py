@@ -118,7 +118,8 @@ What is checked, and why each one is here:
     Not the folding engine: the Compare sheet's own keys
     (``static/js/compare.js``), which live outside the frame htmx swaps. ``2``
     votes and the frame is swapped in place with the address following, the
-    station marked across the swap and the new revision announced; Ctrl+Z
+    station marked across the swap (and unmarked when its 420 ms are up) and
+    the new revision announced; Ctrl+Z
     undoes it and the pair comes back on its sides; a held key's repeat votes
     nothing, and ``S`` moves on without a vote.
 
@@ -1483,6 +1484,9 @@ def check_compare_keys(devtools: DevTools, base: str) -> str:
     )
     expect(voted["marked"] == ["2"], f"station 2 was not marked across the swap: {voted['marked']}")
     expect("Gateron Oil King over" in voted["status"], f"the status region said {voted['status']!r}")
+    time.sleep(CALLOUT_WAIT_S)
+    faded = devtools.evaluate(COMPARE_STATE)["marked"]
+    expect(faded == [], f"the mark outlived its 420 ms on the swapped-in frame: {faded}")
 
     compare_key(devtools, "z", ctrl=True)
     undone = wait_for_compare(devtools, 'location.search.includes("done=undone")', "the undo land")
