@@ -703,8 +703,11 @@ async def compare_sheet(
     )
     # Read before taking: taking the notice clears the count that goes with it.
     votes_changed = entry.votes_changed_on_disk
+    # The pair is new only when a vote or an undo just moved on from the one
+    # the change was found under; a plain GET that finds it draws that pair.
+    pair_is_new = save_failure is None and done in (DONE_VOTED, DONE_UNDONE)
     notice = (
-        _notice(pid, votes_changed, pair_is_new=save_failure is None)
+        _notice(pid, votes_changed, pair_is_new=pair_is_new)
         if entry.take_reload_notice()
         else None
     )

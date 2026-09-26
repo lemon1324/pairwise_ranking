@@ -1116,6 +1116,7 @@ class TestEveryPageReadsTheFile(CompareTestCase):
         strip = element(self.compare("a=oil&b=cream"), r'<div class="notice" id="notice"')
 
         self.assertIn("reloaded: 1 vote added.", text_of(strip))
+        self.assertNotIn("The pair below is new.", strip)
 
     def test_a_vote_over_a_deleted_file_leaves_the_sheet_not_found(self):
         """Test that the refused vote drops the stale project, so the GET says 404 too."""
