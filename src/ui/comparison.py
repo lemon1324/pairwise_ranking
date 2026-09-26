@@ -280,6 +280,18 @@ class ComparisonWidget(QWidget):
         # Grab focus for keyboard shortcuts
         self.setFocus()
 
+    def current_pair_ids(self) -> Optional[tuple[str, str]]:
+        """
+        Name the pair on screen, for a skip to pass over.
+
+        Returns:
+            Optional[tuple[str, str]]: The two items' ids, or None when no
+            pair is shown.
+        """
+        if self._item_a is None or self._item_b is None:
+            return None
+        return (self._item_a.id, self._item_b.id)
+
     def set_no_items(self, message: str = "Add at least 2 items to start comparing") -> None:
         """
         Display message when there are not enough items to compare.

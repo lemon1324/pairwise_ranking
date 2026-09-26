@@ -28,6 +28,9 @@ the page reloads, which is the same thing drawn whole.
 **Skip and Equal record nothing.** Skip is a GET of the sheet with no pair,
 which is the session's :meth:`~src.app.session.ProjectSession.skip`; station 4
 posts like the others and is answered the same way, without taking the lock.
+Both name the pair on screen (Skip as ``skip_a``/``skip_b``, Equal as its
+``a``/``b``) and the session passes over it while any other pair is left.
+Nothing is remembered, so a second skip may come back to the first pair.
 
 **The receipt is drawn from the file, and from the registry's memory.** The
 last two votes are the file's; which of them the address just recorded, and
@@ -560,6 +563,26 @@ def _notice(file_name: str, votes_changed: int, pair_is_new: bool) -> dict:
     return {"lead": "File changed on disk.", "text": text}
 
 
+def _skipped(session: ProjectSession, a: str, b: str) -> Optional[tuple[str, str]]:
+    """
+    Read the pair a Skip or an Equal was pressed on, for the session to pass over.
+
+    Args:
+        session: The project's session.
+        a: The id posted as View A.
+        b: The id posted as View B.
+
+    Returns:
+        Optional[tuple[str, str]]: The two ids, or None when they name no pair
+        that can be compared now - missing, equal, retired, unslotted - which
+        is then no pair to pass over.
+    """
+    a, b = a.strip(), b.strip()
+    if not a or not b or session.offer_pair(a, b) is None:
+        return None
+    return (a, b)
+
+
 def _pairs_compared(stats: Optional[dict]) -> str:
     """
     Write the Pairs compared figure.
@@ -586,6 +609,8 @@ async def compare_sheet(
     refused: str = Query("", description="what a refused vote got wrong"),
     station: str = Query("", description="the station a vote that failed to save pressed"),
     cause: str = Query("", description="why a save failed"),
+    skip_a: str = Query("", description="View A of the pair Skip was pressed on"),
+    skip_b: str = Query("", description="View B of the pair Skip was pressed on"),
     registry: ProjectRegistry = Depends(get_registry),
     user: Principal = Depends(get_current_user),
 ) -> Response:
@@ -611,6 +636,10 @@ async def compare_sheet(
         station: After a failed vote, its station, which Retry posts again.
         cause: After a failed save, "denied" or "full"; anything else says
             no cause.
+        skip_a: With ``skip_b`` and no pair, the pair Skip was pressed on,
+            which the session passes over while another pair is left. Ids
+            that name no comparable pair are ignored.
+        skip_b: See ``skip_a``.
         registry: The open-project cache.
         user: The signed-in principal.
 
@@ -635,7 +664,7 @@ async def compare_sheet(
     offer: Optional[PairOffer] = session.offer_pair(a, b) if a and b else None
     pair = offer.pair if offer is not None else None
     if offer is None:
-        offer = session.next_pair()
+        offer = session.skip(exclude=_skipped(session, skip_a, skip_b))
         # Redirect only to an address that will draw: a pair the session
         # chose but cannot put back on offer would send the browser round
         # forever. Such a pair is drawn as the empty state instead.
@@ -735,7 +764,7 @@ async def vote(
             offer = entry.session.offer_pair(a, b) if a and b else None
             pair = offer.pair if offer is not None else None
             return _redirect(_sheet_url(request, pid, pair, refused=REFUSED_STATION))
-        offer = entry.session.skip()
+        offer = entry.session.skip(exclude=_skipped(entry.session, a, b))
         return _redirect(_sheet_url(request, pid, offer.pair if offer.has_pair else None))
 
     pid = registry.resolve(project_id).name

@@ -517,6 +517,57 @@ class TestProjectSessionVoting(unittest.TestCase):
         self.assertEqual(self.session.project.votes, [])
 
 
+class TestProjectSessionSkipExclude(unittest.TestCase):
+    """Test cases for a skip that passes over the pair on screen."""
+
+    @staticmethod
+    def ids(offer) -> frozenset:
+        """Name an offer's pair regardless of its order."""
+        return frozenset(item.id for item in offer.pair)
+
+    def test_the_skipped_pair_is_not_offered_again(self):
+        """Test that the pair a plain skip would repeat is passed over, either order."""
+        session = build_session(seed=0)
+        first = session.next_pair()
+        a, b = (item.id for item in first.pair)
+
+        self.assertEqual(self.ids(session.skip()), self.ids(first))
+        for exclude in ((a, b), (b, a)):
+            with self.subTest(exclude=exclude):
+                offer = session.skip(exclude=exclude)
+
+                self.assertTrue(offer.has_pair)
+                self.assertNotEqual(self.ids(offer), frozenset((a, b)))
+
+    def test_the_only_pair_is_offered_again(self):
+        """Test that two items' sole pair comes back rather than an empty state."""
+        session = build_session(seed=0, items=build_items(2))
+
+        offer = session.skip(exclude=("item-0", "item-1"))
+
+        self.assertTrue(offer.has_pair)
+        self.assertEqual(self.ids(offer), frozenset(("item-0", "item-1")))
+
+    def test_nothing_is_kept_between_skips(self):
+        """Test that the exclusion lasts one call: the next plain choice is unchanged."""
+        session = build_session(seed=0)
+        first = session.next_pair()
+
+        session.skip(exclude=tuple(item.id for item in first.pair))
+
+        self.assertEqual(self.ids(session.next_pair()), self.ids(first))
+        self.assertEqual(self.ids(session.skip()), self.ids(first))
+
+    def test_ids_naming_no_pair_exclude_nothing(self):
+        """Test that an unknown or doubled id changes nothing about the choice."""
+        session = build_session(seed=0)
+        first = session.next_pair()
+
+        for exclude in (("item-0", "item-0"), ("item-0", "gone")):
+            with self.subTest(exclude=exclude):
+                self.assertEqual(self.ids(session.skip(exclude=exclude)), self.ids(first))
+
+
 class TestProjectSessionOfferPair(unittest.TestCase):
     """Test cases for putting one named pair back on offer."""
 

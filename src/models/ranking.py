@@ -625,12 +625,17 @@ class PairSelector:
     def select_pair(
         self,
         rankings: Optional[list[RankingResult]] = None,
+        exclude: Optional[tuple[str, str]] = None,
     ) -> Optional[tuple[Item, Item]]:
         """
         Select the best pair of items to compare next.
 
         Args:
             rankings: Current ranking results. If None, uses default ordering.
+            exclude: Two item ids, in either order, naming a pair to pass
+                over - the one a skip was pressed on. The best other pair is
+                chosen; when there is no other, this one is. Nothing is kept
+                of it after the call.
 
         Returns:
             tuple[Item, Item]: The selected pair, or None if < 2 items exist.
@@ -638,6 +643,7 @@ class PairSelector:
         n = len(self.items)
         if n < 2:
             return None
+        excluded = frozenset(exclude) if exclude else None
 
         # Find connected components and map each item index to its component
         components = self._find_connected_components()
@@ -681,6 +687,17 @@ class PairSelector:
         else:
             # Only one category, so the filter would be a no-op
             candidate_pairs = self._candidate_pairs()
+
+        # Leave out the pair a skip passed on, while any other pair is left:
+        # in the category the draw chose, else in any. Two items have only the
+        # one pair, which is then offered again rather than nothing.
+        if excluded is not None:
+            ids = [item.id for item in self.items]
+            kept = [(i, j) for i, j in candidate_pairs if {ids[i], ids[j]} != excluded]
+            if not kept:
+                kept = self._candidate_pairs(lambda i, j: {ids[i], ids[j]} != excluded)
+            if kept:
+                candidate_pairs = kept
 
         # Fall back to all pairs if the filtered set is empty
         if not candidate_pairs:

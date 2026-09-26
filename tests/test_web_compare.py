@@ -1030,6 +1030,64 @@ class TestChangedOnDisk(CompareTestCase):
         self.assertNotIn("The pair below is new.", strip)
 
 
+class TestSkipPassesOverThePair(CompareTestCase):
+    """Test cases for Skip and Equal naming the pair on screen."""
+
+    def session_pair(self) -> dict:
+        """Ask the bare sheet which pair the session would choose."""
+        _, query = self.redirect_of(self.client.get(COMPARE_URL, follow_redirects=False))
+        return query
+
+    def test_the_skip_form_names_the_pair_on_screen(self):
+        """Test the hidden fields, which are not a/b (those would draw it again)."""
+        form = element(self.compare("a=oil&b=cream"), r'<form class="tb-cell tb-skip"')
+
+        self.assertIn('name="skip_a" value="oil"', form)
+        self.assertIn('name="skip_b" value="cream"', form)
+
+    def test_skip_and_equal_land_on_another_pair(self):
+        """Test that the pair a skip is pressed on is the one pair it will not offer."""
+        chosen = self.session_pair()
+        a, b = chosen["a"], chosen["b"]
+        responses = {
+            "skip": self.client.get(f"{COMPARE_URL}?skip_a={a}&skip_b={b}", follow_redirects=False),
+            "equal": self.post("vote", a=a, b=b, station="4"),
+        }
+
+        for name, response in responses.items():
+            with self.subTest(name):
+                _, landed = self.redirect_of(response)
+                self.assertNotEqual({landed["a"], landed["b"]}, {a, b})
+                self.assertLessEqual({landed["a"], landed["b"]}, ACTIVE)
+
+    def test_ids_naming_no_pair_are_ignored(self):
+        """Test the lenient read: a pair that cannot be compared excludes nothing."""
+        # The fixture's categories make the session's choice a random draw,
+        # so what is checked is what the route asked the session for.
+        for query in ("skip_a=oil&skip_b=blue", "skip_a=oil&skip_b=oil", "skip_a=oil", "skip_b=%20"):
+            with self.subTest(query=query):
+                with mock.patch.object(
+                    ProjectSession, "skip", autospec=True, side_effect=ProjectSession.skip
+                ) as skip:
+                    response = self.client.get(f"{COMPARE_URL}?{query}", follow_redirects=False)
+
+                self.redirect_of(response)
+                self.assertEqual(skip.call_args.kwargs, {"exclude": None})
+
+    def test_the_pair_on_screen_is_passed_on_as_given(self):
+        """Test that a comparable pair reaches the session, from Skip and from Equal."""
+        for send in (
+            lambda: self.client.get(f"{COMPARE_URL}?skip_a=cream&skip_b=oil", follow_redirects=False),
+            lambda: self.post("vote", a="cream", b="oil", station="4"),
+        ):
+            with mock.patch.object(
+                ProjectSession, "skip", autospec=True, side_effect=ProjectSession.skip
+            ) as skip:
+                self.redirect_of(send())
+
+            self.assertEqual(skip.call_args.kwargs, {"exclude": ("cream", "oil")})
+
+
 class TestEveryPageReadsTheFile(CompareTestCase):
     """Test cases for a page drawn after the file changed, with no vote between."""
 
