@@ -309,8 +309,10 @@
   border-width: 2px;
 }
 
+/* Heavier than a collision's 2px, so the refused tile stands out from the one it collides with. */
 .slot-board .balloon.is-error {
   border-color: var(--warn-mark);
+  border-width: 2px;
   box-shadow: inset 0 0 0 1px var(--warn-mark);
 }
 
