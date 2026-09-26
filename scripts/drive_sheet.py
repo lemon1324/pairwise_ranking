@@ -2364,6 +2364,31 @@ def check_settings_slots(devtools: DevTools, base: str) -> str:
         expect(tile_of(start, "Enter").get("placeholder") == "En", "Enter's tile has no derived placeholder")
         expect(not start["panelChanged"] and start["warning"] == "", "a saved slot table drew a mark or a warning")
 
+        # Slot names that are Object.prototype members, and a "$" pattern in a name (F8, R8 F3).
+        odd_names = ("toString", "constructor", "__proto__", "valueOf", "Price $$")
+        odd_text = f"{saved_text}, {', '.join(odd_names)}"
+        odd = slots_type(devtools, "#slots", odd_text)
+        for name in odd_names:
+            tile = tile_of(odd, name)
+            expect(
+                tile.get("value") == "" and tile.get("placeholder") == name[:2],
+                f"the {name} tile holds {tile.get('value')!r}",
+            )
+        expect(odd["panelChanged"] and "Slots." in odd["status"], f"the Status said {odd['status']!r}")
+        priced = slots_type(devtools, '.slot-label[name="label:toString"]', "Pr")
+        server = server_settings(devtools, {"slots": odd_text, "label:toString": "Pr"})
+        expect(
+            priced["errors"] == "Slot toString: Slot Price $$ already shows Pr.",
+            f"the error read {priced['errors']!r}",
+        )
+        expect(
+            priced["errors"] == server["slotErrors"] and priced["status"] == server["status"],
+            f"the script drew {priced['status']!r}, the server {server['status']!r}",
+        )
+        slots_type(devtools, '.slot-label[name="label:toString"]', "")
+        back = slots_type(devtools, "#slots", saved_text)
+        expect(not back["panelChanged"] and back["errors"] == "", "the odd names left the table changed")
+
         dup = slots_type(devtools, "#slots", f"{saved_text}, 7, Esc")
         expect(len(dup["tiles"]) == 61, f"the list with a repeat drew {len(dup['tiles'])} tiles")
         expect("is-dup" in tile_of(dup, "7").get("classes", []), "the repeated slot is not marked")
