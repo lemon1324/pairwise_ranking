@@ -100,6 +100,61 @@
     }
   });
 
+  // One request for the frame at a time, from the press until the new frame
+  // is in. hx-sync="#frame:drop" is not enough on its own: htmx lets go of the
+  // request when the answer arrives, before the delayed swap below has put
+  // the new pair in, so for LEAVE_MS the old frame's stations would post a
+  // second vote on the old pair. A request made while busy is refused.
+  let busy = false;
+
+  document.addEventListener("htmx:beforeRequest", (event) => {
+    if (event.detail.target?.id !== "frame") return;
+    if (busy) {
+      event.preventDefault();
+      return;
+    }
+    busy = true;
+  });
+
+  // A request that failed never lands a frame, so nothing else would clear
+  // the flag. Nor would it say anything: htmx swaps no 4xx or 5xx answer. So
+  // an error answer is shown as a page of its own - the file gone, damaged, or
+  // from a newer version - by loading the address again (the registry has
+  // dropped the project, so it draws the error) or, for Skip's GET, the address
+  // that failed. A server that cannot be reached is said in the notice strip.
+  document.addEventListener("htmx:afterRequest", (event) => {
+    if (event.detail.target?.id === "frame" && !event.detail.successful) busy = false;
+  });
+
+  document.addEventListener("htmx:responseError", (event) => {
+    if (event.detail.target?.id !== "frame") return;
+    const detail = event.detail;
+    const failed = detail.requestConfig?.verb === "get" && detail.xhr?.responseURL;
+    window.location.assign(failed || window.location.href);
+  });
+
+  document.addEventListener("htmx:sendError", (event) => {
+    if (event.detail.target?.id !== "frame") return;
+    const lead = "Could not reach the server.";
+    const text = "The page has not changed; press again to retry.";
+    const notice = document.getElementById("notice");
+    if (notice) {
+      const p = document.createElement("p");
+      const strong = document.createElement("strong");
+      strong.textContent = lead;
+      p.append(strong, " " + text);
+      const dismiss = document.createElement("a");
+      dismiss.className = "cell-button";
+      dismiss.id = "notice-dismiss";
+      dismiss.href = window.location.href;
+      dismiss.textContent = "Dismiss";
+      notice.replaceChildren(p, dismiss);
+      notice.hidden = false;
+    }
+    const status = document.getElementById("callout-status");
+    if (status) status.textContent = lead + " " + text;
+  });
+
   // Before a new frame goes in: remember the figures, and let the views go.
   document.addEventListener("htmx:beforeSwap", (event) => {
     if (!event.detail.shouldSwap) return;
@@ -115,6 +170,7 @@
   // A new frame is in: bring the views back, step what changed, keep the mark.
   document.addEventListener("htmx:load", (event) => {
     if (event.target.id !== "frame") return;
+    busy = false;
     applyMark();
     if (motion()) {
       const bodies = event.target.querySelectorAll(".view-body");
