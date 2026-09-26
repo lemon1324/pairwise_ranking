@@ -13,6 +13,8 @@ import shutil
 import tempfile
 import threading
 import unittest
+from dataclasses import FrozenInstanceError
+from datetime import datetime
 from pathlib import Path
 
 from src.data.errors import NewerFormatError
@@ -450,6 +452,82 @@ class TestRegistryMutation(RegistryTestCase):
         with self.assertRaises(ProjectNotFoundError):
             with self.registry.mutate("../escape.pairrank"):
                 pass
+
+
+class TestRegistryLastChange(RegistryTestCase):
+    """Test cases for the last change a mutation records on its entry."""
+
+    def test_a_fresh_entry_has_no_change(self):
+        """Test that opening a project records nothing."""
+        self.assertIsNone(self.registry.open(self.project_id).last_change)
+
+    def test_a_recorded_change_is_kept_on_the_entry(self):
+        """Test the record's fields, timed when it was made."""
+        before = datetime.now()
+        with self.registry.mutate(self.project_id) as mutation:
+            change = mutation.record_change("deleted", "oil", "(10) Oil King", 2)
+        after = datetime.now()
+
+        entry = self.registry.open(self.project_id)
+        self.assertIs(entry.last_change, change)
+        self.assertEqual(
+            (change.kind, change.item_id, change.label, change.votes),
+            ("deleted", "oil", "(10) Oil King", 2),
+        )
+        self.assertTrue(before <= change.time <= after)
+
+    def test_a_later_change_replaces_the_earlier_one(self):
+        """Test that only the last change is held."""
+        with self.registry.mutate(self.project_id) as mutation:
+            mutation.record_change("retired", "oil", "Oil King")
+        with self.registry.mutate(self.project_id) as mutation:
+            latest = mutation.record_change("edited", "jade", "Jade")
+
+        self.assertIs(self.registry.open(self.project_id).last_change, latest)
+
+    def test_the_record_is_immutable(self):
+        """Test that a reader outside the lock cannot see a half-made record."""
+        with self.registry.mutate(self.project_id) as mutation:
+            change = mutation.record_change("edited", "oil", "Oil King")
+
+        with self.assertRaises(FrozenInstanceError):
+            change.label = "Something else"
+
+    def test_a_failed_mutation_records_nothing(self):
+        """Test that an edit abandoned before recording leaves no record."""
+        with self.assertRaises(RuntimeError):
+            with self.registry.mutate(self.project_id):
+                raise RuntimeError("the route gave up")
+
+        self.assertIsNone(self.registry.open(self.project_id).last_change)
+
+    def test_the_change_survives_a_reload_from_disk(self):
+        """Test that another program's save does not unsay what this server did."""
+        with self.registry.mutate(self.project_id) as mutation:
+            change = mutation.record_change("edited", "oil", "Oil King")
+        self.rewrite_with_name("Changed")
+
+        with self.registry.mutate(self.project_id) as mutation:
+            self.assertTrue(mutation.take_reload_notice())
+
+        self.assertIs(self.registry.open(self.project_id).last_change, change)
+
+    def test_forgetting_the_project_forgets_its_change(self):
+        """Test that a re-opened entry, like a restarted server, has no record."""
+        with self.registry.mutate(self.project_id) as mutation:
+            mutation.record_change("edited", "oil", "Oil King")
+
+        self.registry.forget(self.project_id)
+
+        self.assertIsNone(self.registry.open(self.project_id).last_change)
+
+    def test_changes_belong_to_their_own_project(self):
+        """Test that one project's record is not another's."""
+        ProjectStorage.create_new("Other", self.data_dir / "Other.pairrank")
+        with self.registry.mutate(self.project_id) as mutation:
+            mutation.record_change("edited", "oil", "Oil King")
+
+        self.assertIsNone(self.registry.open("Other.pairrank").last_change)
 
 
 if __name__ == "__main__":

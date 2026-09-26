@@ -38,6 +38,7 @@ import logging
 import threading
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Iterator, Optional
 
@@ -74,6 +75,32 @@ class ProjectUnreadableError(ValueError):
     alone and pass through, because "written by a newer application" is a
     different page from "damaged" and only the raiser can tell them apart.
     """
+
+
+@dataclass(frozen=True)
+class LastChange:
+    """
+    The last change this server made to one project, as a screen describes it.
+
+    Held in memory on the project's entry, never in the file or a cookie: it is
+    the one thing a sentence like "Deleted (10) Oil King and its 2 votes · 21:06"
+    needs that the project cannot supply afterwards - what went, and when. A
+    restart, or the entry being forgotten, loses it, and the screen falls back
+    to the project's stored modified time.
+
+    Attributes:
+        kind: Which change, in the screen's own words for it (Items' ``done``).
+        item_id: The item it was about; for a deletion, the one that went.
+        label: How the sentence names its subject, fixed at the time.
+        votes: The votes that went with it; 0 unless something was deleted.
+        time: When the change was made.
+    """
+
+    kind: str
+    item_id: str
+    label: str
+    votes: int
+    time: datetime
 
 
 def _stamp(path: Path) -> Optional[tuple[int, int]]:
@@ -146,6 +173,11 @@ class OpenProject:
             session if you intend to keep a reference.
         reloaded_from_disk: Whether a reload has happened that nothing has
             reported to the user yet. See :meth:`take_reload_notice`.
+        last_change: The last change made through this entry, or None. Set
+            only by :meth:`Mutation.record_change`, so only under the file's
+            lock; a :class:`LastChange` is immutable and is replaced whole, so
+            reading it needs no lock. It survives a reload from disk: what this
+            server did, and when, is still true of the file.
     """
 
     def __init__(self, path: Path):
@@ -162,6 +194,7 @@ class OpenProject:
         """
         self.path = path
         self.reloaded_from_disk = False
+        self.last_change: Optional[LastChange] = None
         self._stamp: Optional[tuple[int, int]] = None
         self.session = self._open_session(path)
 
@@ -282,6 +315,26 @@ class Mutation:
             is not quite the one the page was drawn from.
         """
         return self.entry.take_reload_notice()
+
+    def record_change(self, kind: str, item_id: str, label: str, votes: int = 0) -> LastChange:
+        """
+        Remember this edit as the project's last change, timed now.
+
+        Called inside the ``with`` block, so under the file's lock, after the
+        session has saved: a refused or abandoned edit records nothing.
+
+        Args:
+            kind: Which change.
+            item_id: The item it was about.
+            label: How a sentence names its subject.
+            votes: The votes that went with it.
+
+        Returns:
+            LastChange: The record, which replaces the previous one.
+        """
+        change = LastChange(kind, item_id, label, votes, datetime.now())
+        self.entry.last_change = change
+        return change
 
 
 class ProjectRegistry:

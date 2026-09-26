@@ -141,7 +141,8 @@ hx-get="{{ items_url }}" hx-include="[form=view]" hx-target="#field" hx-select="
        categories" short at the standard block width. #}
     {% call tb_cell("Last change", span=2, phone_wide=true) %}
       {# The sentence the mockup writes after a change, with the time it was
-         saved; the stored modified time when nothing has just happened. #}
+         made, when the address names the project's last change; the stored
+         modified time otherwise. #}
       <p class="tb-text" id="tb-last" aria-live="polite">
         {%- if last_change -%}
           {{ last_change }} &middot; <span class="num">{{ change_time }}</span>

@@ -19,6 +19,7 @@ import html
 import json
 import re
 import unittest
+from datetime import datetime
 from urllib.parse import parse_qs, urlparse
 
 from src.web.routes.items import RELOADED_NOTE
@@ -766,7 +767,7 @@ class TestRetireItem(ActionsTestCase):
 
         self.assertEqual(
             self.redirect_of(response)[1],
-            {"selected": "jade", "done": "retired", "item": "oil", "freed": "10"},
+            {"selected": "jade", "done": "retired", "item": "oil"},
         )
 
     def test_the_last_row_hands_the_selection_back(self):
@@ -835,7 +836,7 @@ class TestDeleteItem(ActionsTestCase):
         )
 
     def test_last_change_names_what_was_deleted(self):
-        """Test the one sentence the project cannot supply, kept in the session."""
+        """Test the one sentence the project cannot supply, kept by the registry."""
         page = self.landed(self.post("oil/delete"))
 
         self.assertEqual(
@@ -911,34 +912,133 @@ class TestSlotConflictWords(ActionsTestCase):
 
 
 class TestLastChange(ActionsTestCase):
-    """Test cases for the Last change cell, which trusts nothing in the query."""
+    """
+    Test cases for the Last change cell, which trusts nothing in the query.
 
-    def test_a_done_the_project_cannot_back_is_not_written(self):
-        """
-        Test that a sentence the project contradicts leaves the modified time.
+    Its sentence and time are the registry's record of the project's last
+    change, written only when the address names that change.
+    """
 
-        An id it does not hold, an item in the wrong state for what `done`
-        says, a deletion with no note in the session.
+    MODIFIED = "2026-09-16 21:04"
+
+    # The cell when it writes no sentence: the modified time and nothing else.
+    # After a mutation the modified time is today's, so it is matched by shape.
+    TIME_ONLY = r"^\d{4}-\d\d-\d\d \d\d:\d\d$"
+
+    def entry(self):
         """
-        for query in ("done=edited&item=nope", "done=retired&item=oil",
-                      "done=reactivated&item=blue", "done=deleted&item=oil"):
+        Reach the project's registry entry.
+
+        Returns:
+            OpenProject: The entry the routes share.
+        """
+        return self.app.state.registry.open(PROJECT)
+
+    def test_an_address_with_no_change_behind_it_is_not_written(self):
+        """
+        Test that a done this server made no record of leaves the modified time.
+
+        Including ones the project would bear out - oil exists, blue is
+        retired - because nothing here says when they happened.
+        """
+        for query in ("done=edited&item=nope", "done=edited&item=oil",
+                      "done=retired&item=blue", "done=deleted&item=oil",
+                      "done=sideways&item=oil"):
             with self.subTest(query=query):
-                self.assertEqual(cell_text(self.sheet(query), "tb-last"), "2026-09-16 21:04")
+                self.assertEqual(cell_text(self.sheet(query), "tb-last"), self.MODIFIED)
 
-    def test_a_freed_slot_must_be_one_of_the_project_s_slots(self):
-        """Test that free text from the query never reaches the sheet."""
-        body = self.sheet("done=retired&item=blue&freed=%3Cb%3Eowned")
+    def test_each_kind_is_written_only_for_its_own_address(self):
+        """
+        Test every mutation's sentence against its address and two near misses.
 
-        self.assertEqual(cell_text(body, "tb-last").rsplit(" · ", 1)[0], "Retired Cherry MX Blue")
+        The address it landed on writes it; the same `done` about another item,
+        and the same item under another `done`, write the modified time.
+        """
+        posts = {
+            "added": ("new", {"name": "Holy Panda", "slot": "2"}, "Added (2) Holy Panda"),
+            "edited": ("oil/edit", {"name": "Oil King", "slot": "10"}, "Edited (10) Oil King"),
+            "replaced": (
+                "oil/replace", {"name": "Oil King V2", "cat": "Linear", "slot": "10"},
+                "Replaced Gateron Oil King with (10) Oil King V2",
+            ),
+            "reactivated": (
+                "blue/reactivate", {"slot": "2", "retired": "1"},
+                "Reactivated (2) Cherry MX Blue",
+            ),
+            "retired": ("oil/retire", {}, "Retired Gateron Oil King · slot 10 freed"),
+            "deleted": ("oil/delete", {}, "Deleted (10) Gateron Oil King and its 2 votes"),
+        }
+        for kind, (path, data, sentence) in posts.items():
+            with self.subTest(kind=kind):
+                self.seed()
+                self.app.state.registry.forget(PROJECT)
+                response = self.post(path, data)
+                query = self.redirect_of(response)[1]
+                self.assertEqual(query["done"], kind)
+                subject = query["item"]
 
-    def test_a_deletion_note_belongs_to_its_project(self):
-        """Test that the session's note is not read out on another project's sheet."""
+                landed = cell_text(self.landed(response), "tb-last")
+                self.assertEqual(landed.rsplit(" · ", 1)[0], sentence)
+
+                other_kind = "edited" if kind != "edited" else "added"
+                for miss in (f"done={kind}&item=brown", f"done={other_kind}&item={subject}"):
+                    with self.subTest(miss=miss):
+                        self.assertRegex(cell_text(self.sheet(miss), "tb-last"), self.TIME_ONLY)
+
+    def test_a_deletion_is_named_only_for_the_item_deleted(self):
+        """Test that the delete note is not read out for an item still there."""
+        self.post("oil/delete")
+
+        body = self.sheet("done=deleted&item=cream")
+
+        self.assertRegex(cell_text(body, "tb-last"), self.TIME_ONLY)
+
+    def test_an_older_change_is_not_relabelled_by_a_newer_one(self):
+        """Test that only the last change is written, and a later one retires it."""
+        retired = self.landed(self.post("oil/retire"))
+        self.assertTrue(cell_text(retired, "tb-last").startswith("Retired Gateron Oil King"))
+
+        self.post("jade/edit", {"name": "Box Jade", "slot": "2"})
+
+        stale = self.sheet("selected=jade&done=retired&item=oil")
+        self.assertRegex(cell_text(stale, "tb-last"), self.TIME_ONLY)
+        current = self.sheet("selected=jade&done=edited&item=jade")
+        self.assertTrue(cell_text(current, "tb-last").startswith("Edited (2) Box Jade · "))
+
+    def test_the_time_is_the_change_s_own(self):
+        """Test the recorded time, not the modified time a later write moves."""
+        self.post("oil/retire")
+        recorded = self.entry().last_change.time.strftime("%H:%M")
+        # A vote, or the desktop saving, moves the modified time on.
+        self.entry().session.project.modified = datetime(2031, 1, 2, 3, 4)
+
+        body = self.sheet("done=retired&item=oil")
+
+        self.assertEqual(cell_text(body, "tb-last").rsplit(" · ", 1)[1], recorded)
+
+    def test_a_restart_forgets_the_change(self):
+        """Test that a server with no record falls back to the modified time."""
+        self.post("oil/retire")
+        self.app.state.registry.forget(PROJECT)
+
+        body = self.sheet("done=retired&item=oil")
+
+        self.assertRegex(cell_text(body, "tb-last"), self.TIME_ONLY)
+
+    def test_a_change_belongs_to_its_project(self):
+        """Test that one project's record is not read out on another's sheet."""
         self.write("Other.pairrank", project_data(items=ITEMS))
         self.post("oil/delete")
 
-        body = self.client.get("/projects/Other.pairrank/items?done=deleted").text
+        body = self.client.get("/projects/Other.pairrank/items?done=deleted&item=oil").text
 
-        self.assertEqual(cell_text(body, "tb-last"), "2026-09-16 21:04")
+        self.assertEqual(cell_text(body, "tb-last"), self.MODIFIED)
+
+    def test_no_cookie_carries_the_change(self):
+        """Test that the sentence needs nothing from the browser."""
+        response = self.post("oil/delete")
+
+        self.assertNotIn("set-cookie", response.headers)
 
 
 class TestChangedOnDisk(ActionsTestCase):
