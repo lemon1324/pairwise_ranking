@@ -176,7 +176,36 @@ def entered_slot_labels(slots: list[str], labels: dict) -> dict[str, str]:
     }
 
 
-def check_slot_labels(slots: list[str], labels: dict) -> SlotLabelVerdict:
+def _label_precedence(
+    names: list[str], entered: dict[str, str], saved: Optional[dict[str, str]]
+) -> dict[str, tuple[bool, int]]:
+    """
+    Order the slots for keeping a label two of them were given.
+
+    A slot whose label is unchanged from its saved one comes before a slot
+    whose label changed, so the label just typed is the one refused; between
+    two changed labels, or two unchanged ones, the earlier slot comes first.
+
+    Args:
+        names: The slot names, in list order.
+        entered: The entered labels, as :func:`entered_slot_labels` keeps them.
+        saved: The saved labels, kept the same way, or None when there are
+            none to compare with (every label then counts as changed).
+
+    Returns:
+        dict[str, tuple[bool, int]]: Slot name to a key that sorts the slot
+        keeping a shared label first.
+    """
+    saved = saved or {}
+    return {
+        name: (entered.get(name) != saved.get(name), position)
+        for position, name in enumerate(names)
+    }
+
+
+def check_slot_labels(
+    slots: list[str], labels: dict, saved: Optional[dict] = None
+) -> SlotLabelVerdict:
     """
     Check the labels entered on a slot board before they are stored.
 
@@ -186,12 +215,18 @@ def check_slot_labels(slots: list[str], labels: dict) -> SlotLabelVerdict:
     collides can be refused. Two derived labels colliding is still no error
     (nobody chose them); :func:`label_collisions` reports it as a warning.
 
-    When two entered labels are the same, the first slot keeps it and the
-    later one is refused, as :func:`validate_slot_labels` does.
+    When two entered labels are the same and only one of them differs from
+    its saved label, the one that changed is refused (owner ruling R8-2): the
+    label just typed gives way to the one already there. When both changed,
+    or neither did, the first slot keeps it and the later one is refused, as
+    :func:`validate_slot_labels` does. Whether anything is refused does not
+    depend on ``saved``; only which slot is.
 
     Args:
         slots: The slot names, already normalized.
         labels: Slot name to short label, as entered.
+        saved: The saved labels, as :func:`entered_slot_labels` keeps them,
+            or None to refuse by position alone.
 
     Returns:
         SlotLabelVerdict: ``labels`` as :func:`entered_slot_labels` keeps them
@@ -199,20 +234,21 @@ def check_slot_labels(slots: list[str], labels: dict) -> SlotLabelVerdict:
     """
     entered = entered_slot_labels(slots, labels)
     names = [slot.strip() for slot in slots or [] if slot.strip()]
+    precedence = _label_precedence(names, entered, saved)
 
     errors: dict[str, SlotLabelError] = {}
-    for position, slot in enumerate(names):
+    for slot in names:
         label = entered.get(slot)
         if label is None:
             continue
         if len(label) > SLOT_LABEL_MAX_LENGTH:
             errors[slot] = SlotLabelError.LABEL_TOO_LONG
             continue
-        for other_position, other in enumerate(names):
+        for other in names:
             if other == slot:
                 continue
-            if other in entered and other_position > position:
-                # A later entered label is the one refused, not this one.
+            if other in entered and precedence[other] > precedence[slot]:
+                # That entered label gives way to this one, so it is the one refused.
                 continue
             if short_label(other, entered) == label:
                 errors[slot] = SlotLabelError.LABEL_IN_USE
@@ -221,7 +257,9 @@ def check_slot_labels(slots: list[str], labels: dict) -> SlotLabelVerdict:
     return SlotLabelVerdict(labels=entered, errors=errors)
 
 
-def label_owner(slots: list[str], labels: dict, slot: str) -> Optional[str]:
+def label_owner(
+    slots: list[str], labels: dict, slot: str, saved: Optional[dict] = None
+) -> Optional[str]:
     """
     Name the slot whose label a refused label collides with.
 
@@ -229,21 +267,29 @@ def label_owner(slots: list[str], labels: dict, slot: str) -> Optional[str]:
         slots: The slot names.
         labels: The entered labels, as :func:`entered_slot_labels` keeps them.
         slot: A slot whose label was refused as in use.
+        saved: The saved labels, as :func:`check_slot_labels` was given them.
 
     Returns:
-        Optional[str]: The first other slot drawn with the same label, or
-        None when there is none.
+        Optional[str]: The other slot that keeps the label: the first slot
+        drawn with it by its derived label (which is never refused), else the
+        entered one first by :func:`check_slot_labels`'s order. None when
+        there is none.
     """
     labels = labels or {}
     label = labels.get(slot)
     names = list(slots or [])
-    after = names[names.index(slot) + 1:] if slot in names else []
-    for other in names:
-        if other == slot or (other in labels and other in after):
-            continue
-        if short_label(other, labels) == label:
-            return other
-    return None
+    precedence = _label_precedence(names, labels, saved)
+    candidates = [
+        other
+        for other in names
+        if other != slot
+        and not (other in labels and slot in precedence and precedence[other] > precedence[slot])
+        and short_label(other, labels) == label
+    ]
+    derived = [other for other in candidates if other not in labels]
+    if derived:
+        return derived[0]
+    return min(candidates, key=precedence.__getitem__, default=None)
 
 
 def label_collisions(

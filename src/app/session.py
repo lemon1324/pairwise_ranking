@@ -41,7 +41,7 @@ from .confidence import (
     ConfidenceReading,
 )
 from .record import WeightedRecord, weighted_record
-from .slots import check_slot_labels
+from .slots import check_slot_labels, entered_slot_labels
 
 
 # Rankings need at least this many items before the model is fitted at all.
@@ -724,7 +724,8 @@ class ProjectSession:
         settings.validate()
         labels = None
         if slot_labels is not None:
-            verdict = check_slot_labels(normalize_slots(raw_slots), slot_labels)
+            saved = entered_slot_labels(self._project.slots, self._project.slot_labels)
+            verdict = check_slot_labels(normalize_slots(raw_slots), slot_labels, saved)
             if not verdict.ok:
                 refused = ", ".join(
                     f"{slot} ({error.value})" for slot, error in verdict.errors.items()

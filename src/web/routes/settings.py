@@ -45,7 +45,9 @@ one under the same names; a slot with no ``label:`` entry keeps its saved
 label, so a slot added without JavaScript (no tile yet) gets none, and a tile
 posted for a slot no longer listed is dropped. The labels are checked by
 :func:`~src.app.slots.check_slot_labels`: at most two characters, and never a
-label another slot is drawn with, derived ones included. Two *derived* labels
+label another slot is drawn with, derived ones included; of two tiles typed
+alike, the one whose label changed from its saved label is refused, else the
+later one (owner ruling R8-2). Two *derived* labels
 colliding is a warning on the tiles, not a refusal. A slot listed twice is a
 warning too; saving drops the repeat.
 """
@@ -670,7 +672,9 @@ def build_slot_panel(project: Project, text: Optional[str], labels: dict) -> Slo
         names.append(name)
 
     typed = {name: labels.get(name, project.slot_labels.get(name, "")) for name in names}
-    verdict = check_slot_labels(names, typed)
+    # Two tiles typed alike refuse the one whose label changed (owner ruling R8-2).
+    saved_labels = entered_slot_labels(project.slots, project.slot_labels)
+    verdict = check_slot_labels(names, typed, saved_labels)
     used = project.active_identifiers()
     groups = label_collisions(names, verdict.labels)
     clashing = {name for members in groups.values() for name in members}
@@ -682,7 +686,7 @@ def build_slot_panel(project: Project, text: Optional[str], labels: dict) -> Slo
         if problem is SlotLabelError.LABEL_TOO_LONG:
             error = ERROR_LABEL_LONG
         elif problem is SlotLabelError.LABEL_IN_USE:
-            owner = label_owner(names, verdict.labels, name) or ""
+            owner = label_owner(names, verdict.labels, name, saved_labels) or ""
             error = ERROR_LABEL_TAKEN.format(slot=owner, label=verdict.labels[name])
         tiles.append(
             Tile(
@@ -696,7 +700,6 @@ def build_slot_panel(project: Project, text: Optional[str], labels: dict) -> Slo
             )
         )
 
-    saved_labels = entered_slot_labels(project.slots, project.slot_labels)
     return SlotPanel(
         text=text,
         saved_text=saved_text,

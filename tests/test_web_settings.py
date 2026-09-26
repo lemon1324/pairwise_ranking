@@ -768,6 +768,21 @@ class TestSlotDrafts(SettingsTestCase):
         self.assertIn('value=""', tile_input(body, "__proto__"))
         self.assertIn("Slot toString: Slot Price $$ already shows Pr.", status_of(body))
 
+    def test_the_edited_label_is_refused_not_the_saved_one(self):
+        """Test owner ruling R8-2 on a draft: the earlier tile, typed like a saved label, is refused."""
+        self.write(PROJECT, settings_data(slot_labels={"Apostrophe": "'"}))
+        body = self.sheet("draft=1&label:1='")
+        self.assertIn("is-error", tile_state(body, "1"))
+        self.assertNotIn("is-error", tile_state(body, "Apostrophe"))
+        self.assertIn("Slot 1: Slot Apostrophe already shows '.", status_of(body))
+
+    def test_two_edited_labels_refuse_the_later(self):
+        """Test that the position rule stands when both labels changed."""
+        self.write(PROJECT, settings_data(slot_labels={"Apostrophe": "'"}))
+        body = self.sheet("draft=1&label:1=q&label:Apostrophe=q")
+        self.assertNotIn("is-error", tile_state(body, "1"))
+        self.assertIn("Slot Apostrophe: Slot 1 already shows q.", status_of(body))
+
     def test_a_refused_post_puts_the_caret_on_the_tile(self):
         """Test that submitted=1 focuses the first tile in error when no value is."""
         body = self.sheet("draft=1&submitted=1&label:Apostrophe=abc")
@@ -873,6 +888,30 @@ class TestSlotSaves(SettingsTestCase):
                 self.assertIn(f"Slot Apostrophe: {sentence}", status_of(body))
                 self.assertIn("is-error", tile_state(body, "Apostrophe"))
                 self.assertIn("autofocus", tile_input(body, "Apostrophe"))
+
+    def test_a_post_typing_a_saved_label_on_an_earlier_tile_refuses_that_tile(self):
+        """Test owner ruling R8-2 on a save: nothing written, the edited tile in error."""
+        self.write(PROJECT, settings_data(slot_labels={"Apostrophe": "'"}))
+        before = self.snapshot()
+        form = dict(valid_form(), slots="1, 2, 3, Apostrophe", **{"label:1": "'", "label:Apostrophe": "'"})
+
+        path, query = self.redirect_of(self.save(form))
+
+        self.assertEqual(self.snapshot(), before)
+        self.assertEqual(query["label:1"], "'")
+        # The saved label is unchanged, so the draft need not carry it.
+        self.assertNotIn("label:Apostrophe", query)
+        body = self.client.get(self.save(form).headers["location"]).text
+        self.assertIn("is-error", tile_state(body, "1"))
+        self.assertNotIn("is-error", tile_state(body, "Apostrophe"))
+        self.assertIn("autofocus", tile_input(body, "1"))
+
+    def test_a_label_moved_off_a_slot_and_onto_another_is_saved(self):
+        """Test that emptying the saved tile frees its label for the edited one."""
+        self.write(PROJECT, settings_data(slot_labels={"Apostrophe": "'"}))
+        form = dict(valid_form(), slots="1, 2, 3, Apostrophe", **{"label:1": "'", "label:Apostrophe": ""})
+        self.assertEqual(self.redirect_of(self.save(form))[1], {"done": DONE_SAVED})
+        self.assertEqual(self.stored_labels(), {"1": "'"})
 
     def test_an_emptied_saved_label_travels_in_the_draft(self):
         """Test that clearing a saved label survives a refusal as an empty field."""
