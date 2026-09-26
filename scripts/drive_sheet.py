@@ -122,6 +122,12 @@ What is checked, and why each one is here:
     undoes it and the pair comes back on its sides; a held key's repeat votes
     nothing, and ``S`` moves on without a vote.
 
+``compare-notice``
+    The changed-on-disk notice, which sits outside the frame htmx swaps: with
+    the project file saved behind the server's back, a vote's swap brings the
+    strip in out of band, the next vote's swap puts it away, and Dismiss hides
+    it without a navigation. It undoes its votes.
+
 Each check leaves the page as it found it by navigating afresh, so they are
 independent and ``--check`` can run any one of them alone.
 """
@@ -1460,7 +1466,15 @@ def check_compare_keys(devtools: DevTools, base: str) -> str:
     devtools.evaluate("window.__driveMarker = 1, true")
 
     compare_key(devtools, "2")
-    voted = wait_for_compare(devtools, 'location.search.includes("done=voted")', "the vote land")
+    # The address follows the redirect before the new frame has settled, and
+    # compare.js does its post-swap work (the mark, the status) on htmx:load,
+    # which fires at settle; so wait for that work, not just the address.
+    voted = wait_for_compare(
+        devtools,
+        'location.search.includes("done=voted")'
+        ' && document.getElementById("callout-status").textContent.includes("over")',
+        "the vote land",
+    )
     expect(voted["swapped"], "the vote reloaded the page instead of swapping the frame")
     expect(int(voted["votes"]) == int(before["votes"]) + 1, f"votes went {before['votes']} -> {voted['votes']}")
     expect(
@@ -1492,6 +1506,105 @@ def check_compare_keys(devtools: DevTools, base: str) -> str:
     return "2 voted and swapped the frame, marked and announced; Ctrl+Z put it back on its sides; a repeat and S voted nothing"
 
 
+# The data directory the server was booted on, for the one check that has to
+# play "another program" and write a project file behind the server's back.
+# Set by run() before any check runs.
+DATA_DIR = {"path": None}
+
+# What the notice check reads: the strip's state, the address, and whether the
+# page was swapped rather than loaded.
+NOTICE_STATE = """
+(() => {
+  const notice = document.getElementById("notice");
+  return {
+    search: location.search,
+    swapped: window.__driveMarker === 1,
+    shown: !!notice && !notice.hidden,
+    text: notice ? notice.textContent.replace(/\\s+/g, " ").trim() : "",
+    status: (document.getElementById("callout-status") || {}).textContent || "",
+  };
+})()
+"""
+
+
+def save_elsewhere(file_name: str) -> None:
+    """
+    Write a project file again, byte for byte, as another program saving it would.
+
+    The content is unchanged; the stamp is not, which is all the registry's
+    check looks at.
+
+    Args:
+        file_name: The project's file name in the data directory.
+    """
+    path = Path(DATA_DIR["path"]) / file_name
+    data = path.read_bytes()
+    time.sleep(0.05)
+    path.write_bytes(data)
+
+
+def check_compare_notice(devtools: DevTools, base: str) -> str:
+    """
+    Check the changed-on-disk notice through htmx, which swaps only the frame.
+
+    The file is saved behind the server's back and ``2`` votes: the page the
+    frame is swapped in from carries the notice strip out of band, so it shows
+    without a reload. The next vote's page puts it away again. Saved behind
+    its back once more, the strip shows and Dismiss hides it where it is. The
+    three votes are undone.
+    """
+    size(devtools, *NARROW)
+    devtools.call("Page.navigate", {"url": f"{base}{COMPARE_PATH}?a=it1&b=it2"})
+    wait_for_compare(devtools, 'document.getElementById("station-2")', "the Compare sheet")
+    devtools.evaluate("window.__driveMarker = 1, true")
+    file_name = COMPARE_PATH.split("/")[2]
+
+    def vote_and_read(count: int) -> dict:
+        # Waits for the vote's row in the status region, which compare.js
+        # writes on htmx:load - after the frame and the strip have settled.
+        compare_key(devtools, "2")
+        wait_for_compare(
+            devtools,
+            f'location.search.includes("done=voted") && document.getElementById("votes").textContent.trim() === "{count}"'
+            f' && document.getElementById("callout-status").textContent.includes("R{count} ")',
+            "the vote land",
+        )
+        return devtools.evaluate(NOTICE_STATE)
+
+    start = int(devtools.evaluate(COMPARE_STATE)["votes"])
+    expect(not devtools.evaluate(NOTICE_STATE)["shown"], "the notice showed before anything changed")
+
+    save_elsewhere(file_name)
+    first = vote_and_read(start + 1)
+    expect(first["swapped"], "the vote reloaded the page instead of swapping the frame")
+    expect(first["shown"], "the notice did not come in with the swap")
+    expect("saved by another program" in first["text"], f"the notice said {first['text']!r}")
+    expect("File changed on disk" in first["status"], f"the status region said {first['status']!r}")
+
+    second = vote_and_read(start + 2)
+    expect(not second["shown"], "the notice stayed up after the next vote")
+
+    save_elsewhere(file_name)
+    third = vote_and_read(start + 3)
+    expect(third["shown"], "the second change on disk was not announced")
+    devtools.evaluate('document.getElementById("notice-dismiss").click(), true')
+    dismissed = devtools.evaluate(NOTICE_STATE)
+    expect(not dismissed["shown"], "Dismiss left the notice up")
+    expect(
+        dismissed["swapped"] and dismissed["search"] == third["search"],
+        "Dismiss navigated instead of hiding the strip",
+    )
+
+    for count in (start + 2, start + 1, start):
+        compare_key(devtools, "z", ctrl=True)
+        wait_for_compare(
+            devtools,
+            f'location.search.includes("done=undone") && document.getElementById("votes").textContent.trim() === "{count}"',
+            "the undo land",
+        )
+    return "a vote over a file saved elsewhere swapped the notice in; the next vote put it away; Dismiss hid it in place"
+
+
 CHECKS = {
     "fold": check_fold,
     "swap-empty": check_swap_empty,
@@ -1511,6 +1624,7 @@ CHECKS = {
     "filter-callout": check_filter_callout,
     "filter-enter": check_filter_enter,
     "compare-keys": check_compare_keys,
+    "compare-notice": check_compare_notice,
 }
 
 
@@ -1540,6 +1654,7 @@ def run(args: argparse.Namespace) -> int:
         data_dir = scratch
         print(f"{PROGRAM}: seeded {written} projects in {data_dir}")
 
+    DATA_DIR["path"] = data_dir
     names = args.checks or list(CHECKS)
     server = None
     chrome = None
