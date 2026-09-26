@@ -717,6 +717,24 @@ class TestTheExportEqualsTheDesktop(RankingsTestCase):
                     web = self.client.get(f"{EXPORT_URL}?{query}").content
                     self.assertEqual(web, self.desktop_export(category, retired))
 
+    def test_too_few_active_items_still_export_as_the_desktop_does(self):
+        """Test owner ruling R8-3: the sheet draws its empty state, the export keeps its rows."""
+        kept = {"oil", "red", "halo"}
+        self.write(
+            PROJECT,
+            project_data(
+                items=ITEMS[:1] + ITEMS[5:7],
+                votes=[v for v in VOTES if {v["winner_id"], v["loser_id"]} <= kept],
+            ),
+        )
+        self.assertNotIn("<table", field_of(self.sheet("retired=1")))
+
+        for retired in (False, True):
+            with self.subTest(retired=retired):
+                web = self.client.get(f"{EXPORT_URL}?{'retired=1' if retired else ''}").content
+                self.assertEqual(web, self.desktop_export("", retired))
+                self.assertGreater(len(list(csv.reader(io.StringIO(web.decode("utf-8"))))), 1)
+
 
 class TestProjectsThatCannotBeDrawn(RankingsTestCase):
     """Test cases for an address naming no drawable project."""
