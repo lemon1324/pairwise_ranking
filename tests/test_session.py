@@ -517,6 +517,60 @@ class TestProjectSessionVoting(unittest.TestCase):
         self.assertEqual(self.session.project.votes, [])
 
 
+class TestProjectSessionOfferPair(unittest.TestCase):
+    """Test cases for putting one named pair back on offer."""
+
+    def test_an_eligible_pair_is_offered_in_the_order_given(self):
+        """Test that the pair comes back as asked for, with the selector's stats."""
+        session = build_session(
+            seed=0, votes=[build_vote("item-0", "item-1", 2.0)]
+        )
+
+        offer = session.offer_pair("item-3", "item-1")
+
+        self.assertEqual([item.id for item in offer.pair], ["item-3", "item-1"])
+        self.assertIsNone(offer.reason)
+        self.assertEqual(offer.stats["total_possible_pairs"], 6)
+        self.assertEqual(offer.stats["compared_pairs"], 1)
+        self.assertEqual(session.comparison_stats(), offer.stats)
+
+    def test_the_stats_are_the_ones_a_selection_would_report(self):
+        """Test that naming the pair changes nothing about its statistics."""
+        session = build_session(
+            seed=0, votes=[build_vote("item-0", "item-1"), build_vote("item-2", "item-1")]
+        )
+
+        chosen = session.next_pair()
+        named = session.offer_pair(chosen.pair[0].id, chosen.pair[1].id)
+
+        self.assertEqual(named.stats, chosen.stats)
+
+    def test_a_pair_that_cannot_be_compared_is_not_offered(self):
+        """Test the same item twice, a missing item and a retired one."""
+        items = build_items(3)
+        items[2].retire()
+        session = build_session(seed=0, items=items)
+
+        for first, second in (
+            ("item-0", "item-0"),
+            ("item-0", "item-gone"),
+            ("item-2", "item-0"),
+        ):
+            with self.subTest(pair=(first, second)):
+                self.assertIsNone(session.offer_pair(first, second))
+
+    def test_blinded_mode_refuses_an_item_without_an_identifier(self):
+        """Test that the blinded filter applies to a named pair too."""
+        items = build_items(3)
+        items[0].identifier = ""
+        session = build_session(
+            seed=0, items=items, settings=Settings(blinded_comparison_mode=True)
+        )
+
+        self.assertIsNone(session.offer_pair("item-0", "item-1"))
+        self.assertTrue(session.offer_pair("item-1", "item-2").blinded)
+
+
 class TestProjectSessionUndoEligibility(unittest.TestCase):
     """Test cases for undoing a vote whose items have since changed."""
 
