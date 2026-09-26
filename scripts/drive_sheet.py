@@ -160,6 +160,15 @@ What is checked, and why each one is here:
     items keeping the category, and X submits the export form with the whole
     view, whose answer is a CSV with as many rows as the sheet draws.
 
+``settings-keys``
+    The Settings sheet on ``switches-sample-settings`` (settings.js, not the
+    engine): typing marks a changed value with the triangle and the Status
+    cell names it, a value typed back to the saved one is no change, a value
+    out of range shows the server's sentence and disables Save, Ctrl+S is
+    taken from the browser and with a value to fix puts the caret in it, Esc
+    leaves a field, Reset fills the defaults in place and leaves the slots
+    alone, and Ctrl+S then saves and lands on "Saved.". The file is put back.
+
 Each check leaves the page as it found it by navigating afresh, so they are
 independent and ``--check`` can run any one of them alone.
 """
@@ -2010,6 +2019,200 @@ def check_rankings_keys(devtools: DevTools, base: str) -> str:
     )
 
 
+# The Settings sheet on the seeder's project holding the mockup's saved values:
+# two parameters off their defaults, so Reset has something to change.
+SETTINGS_FILE = "switches-sample-settings.pairrank"
+SETTINGS_PATH = f"/projects/{SETTINGS_FILE}/settings"
+
+# What the Settings sheet shows: the rows marked changed and in error, whether
+# the revision triangle is drawn on them, Save's state, the Status cell, the
+# focused element, and a marker a reload would lose.
+SETTINGS_STATE = """
+(() => {
+  const ids = (selector) => Array.from(document.querySelectorAll(selector), (row) => row.id.slice(4));
+  const shown = (row) => getComputedStyle(row.querySelector(".rev-mark")).visibility === "visible";
+  return {
+    changed: ids("#params tr.is-changed"),
+    errors: ids("#params tr.is-error"),
+    marks: Array.from(document.querySelectorAll('#params tr[id^="row-"]')).filter(shown).map((row) => row.id.slice(4)),
+    saveDisabled: document.getElementById("save").disabled,
+    status: document.getElementById("status").textContent.trim(),
+    statusError: document.getElementById("status-cell").classList.contains("is-error"),
+    error: (document.querySelector("#params tr.is-error .spec-error") || {}).textContent || "",
+    focused: (document.activeElement || {}).id || "",
+    slots: document.getElementById("slots").value,
+    search: location.search,
+    kept: window.__driveMarker === 1,
+  };
+})()
+"""
+
+
+def settings_type(devtools: DevTools, key: str, text: str) -> dict:
+    """
+    Type a value into one Settings field, as the browser reports an edit.
+
+    Args:
+        devtools: The CDP session.
+        key: The setting's name.
+        text: The field's new text.
+
+    Returns:
+        dict: The sheet's state afterwards.
+    """
+    devtools.evaluate(
+        f"""
+        (() => {{
+          const input = document.getElementById("f-{key}");
+          input.focus();
+          input.value = {json.dumps(text)};
+          input.dispatchEvent(new Event("input", {{ bubbles: true }}));
+          return true;
+        }})()
+        """
+    )
+    return devtools.evaluate(SETTINGS_STATE)
+
+
+def settings_ctrl_s(devtools: DevTools) -> bool:
+    """
+    Press Ctrl+S on the Settings sheet, where the person is.
+
+    Returns:
+        bool: Whether the page took the key from the browser (its own "Save
+        page as" would otherwise open).
+    """
+    return devtools.evaluate(
+        """
+        (() => {
+          const event = new KeyboardEvent("keydown", {
+            key: "s", ctrlKey: true, bubbles: true, cancelable: true
+          });
+          (document.activeElement || document.body).dispatchEvent(event);
+          return event.defaultPrevented;
+        })()
+        """
+    )
+
+
+def wait_for_settings(devtools: DevTools, condition: str, what: str) -> dict:
+    """
+    Wait until the Settings sheet is drawn, its script run, and a condition holds.
+
+    Args:
+        devtools: The CDP session.
+        condition: A JavaScript expression over the page.
+        what: What was expected, for the failure message.
+
+    Returns:
+        dict: The sheet's state once it holds.
+
+    Raises:
+        CheckError: If it never does.
+    """
+    deadline = time.monotonic() + READY_TIMEOUT_S
+    while time.monotonic() < deadline:
+        try:
+            arrived = devtools.evaluate(
+                'document.readyState === "complete"'
+                ' && !!document.querySelector("form#settings[data-ready]")'
+                f" && ({condition})"
+            )
+        except CaptureError:
+            arrived = False
+        if arrived:
+            return devtools.evaluate(SETTINGS_STATE)
+        time.sleep(POLL_INTERVAL_S)
+    raise CheckError(f"never saw {what}")
+
+
+def check_settings_keys(devtools: DevTools, base: str) -> str:
+    """
+    Check the Settings sheet's change marks, errors, Reset and Ctrl+S.
+
+    Typing redraws the marks and the Status cell against the saved values the
+    page carries, and Save is enabled only while there is something to save
+    and nothing to fix; the error drawn as typed is the server's sentence.
+    Ctrl+S is taken from the browser, does nothing with nothing to save, and
+    puts the caret in the first field in error when there is one; Esc leaves
+    a field. Reset fills the defaults in place without a request and leaves
+    the slot list alone. Ctrl+S then saves, landing on "Saved." with the
+    defaults written. The file is put back as it was.
+    """
+    path = Path(DATA_DIR["path"]) / SETTINGS_FILE
+    original = path.read_bytes()
+    try:
+        size(devtools, *NARROW)
+        devtools.call("Page.navigate", {"url": f"{base}{SETTINGS_PATH}"})
+        start = wait_for_settings(devtools, "true", "the Settings sheet")
+        devtools.evaluate("window.__driveMarker = 1, true")
+        expect(start["changed"] == [] and start["marks"] == [], f"a saved sheet drew marks: {start['marks']}")
+        expect(start["saveDisabled"], "Save was enabled with nothing to save")
+        expect(start["status"].startswith("No unsaved changes."), f"the Status said {start['status']!r}")
+
+        expect(settings_ctrl_s(devtools), "Ctrl+S was left to the browser")
+        time.sleep(CALLOUT_WAIT_S)
+        expect(devtools.evaluate(SETTINGS_STATE)["kept"], "Ctrl+S with nothing to save left the page")
+
+        typed = settings_type(devtools, "weight_freshness", "0.75")
+        expect(typed["changed"] == ["weight_freshness"], f"typing marked {typed['changed']}")
+        expect(typed["marks"] == ["weight_freshness"], f"the triangle is drawn on {typed['marks']}")
+        expect(not typed["saveDisabled"], "Save stayed disabled with a change to save")
+        expect(
+            typed["status"].startswith("1 unsaved change: Freshness."),
+            f"the Status said {typed['status']!r}",
+        )
+
+        wrong = settings_type(devtools, "cross_category_rate", "1.5")
+        expect(wrong["errors"] == ["cross_category_rate"], f"1.5 put {wrong['errors']} in error")
+        expect(wrong["error"].strip() == "Must be between 0 and 1.", f"the error read {wrong['error']!r}")
+        expect(wrong["saveDisabled"] and wrong["statusError"], "Save was enabled with a value to fix")
+        expect(
+            wrong["status"].startswith("Fix 1 value before saving."),
+            f"the Status said {wrong['status']!r}",
+        )
+        devtools.evaluate("document.activeElement.blur(), true")
+        settings_ctrl_s(devtools)
+        time.sleep(CALLOUT_WAIT_S)
+        refused = devtools.evaluate(SETTINGS_STATE)
+        expect(refused["kept"], "Ctrl+S with a value to fix left the page")
+        expect(refused["focused"] == "f-cross_category_rate", f"Ctrl+S focused {refused['focused']!r}")
+        press(devtools, "Escape")
+        expect(devtools.evaluate(SETTINGS_STATE)["focused"] == "", "Esc did not leave the field")
+
+        settings_type(devtools, "cross_category_rate", ".1")
+        same = settings_type(devtools, "weight_freshness", "0.50")
+        expect(same["changed"] == [] and same["saveDisabled"], "the saved values respelled read as changes")
+
+        devtools.evaluate('document.getElementById("reset").click(), true')
+        time.sleep(CALLOUT_WAIT_S)
+        reset = devtools.evaluate(SETTINGS_STATE)
+        expect(reset["kept"] and "reset" not in reset["search"], "Reset left the page with JavaScript on")
+        expect(
+            sorted(reset["changed"]) == ["decay_timescale_days", "weight_uncompared"],
+            f"Reset changed {reset['changed']}",
+        )
+        expect(reset["status"].startswith("Defaults filled in;"), f"the Status said {reset['status']!r}")
+        expect(reset["slots"] == start["slots"], "Reset changed the slot list")
+
+        settings_ctrl_s(devtools)
+        saved = wait_for_settings(devtools, 'location.search.includes("done=saved")', "the save land")
+        expect(not saved["kept"], "the save did not load the page it landed on")
+        expect(saved["status"].startswith("Saved. No unsaved changes."), f"the Status said {saved['status']!r}")
+        written = json.loads(path.read_text(encoding="utf-8"))["settings"]
+        expect(
+            written["weight_uncompared"] == 2.0 and written["decay_timescale_days"] == 30.0,
+            f"the save wrote {written}",
+        )
+    finally:
+        time.sleep(0.05)
+        path.write_bytes(original)
+    return (
+        "typing marks and unmarks, errors disable Save, Ctrl+S focuses the error, "
+        "Esc leaves, Reset fills in place, Ctrl+S saves"
+    )
+
+
 CHECKS = {
     "fold": check_fold,
     "swap-empty": check_swap_empty,
@@ -2034,6 +2237,7 @@ CHECKS = {
     "compare-error": check_compare_error,
     "items-error": check_items_error,
     "rankings-keys": check_rankings_keys,
+    "settings-keys": check_settings_keys,
 }
 
 

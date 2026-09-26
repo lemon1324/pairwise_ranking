@@ -141,4 +141,7 @@
   });
 
   update();
+  // Save's state and the Status cell are this script's from here on; the capture harness waits
+  // for this before it photographs the sheet (SETTINGS_CHECK in scripts/capture_web.py).
+  form.dataset.ready = "1";
 })();

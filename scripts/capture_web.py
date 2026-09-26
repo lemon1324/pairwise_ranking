@@ -69,7 +69,9 @@ for a callout and ``#row-callout`` is still empty. A capture missing its
 callout looks exactly like an ordinary sheet, which is why this is a hard
 failure and not a warning. Compare draws no rows, so it has a probe of its
 own (``COMPARE_CHECK``, chunk 7b): both views present and, unless the sheet is
-in its empty state, both view bodies.
+in its empty state, both view bodies. Settings draws neither, so it has one
+too (``SETTINGS_CHECK``, chunk 8b): parameter rows with their controls, a
+Status cell that says something, and settings.js done.
 
 **A page with no focus.** A headless window is not the focused window, so
 ``document.hasFocus()`` is false, nothing matches ``:focus`` or
@@ -225,6 +227,29 @@ COMPARE_CHECK = """
   if (document.querySelector(".frame-inner.is-empty, #frame.is-empty")) return "";
   const bodies = views.querySelectorAll(".view .view-body").length;
   return bodies === 2 ? "" : bodies + " view bodies";
+})()
+"""
+
+
+# The same, for Settings (chunk 8b), a specification sheet with no rows and no
+# pair. The mockup builds its parameter table in script; the app draws it on
+# the server and settings.js then works out Save's state and the Status cell,
+# and marks the form `data-ready` when it has. So a sheet whose table is empty,
+# whose rows lack a control, whose Status says nothing, or whose script has not
+# run yet is refused. A page with no `.spec-sheet` is not this check's business.
+SETTINGS_CHECK = """
+(() => {
+  if (!document.querySelector(".spec-sheet")) return "";
+  const rows = document.querySelectorAll('#params tr[id^="row-"]');
+  if (!rows.length) return "no parameter rows";
+  for (const row of rows) {
+    if (!row.querySelector("input")) return "no control in " + row.id;
+  }
+  const status = document.getElementById("status");
+  if (!status || !status.textContent.trim()) return "an empty Status cell";
+  const form = document.querySelector("form#settings[data-number-pattern]");
+  if (form && form.dataset.ready !== "1") return "settings.js not yet run";
+  return "";
 })()
 """
 
@@ -905,6 +930,9 @@ def capture(devtools: DevTools, url: str, width: int, height: int) -> tuple:
     missing = devtools.evaluate(COMPARE_CHECK)
     if missing:
         raise CaptureError(f"not a whole pair at {url}: the sheet has {missing}")
+    missing = devtools.evaluate(SETTINGS_CHECK)
+    if missing:
+        raise CaptureError(f"not a whole settings sheet at {url}: it has {missing}")
 
     actual = devtools.evaluate("window.innerWidth")
     if actual != width:
