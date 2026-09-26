@@ -15,8 +15,9 @@ class Limit:
     The range one numeric setting must stay in.
 
     Only sanity: nothing negative, a rate that is a rate, a count that counts.
-    There are no upper caps; the desktop's spin boxes keep tighter ranges of
-    their own, which are a matter of that editor, not of the file.
+    There are no upper caps; the desktop's spin boxes have wide ranges of
+    their own, which are a matter of that editor, not of the file, and write
+    back a value beyond them unchanged unless it is edited.
 
     Attributes:
         minimum: The smallest value allowed.
