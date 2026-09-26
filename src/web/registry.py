@@ -17,17 +17,21 @@ on a request about another. A lock lives for as long as anyone holds it, waits
 for it or has the project open, and is discarded afterwards: see
 :meth:`ProjectRegistry.locked`, which is the only way to take one.
 
-**An mtime check before every mutation.** The whole point of ``.pairrank``
-files is that the desktop app and the web app share them, which means the file
-under a loaded project can change while the server is holding it - typically
-the desktop app saving over SMB. Mutating the stale copy and saving it would
-silently throw the other edit away, so the registry compares the file's stamp
-to the one it loaded, reloads when they differ, and leaves a notice for the
-screen to tell the user their view was replaced. Exactly one screen takes that
-notice, and taking it is the only way to read it. The check is on the mutation
-path only: a read that shows a slightly stale ranking is harmless, while a
-write over a changed file is not, and re-stat'ing on every read would make the
-notice appear on pages that have nothing to say about it.
+**An mtime check before every mutation and every screen read.** The whole
+point of ``.pairrank`` files is that the desktop app and the web app share
+them, which means the file under a loaded project can change while the server
+is holding it - typically the desktop app saving over SMB. Mutating the stale
+copy and saving it would silently throw the other edit away, so the registry
+compares the file's stamp to the one it loaded, reloads when they differ, and
+leaves a notice for the screen to tell the user their view was replaced.
+Exactly one screen takes that notice, and taking it is the only way to read
+it. :meth:`ProjectRegistry.mutate` checks before an edit, and
+:meth:`ProjectRegistry.open_fresh` (and :meth:`ProjectRegistry.session`,
+through it) before a read: a page drawn from a stale copy could show names a
+file switched to blinded mode has hidden, or a project whose file is gone. A
+reload that fails drops the entry, so the next request answers with the error
+rather than the stale project. :meth:`ProjectRegistry.open` alone checks
+nothing; it is the cache itself.
 
 Projects are addressed by **file name**, never path. The check for that is
 :func:`~src.app.register.resolve_project_path`, which the register already owns
@@ -586,10 +590,12 @@ class ProjectRegistry:
 
     def session(self, project_id: str) -> ProjectSession:
         """
-        Return the session for an id, for reading.
+        Return the session for an id, for reading, as its file holds it now.
 
-        Mutations go through :meth:`mutate` instead: this takes no lock and
-        makes no mtime check, so editing through it would race another request
+        Read through :meth:`open_fresh`, like every screen's GET, so a file
+        changed, deleted or damaged elsewhere is seen here too. Mutations go
+        through :meth:`mutate` instead: the lock is released before the caller
+        gets the session, so editing through it would race another request
         and could write over an edit made outside this process.
 
         Args:
@@ -599,11 +605,12 @@ class ProjectRegistry:
             ProjectSession: The open session.
 
         Raises:
-            ProjectNotFoundError: If the id names no project in the directory.
+            ProjectNotFoundError: If the id names no project in the directory,
+                or its file has since been deleted.
             ProjectFormatError: If the file's format version is unusable.
             ProjectUnreadableError: If the file cannot be read or parsed.
         """
-        return self.open(project_id).session
+        return self.open_fresh(project_id).session
 
     @contextmanager
     def mutate(self, project_id: str) -> Iterator[Mutation]:

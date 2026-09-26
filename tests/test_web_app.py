@@ -1,12 +1,12 @@
 """Route-level tests for the web application's skeleton.
 
-The screens arrive in phases 5 to 8, so there is not yet a route that opens a
-project and therefore not yet a route that can fail to. The error-page tests
-supply one: :func:`probe_route` attaches a route that does nothing but depend
-on :func:`~src.web.deps.get_session`, which is exactly what every real screen
-route will do. That keeps these tests about the wiring under test - the
-dependency, the exceptions it raises, the handlers, the templates - rather than
-about a route written to make a test pass.
+The error-page tests need a route that opens a project and can fail to, without
+being about any one screen. :func:`probe_route` attaches a route that does
+nothing but depend on :func:`~src.web.deps.get_session`, which reads the file
+as it is now, as every screen's GET does through ``registry.open_fresh()``.
+That keeps these tests about the wiring under test - the dependency, the
+exceptions it raises, the handlers, the templates - rather than about a route
+written to make a test pass.
 """
 
 import json
@@ -301,6 +301,35 @@ class TestProjectFormatErrorPages(WebAppTestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.text, f"{LOCAL_PRINCIPAL.name}:Tasting")
+
+
+class TestTheSessionIsRead(WebAppTestCase):
+    """Test cases for get_session reading the file as it is now, not the cache."""
+
+    def setUp(self):
+        """Open one project through the probe, so the registry caches it."""
+        super().setUp()
+        self.path = self.data_dir / "Tasting.pairrank"
+        ProjectStorage.create_new("Tasting", self.path)
+        self.assertEqual(self.client.get("/probe/Tasting.pairrank").status_code, 200)
+
+    def test_a_change_made_elsewhere_is_seen(self):
+        """Test that a file renamed by another program draws its new name."""
+        data = json.loads(self.path.read_text(encoding="utf-8"))
+        data["name"] = "Tasting, second flight"
+        self.write_raw("Tasting.pairrank", data)
+
+        response = self.client.get("/probe/Tasting.pairrank")
+
+        self.assertEqual(response.text, f"{LOCAL_PRINCIPAL.name}:Tasting, second flight")
+
+    def test_a_deleted_file_is_not_found(self):
+        """Test that the cached project is not drawn once its file is gone."""
+        self.path.unlink()
+
+        response = self.client.get("/probe/Tasting.pairrank")
+
+        self.assertEqual(response.status_code, 404)
 
 
 class TestServerError(WebAppTestCase):
