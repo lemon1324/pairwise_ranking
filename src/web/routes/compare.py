@@ -35,10 +35,23 @@ the vote an undo just removed, come from the :class:`~src.web.registry.LastChang
 each mutation leaves on the project's entry (ruling C). An address naming any
 other change draws the plain receipt.
 
+**A save the file refuses records nothing, and says so.** The registry reads
+the project back from the file when a mutation raises, so a vote or undo whose
+save failed is gone from memory as well; the route lands on the same pair with
+``refused=save`` (or ``undo-save``), the station and a cause from a short fixed
+list, and the sheet draws the save warning in place of the receipt, with Retry
+posting the same vote or undo again.
+
+**A file another program saved is announced once.** A vote or undo re-reads
+a changed file before it writes (the registry's mtime check), and the page it
+lands on takes the notice and draws the strip under the bar, full load or htmx
+swap alike: the forms carry ``#notice`` out of band.
+
 **Blinded mode draws slots only**: no names, no descriptions, no categories,
 and no readings - the settled order and tolerance are not asked for at all.
 """
 
+import errno
 import logging
 from dataclasses import dataclass
 from datetime import datetime
@@ -150,6 +163,29 @@ DONE_UNDONE = "undone"
 # itself is never echoed: the page prints nothing from the query.
 REFUSED_STATION = "station"
 REFUSED_STATION_NOTE = "Nothing recorded: the scale runs from 1 to 7."
+
+# The values of `refused` a vote and an undo land on when the file would not
+# take the save. The registry has already put the open project back to what
+# the file holds, so the page is drawn from the truth and says what did not
+# happen. A vote's address also carries its `station`, which Retry posts again.
+REFUSED_SAVE = "save"
+REFUSED_UNDO_SAVE = "undo-save"
+
+# Why a save failed, as the address says it (`cause`) and as the warning words
+# it. Only these are ever printed: the address chooses among them and never
+# supplies text of its own. Any other failure is described without a cause.
+CAUSE_DENIED = "denied"
+CAUSE_FULL = "full"
+CAUSE_WORDS = {
+    CAUSE_DENIED: "permission denied",
+    CAUSE_FULL: "the disk is full",
+}
+
+# The save warning, by what failed: its lead, and what it says was not done.
+SAVE_FAILURES = {
+    REFUSED_SAVE: ("Vote not saved.", "Nothing was recorded; the pair is still open."),
+    REFUSED_UNDO_SAVE: ("Undo not saved.", "Nothing was undone; the vote still stands."),
+}
 
 # How many votes the receipt shows: the latest and the one before it.
 RECEIPT_ROWS = 2
@@ -447,6 +483,83 @@ def _empty_state(project: Project, reason: NoPairReason) -> dict:
     return {"lead": EMPTY_LEADS[reason], "detail": detail}
 
 
+def _cause(error: OSError) -> str:
+    """
+    Name why a save failed, in the address's own few words.
+
+    Args:
+        error: What the save raised.
+
+    Returns:
+        str: ``denied``, ``full``, or an empty string for anything else.
+    """
+    if isinstance(error, PermissionError):
+        return CAUSE_DENIED
+    if error.errno == errno.ENOSPC:
+        return CAUSE_FULL
+    return ""
+
+
+def _save_failure(
+    refused: str, cause: str, station: str, file_name: str, vote_url: str, undo_url: str
+) -> Optional[dict]:
+    """
+    Describe the save warning an address asks for, and what Retry sends.
+
+    Args:
+        refused: The address's ``refused``.
+        cause: Its ``cause``: one of the CAUSE_WORDS keys, or anything else
+            for a warning with no cause in it.
+        station: Its ``station``, which a failed vote's Retry posts again.
+        file_name: The project's file name, which the warning names.
+        vote_url: Where a vote posts.
+        undo_url: Where an undo posts.
+
+    Returns:
+        Optional[dict]: The warning's lead and sentence, and Retry's action and
+        station (None when the station is not one a vote records, in which
+        case the warning has no Retry: the stations themselves try again); or
+        None when the address names no failed save.
+    """
+    if refused not in SAVE_FAILURES:
+        return None
+    lead, outcome = SAVE_FAILURES[refused]
+    words = CAUSE_WORDS.get(cause)
+    written = f"Couldn’t write {file_name}{': ' + words if words else ''}."
+    retry = None
+    if refused == REFUSED_UNDO_SAVE:
+        retry = {"url": undo_url, "station": None}
+    else:
+        chosen = _station(station)
+        if chosen is not None and chosen.side != SIDE_EQUAL:
+            retry = {"url": vote_url, "station": chosen.key}
+    return {"lead": lead, "text": f"{written} {outcome}", "retry": retry}
+
+
+def _notice(file_name: str, votes_changed: int, pair_is_new: bool) -> dict:
+    """
+    Word the changed-on-disk notice.
+
+    Args:
+        file_name: The project's file name.
+        votes_changed: How many votes the reload added, less those it removed.
+        pair_is_new: Whether the pair drawn is not the one the page posted
+            from, which is so after every vote and undo that was carried out.
+
+    Returns:
+        dict: The notice's lead and sentence.
+    """
+    if votes_changed:
+        count = abs(votes_changed)
+        change = f": {count} vote{'s' if count != 1 else ''} {'added' if votes_changed > 0 else 'removed'}"
+    else:
+        change = ""
+    text = f"{file_name} was saved by another program and has been reloaded{change}."
+    if pair_is_new:
+        text += " The pair below is new."
+    return {"lead": "File changed on disk.", "text": text}
+
+
 def _pairs_compared(stats: Optional[dict]) -> str:
     """
     Write the Pairs compared figure.
@@ -471,11 +584,17 @@ async def compare_sheet(
     done: str = Query("", description="which mutation just finished"),
     vote_id: str = Query("", alias="vote", description="the vote it recorded or removed"),
     refused: str = Query("", description="what a refused vote got wrong"),
+    station: str = Query("", description="the station a vote that failed to save pressed"),
+    cause: str = Query("", description="why a save failed"),
     registry: ProjectRegistry = Depends(get_registry),
     user: Principal = Depends(get_current_user),
 ) -> Response:
     """
     Draw one pair, or choose one and redirect to it.
+
+    Every page drawn here takes the registry's changed-on-disk notice, full
+    load or htmx swap alike: the notice strip sits outside the frame, and the
+    sheet's forms carry it into the page out of band.
 
     Args:
         request: The incoming request.
@@ -487,7 +606,11 @@ async def compare_sheet(
         vote_id: ``vote``, the id of the vote ``done`` is about. The address
             has to name it: "the last vote" names a different one after every
             vote.
-        refused: "station" after a vote with no such station.
+        refused: "station" after a vote with no such station; "save" or
+            "undo-save" after a vote or an undo the file would not take.
+        station: After a failed vote, its station, which Retry posts again.
+        cause: After a failed save, "denied" or "full"; anything else says
+            no cause.
         registry: The open-project cache.
         user: The signed-in principal.
 
@@ -517,6 +640,18 @@ async def compare_sheet(
     pair = offer.pair
     votes = project.votes
     today = datetime.now().date()
+    vote_url = project_url(request, pid, f"{SHEET}/{ACTION_VOTE}")
+    undo_url = project_url(request, pid, f"{SHEET}/{ACTION_UNDO}")
+    save_failure = (
+        _save_failure(refused, cause, station, pid, vote_url, undo_url) if pair else None
+    )
+    # Read before taking: taking the notice clears the count that goes with it.
+    votes_changed = entry.votes_changed_on_disk
+    notice = (
+        _notice(pid, votes_changed, pair_is_new=save_failure is None)
+        if entry.take_reload_notice()
+        else None
+    )
     context = {
         "project_id": pid,
         "project_name": project.name,
@@ -538,9 +673,12 @@ async def compare_sheet(
         "receipt_empty": RECEIPT_NO_VOTES if pair else RECEIPT_NO_PAIR,
         "refused_note": REFUSED_STATION_NOTE if pair and refused == REFUSED_STATION else "",
         "can_undo": bool(pair) and bool(votes),
+        "save_failure": save_failure,
+        "notice": notice,
+        "here_url": _sheet_url(request, pid, pair) if pair else project_url(request, pid, SHEET),
         "compare_url": project_url(request, pid, SHEET),
-        "vote_url": project_url(request, pid, f"{SHEET}/{ACTION_VOTE}"),
-        "undo_url": project_url(request, pid, f"{SHEET}/{ACTION_UNDO}"),
+        "vote_url": vote_url,
+        "undo_url": undo_url,
         "items_url": project_url(request, pid, "items"),
         "settings_url": project_url(request, pid, "settings"),
     }
@@ -574,7 +712,10 @@ async def vote(
     Returns:
         Response: A 303 to the next pair with ``done=voted``; to the session's
         pair when the posted one can no longer be compared - a second tab
-        retired one of its items, say - with nothing recorded.
+        retired one of its items, say - with nothing recorded; or, when the
+        file would not take the save, back to the same pair with
+        ``refused=save``, the station and the cause, nothing recorded in the
+        file or in memory.
     """
     chosen = _station(station)
     if chosen is None or chosen.side == SIDE_EQUAL:
@@ -588,23 +729,40 @@ async def vote(
         offer = entry.session.skip()
         return _redirect(_sheet_url(request, pid, offer.pair if offer.has_pair else None))
 
-    with registry.mutate(project_id) as mutation:
-        pid = mutation.entry.path.name
-        offer = mutation.session.offer_pair(a, b) if a and b else None
-        if offer is None:
-            logger.info("Ignored a vote on %r and %r in %s: not comparable", a, b, pid)
-            return _redirect(_sheet_url(request, pid))
-        first, second = offer.pair
-        winner, loser = (first, second) if chosen.side == SIDE_A else (second, first)
-        recorded = mutation.session.vote(winner.id, loser.id, float(chosen.weight))
-        mutation.record_change(
-            DONE_VOTED,
-            winner.id,
-            f"{winner.name} over {loser.name}",
-            vote=recorded,
-            sides=(first.id, second.id),
+    pid = registry.resolve(project_id).name
+    drawn = None
+    try:
+        with registry.mutate(project_id) as mutation:
+            offer = mutation.session.offer_pair(a, b) if a and b else None
+            if offer is None:
+                logger.info("Ignored a vote on %r and %r in %s: not comparable", a, b, pid)
+                return _redirect(_sheet_url(request, pid))
+            drawn = offer.pair
+            first, second = drawn
+            winner, loser = (first, second) if chosen.side == SIDE_A else (second, first)
+            recorded = mutation.session.vote(winner.id, loser.id, float(chosen.weight))
+            mutation.record_change(
+                DONE_VOTED,
+                winner.id,
+                f"{winner.name} over {loser.name}",
+                vote=recorded,
+                sides=(first.id, second.id),
+            )
+            following = mutation.session.next_pair()
+    except OSError as error:
+        # The registry has already read the project back from the file, so
+        # the vote is gone from memory as it never reached the disk.
+        logger.warning("Could not save a vote in %s: %s", pid, error)
+        return _redirect(
+            _sheet_url(
+                request,
+                pid,
+                drawn,
+                refused=REFUSED_SAVE,
+                station=chosen.key,
+                cause=_cause(error),
+            )
         )
-        following = mutation.session.next_pair()
     logger.info("Recorded %s over %s in %s", winner.id, loser.id, pid)
     return _redirect(
         _sheet_url(
@@ -671,31 +829,47 @@ async def undo(
     Returns:
         Response: A 303 to the undone vote's pair with ``done=undone`` - or to
         the session's next pair when that one can no longer be compared; with
-        nothing to undo, back to the pair it was pressed on.
+        nothing to undo, back to the pair it was pressed on; and when the file
+        would not take the save, back to that pair with ``refused=undo-save``
+        and the cause, the vote still standing.
     """
-    with registry.mutate(project_id) as mutation:
-        pid = mutation.entry.path.name
-        before = mutation.entry.last_change
-        result = mutation.session.undo()
-        if result is None:
-            logger.info("Nothing to undo in %s", pid)
-            offer = mutation.session.offer_pair(a, b) if a and b else None
-            return _redirect(
-                _sheet_url(request, pid, offer.pair if offer is not None else None)
+    pid = registry.resolve(project_id).name
+    try:
+        with registry.mutate(project_id) as mutation:
+            before = mutation.entry.last_change
+            result = mutation.session.undo()
+            if result is None:
+                logger.info("Nothing to undo in %s", pid)
+                offer = mutation.session.offer_pair(a, b) if a and b else None
+                return _redirect(
+                    _sheet_url(request, pid, offer.pair if offer is not None else None)
+                )
+            if result.pair is not None:
+                pair = _undone_sides(before, result.vote, result.pair)
+            else:
+                pair = result.offer.pair
+            project = mutation.session.project
+            winner = project.find_item(result.vote.winner_id)
+            loser = project.find_item(result.vote.loser_id)
+            mutation.record_change(
+                DONE_UNDONE,
+                result.vote.winner_id,
+                f"{_mention(winner, False, True)} over {_mention(loser, False, False)}",
+                vote=result.vote,
+                sides=tuple(item.id for item in pair) if pair else (),
             )
-        if result.pair is not None:
-            pair = _undone_sides(before, result.vote, result.pair)
-        else:
-            pair = result.offer.pair
-        project = mutation.session.project
-        winner = project.find_item(result.vote.winner_id)
-        loser = project.find_item(result.vote.loser_id)
-        mutation.record_change(
-            DONE_UNDONE,
-            result.vote.winner_id,
-            f"{_mention(winner, False, True)} over {_mention(loser, False, False)}",
-            vote=result.vote,
-            sides=tuple(item.id for item in pair) if pair else (),
+    except OSError as error:
+        # As for a vote: the registry has put the vote back from the file.
+        logger.warning("Could not save an undo in %s: %s", pid, error)
+        offer = registry.open(project_id).session.offer_pair(a, b) if a and b else None
+        return _redirect(
+            _sheet_url(
+                request,
+                pid,
+                offer.pair if offer is not None else None,
+                refused=REFUSED_UNDO_SAVE,
+                cause=_cause(error),
+            )
         )
     logger.info("Undid vote %s in %s", result.vote.id, pid)
     return _redirect(

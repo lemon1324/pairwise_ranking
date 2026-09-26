@@ -10,23 +10,30 @@ The fixture is the Items sheet's (``tests/test_web_items.py``), itself the
 register's, for the reasons §5c of the plan gives.
 """
 
+import errno
 import html
 import json
 import re
 import unittest
 from datetime import datetime, timedelta
+from unittest import mock
 from urllib.parse import parse_qs, urlparse
 
 from src.app.session import ProjectSession
 from src.data.project_storage import ProjectStorage
 from src.web.app import DAMAGED_STATUS
 from src.web.routes.compare import (
+    CAUSE_DENIED,
+    CAUSE_FULL,
+    CAUSE_WORDS,
     COMPARE_KEYS,
     DONE_UNDONE,
     DONE_VOTED,
     EMPTY_LEADS,
+    REFUSED_SAVE,
     REFUSED_STATION,
     REFUSED_STATION_NOTE,
+    REFUSED_UNDO_SAVE,
 )
 from src.app.session import NoPairReason
 from tests.test_web_items import ITEMS, ItemsTestCase, item, project_data
@@ -688,6 +695,320 @@ class TestUndo(CompareTestCase):
         self.post("vote", a="oil", b="cream", station="2")
 
         self.assertNotIn("is-undone", self.client.get(location).text)
+
+
+class TestTheRoundTrip(CompareTestCase):
+    """Test cases for a vote and its undo, end to end through the addresses."""
+
+    def test_a_vote_and_its_undo_leave_the_file_as_it_was(self):
+        """Test draw, vote, land, undo, land: the same pair back, the votes restored."""
+        before = self.stored_votes()
+        pair = pair_of(self.compare("a=cream&b=oil"))
+        self.assertEqual(pair, ("cream", "oil"))
+
+        voted = self.landed(self.post("vote", a=pair[0], b=pair[1], station="6"))
+        self.assertEqual(self.stored_votes(), before + [("oil", "cream", 2.0)])
+        self.assertEqual(receipt_rows(voted)[-1][0], "rev-row is-new")
+        self.assertIn(f'id="votes">{len(before) + 1}<', voted)
+
+        on_screen = pair_of(voted)
+        response = self.post("undo", a=on_screen[0], b=on_screen[1])
+        _, query = self.redirect_of(response)
+        self.assertEqual((query["a"], query["b"]), pair)
+        self.assertEqual(query["done"], DONE_UNDONE)
+        undone = self.landed(response)
+        self.assertEqual(pair_of(undone), pair)
+        self.assertEqual(self.stored_votes(), before)
+        self.assertEqual(receipt_rows(undone)[-1][0], "rev-row is-undone")
+
+    def test_undo_re_offers_the_same_pair_whichever_page_it_is_pressed_on(self):
+        """Test that Undo names the vote's pair, not the pair on the page it came from."""
+        self.post("vote", a="jade", b="oil", station="1")
+
+        for page in (("cream", "alpaca"), ("", ""), ("gone", "oil")):
+            with self.subTest(page=page):
+                self.post("vote", a="jade", b="oil", station="1")
+
+                _, query = self.redirect_of(self.post("undo", a=page[0], b=page[1]))
+
+                self.assertEqual((query["a"], query["b"]), ("jade", "oil"))
+
+
+class TestTheBlindedFilter(CompareTestCase):
+    """Test cases for blinded mode through the mutations, not just the draw."""
+
+    def seed(self):
+        """Write the project, blinded."""
+        self.write(
+            PROJECT,
+            project_data(votes=VOTES, settings={"blinded_comparison_mode": True}),
+        )
+
+    def test_a_vote_lands_only_on_slotted_pairs(self):
+        """Test the next pair after each of several votes."""
+        for station in ("1", "5", "3", "7"):
+            with self.subTest(station=station):
+                _, query = self.redirect_of(self.post("vote", a="oil", b="jade", station=station))
+
+                self.assertLessEqual({query["a"], query["b"]}, SLOTTED)
+
+    def test_a_vote_on_an_item_with_no_slot_records_nothing(self):
+        """Test a page drawn before blinding: its pair is no longer comparable."""
+        before = self.snapshot()
+
+        path, query = self.redirect_of(self.post("vote", a="oil", b="brown", station="2"))
+
+        self.assertEqual((path, query), (COMPARE_URL, {}))
+        self.assertEqual(self.snapshot(), before)
+
+    def test_undoing_a_vote_on_an_unslotted_item_offers_a_slotted_pair(self):
+        """Test undo of a vote from before blinding: not re-offered, a slotted pair instead."""
+        self.write(
+            PROJECT,
+            project_data(
+                votes=VOTES + [vote("brown", "oil", "v3", minutes=2)],
+                settings={"blinded_comparison_mode": True},
+            ),
+        )
+        self.client.app.state.registry.forget(PROJECT)
+
+        response = self.post("undo", a="oil", b="jade")
+
+        _, query = self.redirect_of(response)
+        self.assertLessEqual({query["a"], query["b"]}, SLOTTED)
+        self.assertEqual(len(self.stored_votes()), len(VOTES))
+        rows = receipt_rows(self.landed(response))
+        self.assertEqual(rows[-1][0], "rev-row is-undone")
+        self.assertNotIn("re-offered", rows[-1][1])
+        self.assertNotIn("Cherry MX Brown", rows[-1][1])
+
+
+class SaveFailureTestCase(CompareTestCase):
+    """Base case with a switch for making every save fail."""
+
+    def fail_saves(self, error: OSError = None):
+        """
+        Make every save refuse until the test ends.
+
+        Args:
+            error: What the save raises; permission denied by default.
+        """
+        patcher = mock.patch.object(
+            ProjectStorage,
+            "save",
+            side_effect=error or PermissionError(13, "Permission denied"),
+        )
+        self.addCleanup(patcher.stop)
+        patcher.start()
+
+
+class TestAVoteThatCannotBeSaved(SaveFailureTestCase):
+    """Test cases for a vote whose save the file refuses."""
+
+    def test_nothing_is_recorded_and_the_same_pair_comes_back(self):
+        """Test the file, and the 303 to the pair with the failure named."""
+        self.compare("a=oil&b=cream")
+        before = self.snapshot()
+        self.fail_saves()
+
+        _, query = self.redirect_of(self.post("vote", a="oil", b="cream", station="6"))
+
+        self.assertEqual(self.snapshot(), before)
+        self.assertEqual(
+            query,
+            {"a": "oil", "b": "cream", "refused": REFUSED_SAVE, "station": "6", "cause": CAUSE_DENIED},
+        )
+
+    def test_the_vote_is_not_left_in_memory(self):
+        """Test the 7a gap: the open project holds no vote the file does not."""
+        self.fail_saves()
+        page = self.landed(self.post("vote", a="oil", b="cream", station="2"))
+        mock.patch.stopall()
+
+        self.assertIn(f'id="votes">{len(VOTES)}<', page)
+        self.assertEqual(len(self.client.app.state.registry.open(PROJECT).session.project.votes), len(VOTES))
+        self.post("vote", a="oil", b="cream", station="2")
+        self.assertEqual(len(self.stored_votes()), len(VOTES) + 1)
+
+    def test_the_page_draws_the_warning_and_retry_posts_the_vote_again(self):
+        """Test the save-failed state: its class, its warning, and Retry's fields."""
+        self.fail_saves()
+        page = self.landed(self.post("vote", a="oil", b="cream", station="6"))
+
+        self.assertIn('class="frame-inner is-save-failed"', page)
+        self.assertIn("tb-file-text is-warn", page)
+        warning = element(page, r'<div class="save-warning"')
+        self.assertIn(CAUSE_WORDS[CAUSE_DENIED], text_of(warning))
+        retry = element(page, r'<form method="post" action="[^"]*/vote" hx-post')
+        self.assertIn('id="retry"', retry)
+        self.assertIn('name="station" value="6"', retry)
+        self.assertEqual(pair_of(page), ("oil", "cream"))
+
+    def test_retry_records_the_vote_once_the_file_takes_it(self):
+        """Test that Retry is the same post as the station was."""
+        self.fail_saves()
+        _, query = self.redirect_of(self.post("vote", a="oil", b="cream", station="6"))
+        mock.patch.stopall()
+
+        self.post("vote", a=query["a"], b=query["b"], station=query["station"])
+
+        self.assertEqual(self.stored_votes()[-1], ("cream", "oil", 2.0))
+
+    def test_a_full_disk_and_an_unnamed_failure(self):
+        """Test the cause vocabulary: full, and nothing for anything else."""
+        for error, cause in (
+            (OSError(errno.ENOSPC, "No space left on device"), CAUSE_FULL),
+            (OSError(errno.EIO, "Input/output error"), None),
+        ):
+            with self.subTest(cause=cause):
+                self.fail_saves(error)
+                _, query = self.redirect_of(self.post("vote", a="oil", b="cream", station="2"))
+                mock.patch.stopall()
+
+                self.assertEqual(query.get("cause"), cause)
+
+
+class TestAnUndoThatCannotBeSaved(SaveFailureTestCase):
+    """Test cases for an undo whose save the file refuses."""
+
+    def test_the_vote_stands_and_the_pair_comes_back(self):
+        """Test the file, the memory, and the 303."""
+        before = self.snapshot()
+        self.fail_saves()
+
+        response = self.post("undo", a="oil", b="cream")
+
+        _, query = self.redirect_of(response)
+        self.assertEqual(query, {"a": "oil", "b": "cream", "refused": REFUSED_UNDO_SAVE, "cause": CAUSE_DENIED})
+        self.assertEqual(self.snapshot(), before)
+        page = self.landed(response)
+        self.assertIn(f'id="votes">{len(VOTES)}<', page)
+        self.assertIn('class="frame-inner is-save-failed"', page)
+        retry = element(page, r'<form method="post" action="[^"]*/undo" hx-post')
+        self.assertIn('id="retry"', retry)
+        self.assertNotIn('name="station"', retry)
+
+
+class TestTheSaveFailedAddress(CompareTestCase):
+    """Test cases for the save-failed state as an address, for the capture pass."""
+
+    def test_the_address_draws_the_state(self):
+        """Test that refused=save alone reproduces the page, with no failure."""
+        page = self.compare(f"a=oil&b=cream&refused={REFUSED_SAVE}&station=2&cause={CAUSE_DENIED}")
+
+        self.assertIn("is-save-failed", page)
+        self.assertIn('id="retry"', page)
+
+    def test_the_address_prints_nothing_of_its_own(self):
+        """Test a cause off the list and a station off the scale."""
+        page = self.compare(f"a=oil&b=cream&refused={REFUSED_SAVE}&station=%3Cb%3E&cause=%3Cscript%3E")
+        warning = text_of(element(page, r'<div class="save-warning"'))
+
+        self.assertIn("is-save-failed", page)
+        self.assertNotIn("script", page.split('id="rev-rows"')[1].split("</section>")[0])
+        self.assertIn(f"Couldn’t write {PROJECT}. Nothing was recorded", warning)
+        self.assertNotIn('id="retry"', page)
+
+    def test_equal_has_no_retry(self):
+        """Test that station 4, which records nothing, is never retried."""
+        self.assertNotIn('id="retry"', self.compare(f"a=oil&b=cream&refused={REFUSED_SAVE}&station=4"))
+
+    def test_a_mistyped_refusal_draws_the_plain_sheet(self):
+        """Test anything else in refused."""
+        page = self.compare("a=oil&b=cream&refused=sav")
+
+        self.assertNotIn("is-save-failed", page)
+        self.assertNotIn('class="save-warning"', page)
+
+    def test_the_empty_sheet_draws_no_warning(self):
+        """Test a failure address on a project that cannot offer a pair."""
+        self.write(PROJECT, project_data(items=[item("oil", "Oil", slot="10")]))
+        self.client.app.state.registry.forget(PROJECT)
+
+        page = self.compare(f"refused={REFUSED_SAVE}&station=2")
+
+        self.assertNotIn("is-save-failed", page)
+
+
+class TestChangedOnDisk(CompareTestCase):
+    """Test cases for the notice strip after a vote over a file changed elsewhere."""
+
+    def change_on_disk(self, extra_votes: int = 3) -> None:
+        """
+        Open the project, then save it from "another program" with more votes.
+
+        Args:
+            extra_votes: How many votes the other program added.
+        """
+        self.compare("a=oil&b=cream")
+        more = [vote("jade", "alpaca", f"x{n}", minutes=5 + n) for n in range(extra_votes)]
+        self.write(PROJECT, project_data(votes=VOTES + more))
+
+    def notice_of(self, page: str) -> str:
+        """
+        Cut the notice strip out of a page.
+
+        Args:
+            page: The rendered page.
+
+        Returns:
+            str: The strip's opening tag and contents.
+        """
+        return element(page, r'<div class="notice" id="notice"')
+
+    def test_a_plain_page_carries_the_strip_hidden(self):
+        """Test that the strip is always drawn, so a swap can carry it."""
+        strip = self.notice_of(self.compare("a=oil&b=cream"))
+
+        self.assertIn(" hidden>", strip)
+        self.assertNotIn("<p>", strip)
+
+    def test_every_form_carries_the_strip_out_of_band(self):
+        """Test the vote, undo and skip forms."""
+        page = self.compare("a=oil&b=cream")
+
+        self.assertEqual(page.count('hx-select-oob="#notice"'), 3)
+
+    def test_the_page_a_vote_lands_on_says_so_once(self):
+        """Test the notice, its vote count, and that the next page has none."""
+        self.change_on_disk()
+
+        response = self.post("vote", a="oil", b="cream", station="2")
+        location = response.headers["location"]
+        strip = self.notice_of(self.landed(response))
+
+        self.assertNotIn(" hidden>", strip)
+        self.assertIn(f"{PROJECT} was saved by another program and has been reloaded: 3 votes added.", text_of(strip))
+        self.assertIn("The pair below is new.", strip)
+        self.assertIn(" hidden>", self.notice_of(self.client.get(location).text))
+
+    def test_an_htmx_swap_takes_it_too(self):
+        """Test that a swapped-in page, which carries the strip out of band, takes it."""
+        self.change_on_disk(extra_votes=1)
+
+        location = self.post("vote", a="oil", b="cream", station="2").headers["location"]
+        page = self.client.get(location, headers={"HX-Request": "true"}).text
+
+        self.assertIn("reloaded: 1 vote added.", text_of(self.notice_of(page)))
+
+    def test_dismiss_links_to_the_pair(self):
+        """Test the no-JavaScript Dismiss: a reload of the pair, which draws no notice."""
+        self.change_on_disk()
+
+        page = self.landed(self.post("vote", a="oil", b="cream", station="2"))
+
+        a, b = pair_of(page)
+        self.assertRegex(self.notice_of(page), rf'id="notice-dismiss" href="{COMPARE_URL}\?a={a}&amp;b={b}"')
+
+    def test_a_failed_save_over_a_changed_file_keeps_the_pair(self):
+        """Test that a reload whose vote then failed does not call the pair new."""
+        self.change_on_disk(extra_votes=0)
+        with mock.patch.object(ProjectStorage, "save", side_effect=PermissionError(13, "denied")):
+            response = self.post("vote", a="oil", b="cream", station="2")
+        strip = self.notice_of(self.landed(response))
+
+        self.assertIn("has been reloaded.", strip)
+        self.assertNotIn("The pair below is new.", strip)
 
 
 class TestCompareUnderARootPath(CompareTestCase):

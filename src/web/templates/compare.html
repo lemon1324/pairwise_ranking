@@ -33,15 +33,34 @@
 
 {% block tabs %}{{ tabs(request, project_id, current="compare") }}{% endblock %}
 
-{% block frame_class %}{% if blinded %} is-blinded{% endif %}{% if empty %} is-empty{% endif %}{% endblock %}
+{#
+  The changed-on-disk strip, under the bar and outside the frame. Always drawn,
+  hidden when there is nothing to say, so that every swap can carry it out of
+  band (see frame_swap): a vote over a file another program saved lands on a
+  page that says so, and the next vote's page puts it away again. Dismiss is a
+  link to the pair's own address, which a reload draws without the notice
+  (taking it cleared it); with JavaScript it just hides the strip.
+#}
+{% block notice %}
+  <div class="notice" id="notice" role="status"{% if not notice %} hidden{% endif %}>
+    {% if notice %}
+    {{ icon("reload") }}
+    <p><strong>{{ notice.lead }}</strong> {{ notice.text }}</p>
+    <a class="cell-button" id="notice-dismiss" href="{{ here_url }}">Dismiss</a>
+    {% endif %}
+  </div>
+{% endblock %}
+
+{% block frame_class %}{% if blinded %} is-blinded{% endif %}{% if empty %} is-empty{% endif %}{% if save_failure %} is-save-failed{% endif %}{% endblock %}
 
 {#
   What every form on the sheet asks htmx for: the answer's frame in place of
-  this one, the address bar following the redirect, and one request at a time
-  (a second press while a vote is in flight is dropped, not queued).
+  this one, the notice strip beside it, the address bar following the
+  redirect, and one request at a time (a second press while a vote is in
+  flight is dropped, not queued).
 #}
 {% macro frame_swap() -%}
-hx-target="#frame" hx-select="#frame" hx-swap="outerHTML" hx-replace-url="true" hx-sync="#frame:drop"
+hx-target="#frame" hx-select="#frame" hx-select-oob="#notice" hx-swap="outerHTML" hx-replace-url="true" hx-sync="#frame:drop"
 {%- endmacro %}
 
 {# The pair's two ids, which a vote and an undo both post back. #}
@@ -151,7 +170,7 @@ hx-target="#frame" hx-select="#frame" hx-swap="outerHTML" hx-replace-url="true" 
   {% call title_block(rows=4, label="Title and status") %}
     {{ keys_block(keys) }}
     {{ tb_title(project_name) }}
-    {{ tb_file(file_name) }}
+    {{ tb_file(file_name, warn=save_failure is not none) }}
 
     {% if readings %}
     <div class="tb-cell tb-settled">
@@ -201,6 +220,24 @@ hx-target="#frame" hx-select="#frame" hx-swap="outerHTML" hx-replace-url="true" 
         <li class="rev-empty">{{ receipt_empty }}</li>
         {% endfor %}
       </ol>
+      {# In place of the receipt when the file would not take a vote or an
+         undo: what failed, why, what did not happen, and Retry, which posts
+         the same thing again. #}
+      {% if save_failure %}
+      <div class="save-warning" role="alert">
+        {{ icon("warn") }}
+        <div>
+          <p><strong>{{ save_failure.lead }}</strong> {{ save_failure.text }}</p>
+          {% if save_failure.retry %}
+          <form method="post" action="{{ save_failure.retry.url }}" hx-post="{{ save_failure.retry.url }}" {{ frame_swap() }}>
+            {{ pair_fields() }}
+            {% if save_failure.retry.station %}<input type="hidden" name="station" value="{{ save_failure.retry.station }}">{% endif %}
+            <button class="cell-button" type="submit" id="retry">Retry save</button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
     </div>
     <form class="tb-cell tb-undo" method="post" action="{{ undo_url }}" hx-post="{{ undo_url }}" {{ frame_swap() }}>
       {{ pair_fields() }}
