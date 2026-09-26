@@ -1146,6 +1146,23 @@ class TestAPairThatCannotBeAddressed(CompareTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("is-empty", response.text)
 
+    def test_ids_that_do_not_survive_the_address_draw_empty(self):
+        """Test ids the address cannot carry back as themselves: a number, nothing, None."""
+        # The core turns a number into text and refuses an empty id, so a
+        # file cannot bring one; the guard is proved on the open project.
+        self.write(PROJECT, project_data(items=[item("p", "Pea"), item("q", "Queue")], slots=[], slot_labels={}))
+        self.compare("a=p&b=q")
+        project = self.app.state.registry.open(PROJECT).session.project
+        for ids in ((1, 2), ("", "q"), (None, "q")):
+            with self.subTest(ids=ids):
+                for entry, item_id in zip(project.items, ids):
+                    entry.id = item_id
+
+                response = self.client.get(COMPARE_URL, follow_redirects=False)
+
+                self.assertEqual(response.status_code, 200)
+                self.assertIn("is-empty", response.text)
+
 
 class TestCompareUnderARootPath(CompareTestCase):
     """Test cases for the sheet behind a reverse proxy on a subpath."""
