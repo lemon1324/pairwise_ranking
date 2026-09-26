@@ -129,11 +129,23 @@ What is checked, and why each one is here:
     strip in out of band, the next vote's swap puts it away, and Dismiss hides
     it without a navigation. It undoes its votes.
 
+``compare-double``
+    A second press in the 140 ms between a vote's answer and its new frame -
+    ``5`` 30 ms after ``2``'s answer, a station clicked twice - records
+    nothing: the file gains one vote, the page's count is the file's, and the
+    address names the pair the vote form posts. It undoes its votes.
+
+``compare-error``
+    A vote the server answers with an error page shows that page: the project
+    file is deleted behind the server's back, ``2`` lands on "Not found", and
+    the file is put back.
+
 Each check leaves the page as it found it by navigating afresh, so they are
 independent and ``--check`` can run any one of them alone.
 """
 
 import argparse
+import json
 import shutil
 import sys
 import time
@@ -1609,6 +1621,141 @@ def check_compare_notice(devtools: DevTools, base: str) -> str:
     return "a vote over a file saved elsewhere swapped the notice in; the next vote put it away; Dismiss hid it in place"
 
 
+# What the double-press check compares: the page's vote count and pair against
+# the file's and the address's.
+DOUBLE_STATE = """
+(() => {
+  const field = (name) => (document.querySelector('#vote-form input[name="' + name + '"]') || {}).value;
+  const query = new URLSearchParams(location.search);
+  return {
+    votes: document.getElementById("votes").textContent.trim(),
+    addressed: [query.get("a"), query.get("b")],
+    posted: [field("a"), field("b")],
+  };
+})()
+"""
+
+
+def stored_votes(file_name: str) -> int:
+    """
+    Count the votes in a project file as it is on disk.
+
+    Args:
+        file_name: The project's file name in the data directory.
+
+    Returns:
+        int: How many votes the file holds.
+    """
+    path = Path(DATA_DIR["path"]) / file_name
+    return len(json.loads(path.read_text(encoding="utf-8"))["votes"])
+
+
+def check_compare_double(devtools: DevTools, base: str) -> str:
+    """
+    Check that a second press before the new pair is in records nothing.
+
+    htmx lets go of a request when its answer arrives, before the delayed swap
+    has put the next pair in; for those 140 ms the old frame's stations are
+    still on screen. A key pressed 30 ms after the answer, and a station
+    clicked twice in the same window, must each leave exactly one vote in the
+    file, the page's count equal to the file's, and the address naming the
+    pair the vote form posts. Both votes are undone.
+    """
+    size(devtools, *NARROW)
+    file_name = COMPARE_PATH.split("/")[2]
+    start = stored_votes(file_name)
+
+    def second_press(first: str, then: str) -> dict:
+        devtools.call("Page.navigate", {"url": f"{base}{COMPARE_PATH}?a=it1&b=it2"})
+        wait_for_compare(devtools, 'document.getElementById("station-2")', "the Compare sheet")
+        count = stored_votes(file_name)
+        devtools.evaluate(
+            f"""
+            (() => {{
+              document.addEventListener("htmx:afterRequest", () => setTimeout(() => {{ {then} }}, 30), {{ once: true }});
+              {first}
+              return true;
+            }})()
+            """
+        )
+        wait_for_compare(
+            devtools,
+            'location.search.includes("done=voted")'
+            ' && document.getElementById("callout-status").textContent.includes("over")',
+            "the vote land",
+        )
+        # Past the second press, and past any vote it could have started.
+        time.sleep(CALLOUT_WAIT_S)
+        state = devtools.evaluate(DOUBLE_STATE)
+        stored = stored_votes(file_name)
+        expect(stored == count + 1, f"the file went from {count} to {stored} votes")
+        expect(int(state["votes"]) == stored, f"the page reads {state['votes']} votes, the file {stored}")
+        expect(
+            state["addressed"] == state["posted"],
+            f"the address names {state['addressed']}, the vote form posts {state['posted']}",
+        )
+        return state
+
+    key = (
+        '(document.activeElement || document.body).dispatchEvent(new KeyboardEvent("keydown",'
+        ' {{ key: "{0}", bubbles: true, cancelable: true }}));'
+    )
+    second_press(key.format("2"), key.format("5"))
+    second_press(
+        'document.getElementById("station-2").click();',
+        'document.getElementById("station-2").click();',
+    )
+
+    for count in (start + 1, start):
+        compare_key(devtools, "z", ctrl=True)
+        wait_for_compare(
+            devtools,
+            f'location.search.includes("done=undone") && document.getElementById("votes").textContent.trim() === "{count}"',
+            "the undo land",
+        )
+    return "a key 30 ms after the answer, and a second click, each left one vote; page, file and address agree"
+
+
+def check_compare_error(devtools: DevTools, base: str) -> str:
+    """
+    Check that a vote the server refuses with an error page shows that page.
+
+    htmx swaps no 4xx answer, so without compare.js's handler a vote over a
+    deleted project did nothing and said nothing. The file is taken away
+    behind the server's back, ``2`` is pressed, and the not-found page must be
+    what the browser shows. The file is put back afterwards.
+    """
+    size(devtools, *NARROW)
+    file_name = COMPARE_PATH.split("/")[2]
+    path = Path(DATA_DIR["path"]) / file_name
+    devtools.call("Page.navigate", {"url": f"{base}{COMPARE_PATH}?a=it1&b=it2"})
+    wait_for_compare(devtools, 'document.getElementById("station-2")', "the Compare sheet")
+    saved = path.read_bytes()
+    path.unlink()
+    try:
+        compare_key(devtools, "2")
+        deadline = time.monotonic() + READY_TIMEOUT_S
+        shown = ""
+        while time.monotonic() < deadline:
+            try:
+                shown = devtools.evaluate(
+                    'document.readyState === "complete" && !document.getElementById("station-2")'
+                    ' ? document.title : ""'
+                )
+            except CaptureError:
+                shown = ""
+            if shown:
+                break
+            time.sleep(POLL_INTERVAL_S)
+        page = devtools.evaluate(
+            '({ href: location.href, title: document.title, sheet: !!document.getElementById("station-2") })'
+        )
+        expect("Not found" in shown, f"the error page never showed: {page}")
+    finally:
+        path.write_bytes(saved)
+    return "a vote over a deleted project showed the not-found page"
+
+
 CHECKS = {
     "fold": check_fold,
     "swap-empty": check_swap_empty,
@@ -1629,6 +1776,8 @@ CHECKS = {
     "filter-enter": check_filter_enter,
     "compare-keys": check_compare_keys,
     "compare-notice": check_compare_notice,
+    "compare-double": check_compare_double,
+    "compare-error": check_compare_error,
 }
 
 
