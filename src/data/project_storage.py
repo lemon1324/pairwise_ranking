@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import shutil
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -13,6 +14,36 @@ from src.models.settings import Settings
 
 
 logger = logging.getLogger(__name__)
+
+# How often, and how far apart, a refused replace is tried again. On Windows a
+# file that has just been written is briefly held open by whatever scans new
+# files - an antivirus, the search indexer - and os.replace over it fails with
+# "Access is denied" until that lets go, usually within milliseconds. Anything
+# still refused after the last attempt is a real failure and is raised.
+REPLACE_ATTEMPTS = 5
+REPLACE_BACKOFF_S = 0.05
+
+
+def _replace(source: Path, target: Path) -> None:
+    """
+    Move a file over another, waiting out a transient sharing refusal.
+
+    Args:
+        source: The file to move.
+        target: The file it replaces.
+
+    Raises:
+        OSError: If the move still fails after every attempt, or fails for
+            any reason other than a PermissionError.
+    """
+    for attempt in range(1, REPLACE_ATTEMPTS + 1):
+        try:
+            os.replace(source, target)
+            return
+        except PermissionError:
+            if attempt == REPLACE_ATTEMPTS:
+                raise
+            time.sleep(REPLACE_BACKOFF_S * attempt)
 
 
 class ProjectStorage:
@@ -84,7 +115,7 @@ class ProjectStorage:
                 backup_path = file_path.with_suffix(ProjectStorage.BACKUP_EXTENSION)
                 shutil.copy2(file_path, backup_path)
 
-            os.replace(tmp_path, file_path)
+            _replace(tmp_path, file_path)
         except BaseException:
             tmp_path.unlink(missing_ok=True)
             raise
