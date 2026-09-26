@@ -1029,6 +1029,25 @@ class TestNewProject(RegisterTestCase):
         self.assertNotIn("is-error", body)
         self.assertIn("Saves as", body)
 
+    def test_a_mistyped_submitted_draws_a_fresh_form(self):
+        """
+        Test that `submitted` other than 1 is no submission, not a 422.
+
+        On the register, and on both forms' fragments.
+        """
+        # Empty and free names, which are errors only once submitted.
+        for url in ("/?form=new&submitted=yes",
+                    "/?form=duplicate&project=Alpha.pairrank&submitted=on",
+                    "/projects/new/callout?name=&submitted=yes",
+                    "/projects/new/callout?submitted=2",
+                    "/projects/Alpha.pairrank/duplicate?name=Fresh&submitted=on"):
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 200)
+                self.assertIn("text/html", response.headers["content-type"])
+                self.assertNotIn("is-error", response.text)
+                self.assertNotIn("submitted=", response.text)
+
 
 class TestDuplicateProject(RegisterTestCase):
     """Test cases for copying a project without its votes."""

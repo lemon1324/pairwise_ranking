@@ -89,6 +89,11 @@ FORM_IMPORT = "import"
 FORM_DUPLICATE = "duplicate"
 FORMS = (FORM_NEW, FORM_IMPORT, FORM_DUPLICATE)
 
+# The value of `submitted` that marks a draft as refused once. Anything else is
+# a fresh form, for the same reason: typed as a number, `submitted=yes` would
+# answer FastAPI's 422 instead of the register.
+SUBMITTED = "1"
+
 # The keys the register's title block lists. New (N) and Import (I) are drawn
 # on their own cells and declare their shortcuts there.
 REGISTER_KEYS = (
@@ -183,6 +188,21 @@ def _templates(request: Request) -> Jinja2Templates:
         Jinja2Templates: The environment the factory built.
     """
     return request.app.state.templates
+
+
+async def submitted_query(
+    submitted: str = Query("", description="1 when the draft has been posted"),
+) -> int:
+    """
+    Read whether a draft has been refused once, leniently.
+
+    Args:
+        submitted: The query's value, as typed.
+
+    Returns:
+        int: 1 when it is :data:`SUBMITTED`, else 0.
+    """
+    return 1 if submitted == SUBMITTED else 0
 
 
 def _fragment_url(request: Request, path: str, **query) -> str:
@@ -336,7 +356,7 @@ async def register(
     name: str = Query("", description="the project name being drafted"),
     project: str = Query("", description="the project the duplicate form is for"),
     selected: str = Query("", description="the row to arrive with selected"),
-    submitted: int = Query(0, description="whether the draft has been posted"),
+    submitted: int = Depends(submitted_query),
     done: str = Query("", description="which mutation just finished"),
     error: str = Query("", description="why an import was refused"),
     config: WebConfig = Depends(get_config),
@@ -443,7 +463,7 @@ def _duplicate_url(
 async def new_callout(
     request: Request,
     name: str = Query("", description="the project name being drafted"),
-    submitted: int = Query(0, description="whether the draft has been posted"),
+    submitted: int = Depends(submitted_query),
     config: WebConfig = Depends(get_config),
     user: Principal = Depends(get_current_user),
 ) -> Response:
@@ -804,7 +824,7 @@ async def duplicate_callout(
     request: Request,
     project_id: str,
     name: str = Query("", description="the name being drafted for the copy"),
-    submitted: int = Query(0, description="whether the draft has been posted"),
+    submitted: int = Depends(submitted_query),
     config: WebConfig = Depends(get_config),
     user: Principal = Depends(get_current_user),
 ) -> Response:
