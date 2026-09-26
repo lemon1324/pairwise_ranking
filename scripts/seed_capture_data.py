@@ -69,6 +69,34 @@ Photograph those by driving the page over CDP in the server that made the
 change - ``drive_sheet.py``'s ``press`` and ``open_page`` do it - and seed
 again afterwards, because the mutations really write.
 
+**The Compare pass (chunk 7b).** Four of ``docs/mockups/compare.html``'s six
+states have an address (``C`` is ``/projects/switches-sample.pairrank/compare``;
+the mockup's pair is ``a=it1&b=it2``)::
+
+    capture_web.py --data-dir .scratch/capture-data \\
+        "cmp-normal=$C?a=it1&b=it2" \\
+        "cmp-blinded=/projects/switches-sample-blinded.pairrank/compare?a=it1&b=it2" \\
+        "cmp-fresh=/projects/switches-sample-fresh.pairrank/compare?a=it1&b=it2" \\
+        "cmp-empty=/projects/switches-sample-one.pairrank/compare" \\
+        "cmp-save-failed=$C?a=it1&b=it2&refused=save&station=2&cause=denied"
+
+    capture_web.py --base-url "file:///$(wslpath -m docs/mockups)" \\
+        "mock-cmp-normal=/compare.html?state=normal" ...
+
+with one ``mock-cmp-<state>`` per mockup state: normal, blinded, fresh, empty,
+save-failed, changed. ``capture_web.py``'s Compare probe refuses a sheet
+without both views. The rest were photographed by a throwaway CDP script in
+``.scratch/`` (deleted afterwards), built on ``capture_web``'s ``capture`` and
+``drive_sheet``'s ``compare_key``, ``wait_for_compare`` and ``save_elsewhere``,
+against one server on this directory: **changed** (``cmp-changed``) - at each
+size and theme, load the pair, rewrite ``switches-sample.pairrank`` byte for
+byte, press ``2``, wait for the status region to be written, shoot the swapped
+page (the notice shows once, so every shot needs its own change and vote);
+**just voted** (``cmp-voted``) - press ``2`` once and ``capture`` the landed
+address at every size; **just undone** (``cmp-undone``) - press Ctrl+Z on
+that and ``capture`` its landed address. Seed again afterwards: the votes are
+real.
+
 Nothing here is imported by the application, and the files it writes are
 invented: names, figures and timestamps are all made up.
 """
