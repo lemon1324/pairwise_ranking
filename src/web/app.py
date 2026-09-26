@@ -30,7 +30,7 @@ from src.data.migration import StorageMigration
 
 from .config import WebConfig, load_config
 from .registry import ProjectNotFoundError, ProjectRegistry, ProjectUnreadableError
-from .routes import compare, items, projects
+from .routes import compare, items, projects, rankings
 from .urls import SHEET_TABS, project_url, register_url
 
 
@@ -265,6 +265,7 @@ def create_app(config: Optional[WebConfig] = None) -> FastAPI:
     app.include_router(projects.router)
     app.include_router(items.router)
     app.include_router(compare.router)
+    app.include_router(rankings.router)
 
     @app.get("/healthz", include_in_schema=False)
     async def healthz() -> JSONResponse:

@@ -658,6 +658,18 @@ textarea.input {
   padding-top: var(--s-1);
 }
 
+/* Not in the mockup: the owner asked (phase 8) for each weight raw with the decayed figure
+   beside it, "3 (2.4)", so the figure columns are wider than the mockup's 3.5rem and the
+   bracket is in ink 3, the reading after the figure rather than a second figure. */
+.record th.n,
+.record td.n {
+  width: 5.5rem;
+}
+
+.record .record-decayed {
+  color: var(--ink-3);
+}
+
 /* ---------- Empty and ghost states ---------- */
 
 .bom-empty {

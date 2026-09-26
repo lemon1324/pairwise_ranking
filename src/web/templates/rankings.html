@@ -1,0 +1,195 @@
+{#
+  The Rankings sheet: one project's items as a parts list in rank order.
+
+  Ported from docs/mockups/rankings.html; see src/web/routes/rankings.py for how
+  its views are addressed and where every figure comes from. The rows are drawn
+  once, best first, and the folding engine does the rest.
+
+  **The view controls have the Items sheet's shape** (§5c of the plan). The
+  category joins an empty GET form before the title block with `form="view"`,
+  and with JavaScript swaps only the drawing area; the retired toggle is a GET
+  form of its own holding the *other* value; the export cell is a GET form
+  carrying the view. The category's swap carries those two cells and the
+  summary out of band, because each of them says something about the view.
+
+  **A row's callout is its detail.** The boot script keeps the mockup's one
+  piece of state - whether the detail is open - and lets a row's fetch through
+  only while it is: a click opens it, ↵ toggles it, arrows carry it along, and
+  Esc or a second click on the row closes it with the selection.
+#}
+{% extends "base.html" %}
+{% from "macros/title_block.html" import title_block, keys_block, tb_title, tb_file, tb_sheet, tb_cell, tb_press_cell %}
+{% from "macros/parts_list.html" import parts_list, parts_row, name_cell, empty_state %}
+{% from "macros/tabs.html" import tabs %}
+{% from "macros/sheet.html" import key, icon %}
+
+{% block title %}Rankings &middot; {{ project_name }}{% endblock %}
+
+{% block styles %}
+  <link rel="stylesheet" href="{{ url_for('static', path='css/bom.css').path }}">
+{% endblock %}
+
+{% block tabs %}{{ tabs(request, project_id, current="rankings") }}{% endblock %}
+
+{% block frame_class %} bom-sheet{% endblock %}
+
+{% block sheet_body %}
+  <section class="bom-field" id="field" aria-label="Rankings" data-category="{{ category }}">
+    {% if rows %}
+      {% call parts_list(columns, "Rankings") %}
+        {% for row in rows %}
+          {% call parts_row(row.id, retired=row.retired, callout_url=row.callout_url) %}
+            {# A retired item keeps its rating and has no rank. Said in words
+               rather than an aria-label on a bare span, which many screen
+               readers ignore (see the balloon macro). #}
+            <td class="c-find">
+              {%- if row.rank -%}
+              <span class="bom-rank">{{ row.rank }}</span>
+              {%- else -%}
+              <span class="bom-rank"><span aria-hidden="true">{{ no_figure }}</span><span class="visually-hidden">No rank</span></span>
+              {%- endif -%}
+            </td>
+            <td>{{ name_cell(row.name, tags=(retired_tag,) if row.retired else ()) }}</td>
+            <td class="c-cat"><span class="bom-cat">{{ row.category }}</span></td>
+            <td class="n">{{ row.rating }}</td>
+            <td class="n">{{ row.se }}</td>
+            <td class="n c-phone-hide">{{ row.compared }}</td>
+          {% endcall %}
+        {% endfor %}
+      {% endcall %}
+    {% else %}
+      {# No table at all, never an empty one: see the Items sheet. #}
+      {% call empty_state(empty.lead, empty.detail) %}
+        {% if empty.open_items %}
+        <a class="cell-button" href="{{ items_url }}">Open Items {{ icon("arrow") }}</a>
+        {% endif %}
+      {% endcall %}
+    {% endif %}
+  </section>
+
+  <form id="view" method="get" action="{{ rankings_url }}" hidden>
+    {# `form` is redundant on a child of the form, and is here for htmx: the
+       category includes "[form=view]", which a plain child would not match. #}
+    {% if show_retired %}<input type="hidden" name="retired" value="1" form="view">{% endif %}
+  </form>
+
+  {% call title_block(rows=3) %}
+    {{ keys_block(keys) }}
+    {{ tb_title(project_name) }}
+    {{ tb_file(file_name) }}
+
+    <div class="tb-cell span-2 phone-wide">
+      <label class="label" for="category">Category</label>
+      <div class="tb-control">
+        <select class="input" id="category" name="category" form="view"
+                aria-keyshortcuts="C" data-sheet-key="C"
+                hx-trigger="change" hx-get="{{ rankings_url }}" hx-include="[form=view]"
+                hx-target="#field" hx-select="#field" hx-swap="outerHTML"
+                hx-select-oob="#retired-cell,#export-cell,#tb-summary" hx-replace-url="true">
+          <option value=""{% if not category %} selected{% endif %}>All categories</option>
+          {% for name in categories %}
+          <option value="{{ name }}"{% if name == category %} selected{% endif %}>{{ name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    {# A form of its own: pressing it sends the *other* value of `retired`,
+       and keeps the category it was drawn with - which is why the category's
+       swap re-draws this cell. #}
+    <form class="tb-cell tb-press span-2" id="retired-cell" method="get" action="{{ rankings_url }}">
+      {% if category %}<input type="hidden" name="category" value="{{ category }}">{% endif %}
+      {% if not show_retired %}<input type="hidden" name="retired" value="1">{% endif %}
+      <button type="submit" id="toggle-retired" aria-pressed="{{ 'true' if show_retired else 'false' }}"
+              aria-keyshortcuts="H" data-sheet-key="H">
+        <span class="label">Retired</span>
+        <span class="tb-act">{{ icon("eye" if show_retired else "eye-off") }}<span id="retired-text">{{ "Shown" if show_retired else "Hidden" }}</span> {{ key("H") }}</span>
+      </button>
+    </form>
+    {# Exactly what the sheet shows: the view's category and retired items.
+       The answer is an attachment, so pressing it downloads and the sheet
+       stays where it is. #}
+    {{ tb_press_cell("Export", "CSV", "X", "download", export_url, params=export_params, id="export-cell") }}
+
+    {% call tb_cell("Summary", span=4, phone_wide=true) %}
+      <p class="tb-text" id="tb-summary" aria-live="polite">
+        <span class="num">{{ summary.active_shown }}</span> active shown &middot;
+        <span class="num">{{ summary.retired_count }}</span> retired {{ "shown" if summary.retired_shown else "hidden" }}.
+        {% if summary.voted -%}
+          Ratings are relative to the items in this project.
+        {%- else -%}
+          No votes yet, so the order is arbitrary.
+        {%- endif %}
+      </p>
+    {% endcall %}
+    {{ tb_sheet(1, 1, paged=true) }}
+  {% endcall %}
+{% endblock %}
+
+{% block bottom_tabs %}{{ tabs(request, project_id, current="rankings", bottom=true) }}{% endblock %}
+
+{% block scripts %}
+  {# After htmx, and deferred, as on every parts list. #}
+  <script src="{{ url_for('static', path='js/sheet.js').path }}" defer></script>
+  <script>
+    // Bound on `window`, never `document`: htmx wires every hx-trigger from a
+    // listener it binds on document, and a window listener is guaranteed to run
+    // after it. See "Writing a callout" in the plan, rule 3.
+    window.addEventListener("DOMContentLoaded", function () {
+      var sheet = window.sheet;
+      var category = document.getElementById("category");
+      if (!sheet || typeof sheet.select !== "function" || !category) return;
+
+      // Whether the selected row's detail is shown: the mockup's detailOpen.
+      // While it is not, a row's own fetch is cancelled, so selecting a row
+      // with the arrows moves the selection and opens nothing.
+      var detailOpen = false;
+
+      function isRow(el) {
+        return !!(el && el.matches && el.matches(".bom-field tr[data-id]"));
+      }
+
+      document.body.addEventListener("htmx:beforeRequest", function (event) {
+        if (!detailOpen && isRow(event.detail.elt)) event.preventDefault();
+      });
+
+      // Captured, so it runs before the engine's own click handling selects
+      // the row and fetches its detail. A click opens the detail; a click on
+      // the selected row closes it, as the engine then deselects.
+      document.addEventListener("click", function (event) {
+        var tr = event.target.closest && event.target.closest(".bom-field tr[data-id]");
+        if (!tr || event.target.closest("#row-callout")) return;
+        detailOpen = tr.dataset.id !== String(sheet.selectedId);
+      }, true);
+
+      // Esc deselects (the engine's), and closes the detail with it. On the
+      // body, because the category's swap replaces the field it bubbles from.
+      document.body.addEventListener("sheet:clear", function () {
+        detailOpen = false;
+      });
+
+      sheet.onKey(function (event, inControl) {
+        if (event.key !== "Enter" || inControl) return false;
+        if (event.ctrlKey || event.metaKey || event.altKey) return false;
+        if (event.target.closest && event.target.closest("button, a")) return false;
+        if (sheet.selectedId == null) return false;
+        // ↵ toggles the detail. Selected again, the row clears the callout
+        // and asks for it, which goes through only if it is now open.
+        detailOpen = !detailOpen;
+        sheet.select(sheet.selectedId);
+        return true;
+      });
+
+      // A new category starts with nothing selected, as in the mockup.
+      document.body.addEventListener("htmx:afterSettle", function (event) {
+        var config = event.detail && event.detail.requestConfig;
+        if (config && config.elt === category && sheet.selectedId != null) sheet.clear();
+      });
+
+      {% if selected %}
+      // The row this page was asked to arrive on, with its detail open.
+      detailOpen = true;
+      sheet.select({{ selected|tojson }});
+      {% endif %}
+    });
+  </script>
+{% endblock %}

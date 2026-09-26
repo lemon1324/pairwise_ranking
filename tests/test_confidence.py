@@ -10,6 +10,7 @@ from src.app.confidence import (
     ELO_SPREAD,
     AdjacentNeighbourConfidence,
     ConfidenceReading,
+    rating_points_per_log_unit,
 )
 from src.models.item import Item
 from src.models.ranking import (
@@ -405,6 +406,42 @@ class TestConfidenceTolerance(unittest.TestCase):
         self.assertEqual(reading.settled, 4)
         self.assertEqual(reading.settled_fraction, 1.0)
         self.assertAlmostEqual(reading.tolerance, 78.725, places=2)
+
+
+class TestRatingPointsPerLogUnit(unittest.TestCase):
+    """Test cases for the scale a Rankings row's +/- SE is drawn on."""
+
+    def test_the_scale_is_the_rating_spread_over_the_log_spread(self):
+        """Test 200 points per standard deviation of log-strength."""
+        rankings = build_rankings((2.0, 0.1), (1.0, 0.5), (0.0, 0.9))
+
+        self.assertAlmostEqual(
+            rating_points_per_log_unit(rankings), ELO_SPREAD / np.std([2.0, 1.0, 0.0])
+        )
+
+    def test_retired_items_count_toward_the_spread(self):
+        """Test that the population is every result, as the ratings' is."""
+        rankings = build_rankings((1.0, 0.2), (0.0, 0.2)) + [
+            build_result(2, -4.0, 0.2, retired=True)
+        ]
+
+        self.assertAlmostEqual(
+            rating_points_per_log_unit(rankings), ELO_SPREAD / np.std([1.0, 0.0, -4.0])
+        )
+
+    def test_no_spread_or_no_results_has_no_scale(self):
+        """Test None when rating points mean nothing."""
+        self.assertIsNone(rating_points_per_log_unit([]))
+        self.assertIsNone(rating_points_per_log_unit(build_rankings((0.5, 0.1), (0.5, 0.1))))
+
+    def test_the_tolerance_is_a_standard_error_on_this_scale(self):
+        """Test that Compare's tolerance and a Rankings row share one scale."""
+        rankings = build_rankings((2.0, 0.1), (1.0, 0.5), (0.0, 0.9))
+
+        self.assertAlmostEqual(
+            AdjacentNeighbourConfidence().read(rankings).tolerance,
+            0.5 * rating_points_per_log_unit(rankings),
+        )
 
 
 class TestConfidenceSwappable(unittest.TestCase):
