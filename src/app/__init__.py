@@ -10,6 +10,7 @@ from .confidence import (
     ConfidenceReader,
     ConfidenceReading,
     DEFAULT_CONFIDENCE_READER,
+    rating_points_per_log_unit,
 )
 from .items import (
     FIELD_IDENTIFIER,
@@ -62,6 +63,7 @@ __all__ = [
     "ConfidenceReader",
     "ConfidenceReading",
     "DEFAULT_CONFIDENCE_READER",
+    "rating_points_per_log_unit",
     "FIELD_IDENTIFIER",
     "FIELD_NAME",
     "ItemFieldError",

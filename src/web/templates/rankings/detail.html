@@ -1,0 +1,63 @@
+{#
+  One row's detail: the item's figures beside its weighted record.
+
+  A fragment for `#row-callout`, so it is the callout element and nothing
+  around it. Ported from `stripHtml` in docs/mockups/rankings.js.
+
+  The record gives each weight twice, the raw sum with the decayed one in
+  brackets beside it - "3 (2.4)" - by the owner's answer for phase 8; the
+  desktop's tab keeps showing raw only. A note under the table says what the
+  brackets are, so the second figure is never a puzzle.
+
+  No actions and no keys: nothing is done to a ranking, and the callout does
+  not declare Escape, so the sheet's verbs stay live while it is open.
+#}
+{% from "macros/popover.html" import popover, popover_body %}
+
+{% call popover(label) %}
+  {% call popover_body(title=label) %}
+    <div class="strip-detail">
+      <dl>
+        {% if voted %}
+        <dt class="label">Rating</dt><dd>{{ rating }}{{ se }}</dd>
+        <dt class="label">Strength</dt><dd>{{ strength }}</dd>
+        <dt class="label">Log-strength</dt><dd>{{ log_strength }}</dd>
+        <dt class="label">SE (log)</dt><dd>{{ se_log }}</dd>
+        <dt class="label">Compared</dt><dd>{{ compared }} time{{ "" if compared == 1 else "s" }}</dd>
+        {% else %}
+        <dt class="label">Votes</dt><dd>none yet</dd>
+        {% endif %}
+        {# A <dd> with its term hidden rather than the mockup's <p>, which a
+           <dl> may not hold. #}
+        {% if description %}<dt class="visually-hidden">Description</dt><dd class="detail-desc">{{ description }}</dd>{% endif %}
+      </dl>
+      <div>
+        {% if record %}
+        <table class="record">
+          <caption class="label">Weighted record</caption>
+          <thead><tr><th>Opponent</th><th class="n">Won</th><th class="n">Lost</th></tr></thead>
+          <tbody>
+            {% for line in record %}
+            <tr>
+              <td>{{ line.name }}</td>
+              <td class="n">{{ line.won.raw }}{% if line.won.decayed %} <span class="record-decayed">({{ line.won.decayed }})</span>{% endif %}</td>
+              <td class="n">{{ line.lost.raw }}{% if line.lost.decayed %} <span class="record-decayed">({{ line.lost.decayed }})</span>{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% if more > 0 %}<p class="record more">and {{ more }} more {{ "opponent" if more == 1 else "opponents" }}</p>{% endif %}
+        <p class="record more">
+          {%- if half_life -%}
+            In brackets: after decay, half-life {{ half_life }} days.
+          {%- else -%}
+            In brackets: after decay; none is set.
+          {%- endif -%}
+        </p>
+        {% else %}
+        <p class="field-hint">No votes involve this item yet.</p>
+        {% endif %}
+      </div>
+    </div>
+  {% endcall %}
+{% endcall %}
