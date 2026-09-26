@@ -100,10 +100,12 @@ def get_session(
     """
     Open the project a route was asked about, for reading.
 
-    Routes that **change** a project take the registry instead and go through
-    :meth:`~src.web.registry.ProjectRegistry.mutate`, which holds the file's
-    lock and checks whether it moved on disk first. This one does neither, so
-    it is for rendering only.
+    Reads through :meth:`~src.web.registry.ProjectRegistry.session`, which
+    checks whether the file moved on disk and reloads it if so, as every
+    screen's GET must. Routes that **change** a project take the registry
+    instead and go through :meth:`~src.web.registry.ProjectRegistry.mutate`,
+    which holds the file's lock for the whole edit; this one lets go of it
+    before the route runs, so it is for rendering only.
 
     Args:
         project_id: The project's file name, from the route's path.
