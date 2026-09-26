@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import src.data.project_storage as project_storage_module
+from src.app.session import ProjectSession
 from src.data.format_version import CURRENT_FORMAT_VERSION, FORMAT_VERSION_KEY
 from src.data.project_storage import ProjectStorage
 from src.models.project import Project
@@ -298,6 +299,31 @@ class TestProjectStorage(unittest.TestCase):
         self.assertEqual(replace.call_count, project_storage_module.REPLACE_ATTEMPTS)
         self.assertEqual(ProjectStorage.load(self.test_file).name, "First")
         self.assertFalse(self.test_file.with_name("test.pairrank.tmp").exists())
+
+    def test_a_file_with_numeric_ids_opens_votes_and_saves_them_as_text(self):
+        """Test the desktop's path through a file whose ids are JSON numbers."""
+        self.test_file.write_text(
+            json.dumps({
+                FORMAT_VERSION_KEY: CURRENT_FORMAT_VERSION,
+                "name": "Numbered",
+                "items": [{"id": 1, "name": "One"}, {"id": 2, "name": "Two"}],
+                "votes": [{"id": 9, "winner_id": 1, "loser_id": 2, "weight": 2.0}],
+            }),
+            encoding="utf-8",
+        )
+
+        session = ProjectSession(ProjectStorage.load(self.test_file))
+        offer = session.next_pair()
+        self.assertEqual({item.id for item in offer.pair}, {"1", "2"})
+        session.vote("2", "1", 1.0)
+
+        saved = json.loads(self.test_file.read_text(encoding="utf-8"))
+        self.assertEqual([item["id"] for item in saved["items"]], ["1", "2"])
+        self.assertEqual(
+            [(vote["id"], vote["winner_id"], vote["loser_id"]) for vote in saved["votes"]][0],
+            ("9", "1", "2"),
+        )
+        self.assertEqual(saved["votes"][1]["winner_id"], "2")
 
 
 class TestProjectStorageCreateCopy(unittest.TestCase):
