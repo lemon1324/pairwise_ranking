@@ -370,6 +370,50 @@ class ProjectSession:
             blinded=blinded,
         )
 
+    def offer_pair(self, first_id: str, second_id: str) -> Optional[PairOffer]:
+        """
+        Offer one particular pair, if both of its items can be compared now.
+
+        This is how a frontend that addresses its pairs puts one back on
+        screen - a reloaded page, a vote arriving from a page drawn a while
+        ago - without choosing again. Nothing is selected: the statistics are
+        the selector's for the current items and votes, which do not depend on
+        the pair, and they become the memo :meth:`comparison_stats` reads.
+
+        Args:
+            first_id: Id of the item to show first.
+            second_id: Id of the item to show second.
+
+        Returns:
+            Optional[PairOffer]: The pair in the order given, or None when the
+            two ids are the same, either item is missing, or either is not
+            eligible right now - retired, or without an identifier in blinded
+            mode.
+        """
+        if first_id == second_id:
+            return None
+
+        _, eligible = self._eligible_items()
+        by_id = {item.id: item for item in eligible}
+        first = by_id.get(first_id)
+        second = by_id.get(second_id)
+        if first is None or second is None:
+            return None
+
+        selector = PairSelector(
+            eligible,
+            self._project.votes,
+            self._project.settings,
+            rng=self._rng_factory(),
+        )
+        self._comparison_stats = selector.get_comparison_stats()
+        return PairOffer(
+            pair=(first, second),
+            stats=self._comparison_stats,
+            reason=None,
+            blinded=self._project.settings.blinded_comparison_mode,
+        )
+
     def comparison_stats(self) -> Optional[dict]:
         """
         Return the statistics of the pair currently on offer.
