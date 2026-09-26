@@ -921,6 +921,15 @@ class TestProjectSessionSettings(unittest.TestCase):
 
         self.assertIsNot(self.session.rankings(), before)
 
+    def test_apply_settings_refuses_settings_out_of_range(self):
+        """Test that an out-of-range setting changes nothing and saves nothing."""
+        with self.assertRaises(ValueError):
+            self.session.apply_settings(Settings(cross_category_rate=1.5), ["B1"])
+
+        self.assertEqual(self.session.project.settings, Settings())
+        self.assertEqual(self.session.project.slots, ["A0", "A1"])
+        self.assertEqual(self.saves, [])
+
     def test_reset_settings_restores_the_defaults(self):
         """Test that reset returns every algorithm setting to its default."""
         self.session.apply_settings(
