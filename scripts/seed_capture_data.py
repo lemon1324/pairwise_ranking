@@ -257,12 +257,17 @@ SAMPLE_NO_SLOT = (52, 63)  # active, not yet placed on the board
 SAMPLE_PLACED = (("it1", "12"), ("it2", "7"))
 
 # The mockup's states that are a different project rather than a different
-# address: (stem, what it changes). "full" keeps only the slots in use.
+# address: (stem, what it changes). "full" keeps only the slots in use; the
+# last three are Compare's (7b): blinded mode, no votes yet, and exactly one
+# active item, which is the mockup's "Not enough items".
 SAMPLE_PROJECTS = (
     ("switches-sample", "sample"),
     ("switches-sample-empty", "empty"),
     ("switches-sample-no-slots", "no-slots"),
     ("switches-sample-full", "full"),
+    ("switches-sample-blinded", "blinded"),
+    ("switches-sample-fresh", "fresh"),
+    ("switches-sample-one", "one"),
 )
 
 NOT_A_PROJECT = "notes.txt"
@@ -420,26 +425,30 @@ def sample_project(variant: str) -> dict:
     Args:
         variant: "sample" as sample-data.js has it; "empty" with no items;
             "no-slots" with no slot list; "full" with only the slots in use,
-            so none is free.
+            so none is free; "blinded" in blinded comparison mode; "fresh"
+            with no votes; "one" with Oil King alone.
 
     Returns:
         dict: The project, ready to be written as JSON.
     """
     items = [] if variant == "empty" else sample_items()
+    if variant == "one":
+        items = items[:1]
     slots = list(SAMPLE_SLOTS)
     if variant == "no-slots":
         slots = []
     elif variant == "full":
         held = {entry["identifier"] for entry in items if entry["status"] == "active"}
         slots = [slot for slot in slots if slot in held]
+    votes = sample_votes(items) if items and variant not in ("fresh", "one") else []
     return {
         "format_version": CURRENT_FORMAT_VERSION,
         "name": SAMPLE_TITLE,
         "created": "2026-09-01T09:00:00",
         "modified": SAMPLE_MODIFIED,
         "items": items,
-        "votes": sample_votes(items) if items else [],
-        "settings": {},
+        "votes": votes,
+        "settings": {"blinded_comparison_mode": True} if variant == "blinded" else {},
         "slots": slots,
         "slot_labels": {
             slot: label for slot, label in SAMPLE_SLOT_LABELS.items() if slot in slots

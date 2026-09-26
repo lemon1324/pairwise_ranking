@@ -67,7 +67,9 @@ nothing about that margin is promised. The shutter therefore waits until the
 page has no request in flight, and then refuses outright if a selected row asks
 for a callout and ``#row-callout`` is still empty. A capture missing its
 callout looks exactly like an ordinary sheet, which is why this is a hard
-failure and not a warning.
+failure and not a warning. Compare draws no rows, so it has a probe of its
+own (``COMPARE_CHECK``, chunk 7b): both views present and, unless the sheet is
+in its empty state, both view bodies.
 
 **A page with no focus.** A headless window is not the focused window, so
 ``document.hasFocus()`` is false, nothing matches ``:focus`` or
@@ -205,6 +207,24 @@ CALLOUT_CHECK = """
   const host = document.getElementById("row-callout");
   if (!row || !host) return "";
   return host.children.length ? "" : (row.dataset.id || "(unnamed row)");
+})()
+"""
+
+
+# The same, for Compare, which draws no rows and so passes the callout check
+# whatever state it is in. A pair sheet is two views; unless the sheet is in
+# its empty state (`.is-empty`, on .frame-inner in the app and on #frame in the
+# mockup), each view has a body with the item in it. A page with no `.views`
+# is not a pair sheet and is not this check's business.
+COMPARE_CHECK = """
+(() => {
+  const views = document.querySelector(".views");
+  if (!views) return "";
+  const count = views.querySelectorAll(".view").length;
+  if (count !== 2) return count + " views";
+  if (document.querySelector(".frame-inner.is-empty, #frame.is-empty")) return "";
+  const bodies = views.querySelectorAll(".view .view-body").length;
+  return bodies === 2 ? "" : bodies + " view bodies";
 })()
 """
 
@@ -882,6 +902,9 @@ def capture(devtools: DevTools, url: str, width: int, height: int) -> tuple:
             f"no callout at {url}: the row {missing} is selected and asks for "
             "one, but #row-callout is empty"
         )
+    missing = devtools.evaluate(COMPARE_CHECK)
+    if missing:
+        raise CaptureError(f"not a whole pair at {url}: the sheet has {missing}")
 
     actual = devtools.evaluate("window.innerWidth")
     if actual != width:
