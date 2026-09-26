@@ -652,12 +652,20 @@ class TestUndo(CompareTestCase):
             rows,
             [
                 ("rev-row is-previous", "R1 Kailh Box Jade over NovelKeys Cream · Slightly better 21:03"),
-                # The tag follows the strength with no space, as in the
-                # mockup's markup; its margin spaces it.
-                ("rev-row is-undone", "R2 Gateron Oil King over Kailh Box Jade · BetterUndone · pair re-offered 21:04"),
+                # The tag's margin spaces it on screen; a visually hidden
+                # separator spaces it for a screen reader.
+                ("rev-row is-undone", "R2 Gateron Oil King over Kailh Box Jade · Better; Undone · pair re-offered 21:04"),
             ],
         )
         self.assertIn('id="votes">1<', page)
+
+    def test_the_undone_tag_is_heard_apart_from_the_strength(self):
+        """Test the separator: hidden from sight, but in the text a reader says."""
+        page = self.landed(self.post("undo", a="oil", b="cream"))
+
+        row = element(page, r'<li class="rev-row[^"]*is-undone')
+        self.assertIn('</span><span class="visually-hidden">; </span><span class="rev-tag">', row)
+        self.assertNotIn("BetterUndone", text_of(row))
 
     def test_a_pair_that_cannot_come_back_is_not_called_re_offered(self):
         """Test the undo of a vote whose item has been retired since."""

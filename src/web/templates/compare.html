@@ -212,7 +212,10 @@ hx-target="#frame" hx-select="#frame" hx-select-oob="#notice" hx-swap="outerHTML
         <li class="rev-row{% if row.previous %} is-previous{% endif %}{% if row.undone %} is-undone{% endif %}{% if row.new %} is-new{% endif %}">
           <span class="rev-no">{{ row.number }}</span>
           <span><span class="rev-text">{{ row.text }} <span class="rev-strength">&middot; {{ row.strength }}</span></span>
-            {%- if row.undone %}<span class="rev-tag">Undone{% if row.reoffered %} &middot; pair re-offered{% endif %}</span>{% endif -%}
+            {#- The tag's margin spaces it on screen; the hidden separator is
+                for a screen reader, which would otherwise run the strength
+                and the tag into one word. -#}
+            {%- if row.undone %}<span class="visually-hidden">; </span><span class="rev-tag">Undone{% if row.reoffered %} &middot; pair re-offered{% endif %}</span>{% endif -%}
           </span>
           <span class="rev-time">{{ row.time }}</span>
         </li>
