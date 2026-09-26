@@ -133,8 +133,9 @@ What is checked, and why each one is here:
 ``compare-double``
     A second press in the 140 ms between a vote's answer and its new frame -
     ``5`` 30 ms after ``2``'s answer, a station clicked twice - records
-    nothing: the file gains one vote, the page's count is the file's, and the
-    address names the pair the vote form posts. It undoes its votes.
+    nothing: the file gains one vote, the page's count is the file's, the
+    address names the pair the vote form posts, and the new frame lands with
+    station 2 alone marked. It undoes its votes.
 
 ``compare-error``
     A vote the server answers with an error page shows that page: the project
@@ -1665,8 +1666,9 @@ def check_compare_double(devtools: DevTools, base: str) -> str:
     has put the next pair in; for those 140 ms the old frame's stations are
     still on screen. A key pressed 30 ms after the answer, and a station
     clicked twice in the same window, must each leave exactly one vote in the
-    file, the page's count equal to the file's, and the address naming the
-    pair the vote form posts. Both votes are undone.
+    file, the page's count equal to the file's, the address naming the pair
+    the vote form posts, and only the first press's station marked as the new
+    frame lands. Both votes are undone.
     """
     size(devtools, *NARROW)
     file_name = COMPARE_PATH.split("/")[2]
@@ -1679,6 +1681,13 @@ def check_compare_double(devtools: DevTools, base: str) -> str:
         devtools.evaluate(
             f"""
             (() => {{
+              window.__markedOnLoad = null;
+              document.addEventListener("htmx:load", (event) => {{
+                if (event.target.id === "frame" && window.__markedOnLoad === null)
+                  window.__markedOnLoad = Array.from(
+                    document.querySelectorAll(".station.is-marked"), (station) => station.dataset.key
+                  );
+              }});
               document.addEventListener("htmx:afterRequest", () => setTimeout(() => {{ {then} }}, 30), {{ once: true }});
               {first}
               return true;
@@ -1694,6 +1703,10 @@ def check_compare_double(devtools: DevTools, base: str) -> str:
         # Past the second press, and past any vote it could have started.
         time.sleep(CALLOUT_WAIT_S)
         state = devtools.evaluate(DOUBLE_STATE)
+        # The refused press marks nothing, so the new pair lands carrying
+        # the first press's mark alone.
+        marked = devtools.evaluate("window.__markedOnLoad")
+        expect(marked == ["2"], f"the new frame landed with stations {marked} marked")
         stored = stored_votes(file_name)
         expect(stored == count + 1, f"the file went from {count} to {stored} votes")
         expect(int(state["votes"]) == stored, f"the page reads {state['votes']} votes, the file {stored}")

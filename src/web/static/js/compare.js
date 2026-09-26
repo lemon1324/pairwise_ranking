@@ -62,6 +62,11 @@
     applyMark();
   }
 
+  // One request for the frame at a time, from the press until the new frame
+  // is in: see htmx:beforeRequest below. A press refused while busy marks
+  // nothing, or its mark would be carried onto the new pair.
+  let busy = false;
+
   // A click on a station, by mouse or by its key, marks it. Dismiss on the
   // changed-on-disk notice only hides the strip: its link, which reloads the
   // pair, is for a page without JavaScript.
@@ -74,7 +79,7 @@
       return;
     }
     const button = event.target.closest(".station");
-    if (button && !button.disabled) markStation(button.dataset.key);
+    if (button && !button.disabled && !busy) markStation(button.dataset.key);
   });
 
   document.addEventListener("keydown", (event) => {
@@ -94,7 +99,7 @@
     } else if (key === "s" || key === "S") {
       event.preventDefault();
       const skip = document.getElementById("skip");
-      if (event.repeat || !skip || skip.disabled) return;
+      if (event.repeat || busy || !skip || skip.disabled) return;
       markStation(4);
       skip.click();
     }
@@ -105,8 +110,6 @@
   // request when the answer arrives, before the delayed swap below has put
   // the new pair in, so for LEAVE_MS the old frame's stations would post a
   // second vote on the old pair. A request made while busy is refused.
-  let busy = false;
-
   document.addEventListener("htmx:beforeRequest", (event) => {
     if (event.detail.target?.id !== "frame") return;
     if (busy) {
