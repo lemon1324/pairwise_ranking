@@ -124,6 +124,18 @@ class TestLegacyCsvStorageItems(LegacyStorageTestCase):
 
         self.assertEqual([(item.id, item.name) for item in loaded], [("id-1", "Item 1"), ("id-2", "Item 2")])
 
+    def test_an_empty_id_skips_the_row(self):
+        """Test that a row with no id is skipped, as a project would refuse it."""
+        self._write_items_csv([
+            {"id": "", "name": "Item 1", "identifier": "", "description": ""},
+            {"id": "id-2", "name": "Item 2", "identifier": "", "description": ""},
+        ])
+
+        with self.assertLogs("src.data.legacy_storage", level="WARNING"):
+            loaded = self.storage.load_items()
+
+        self.assertEqual([item.id for item in loaded], ["id-2"])
+
     def test_load_item_with_identifier(self):
         """Test loading an item that has an identifier."""
         self._write_items_csv([

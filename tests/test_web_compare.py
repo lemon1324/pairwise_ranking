@@ -1165,6 +1165,44 @@ class TestAPairThatCannotBeAddressed(CompareTestCase):
                 self.assertIn("is-empty", response.text)
 
 
+class TestAProjectWithNumericIds(CompareTestCase):
+    """Test cases for a file whose ids are JSON numbers, which the core reads as text."""
+
+    def seed(self):
+        """Write a project with three numbered items and one vote between two."""
+        numbered = [dict(item(str(n), name), id=n) for n, name in ((1, "One"), (2, "Two"), (3, "Three"))]
+        self.write(
+            PROJECT,
+            project_data(
+                items=numbered,
+                slots=[],
+                slot_labels={},
+                votes=[{"id": 9, "winner_id": 1, "loser_id": 2, "weight": 2.0,
+                        "timestamp": EARLIER.isoformat()}],
+            ),
+        )
+
+    def test_compare_draws_a_pair_and_takes_a_vote(self):
+        """Test the redirect, the drawn pair and a vote on it."""
+        _, pair = self.redirect_of(self.client.get(COMPARE_URL, follow_redirects=False))
+        self.assertLessEqual({pair["a"], pair["b"]}, {"1", "2", "3"})
+        self.assertEqual(pair_of(self.compare(f"a={pair['a']}&b={pair['b']}")), (pair["a"], pair["b"]))
+
+        self.redirect_of(self.post("vote", a=pair["a"], b=pair["b"], station="1"))
+
+        self.assertEqual(self.stored_votes()[-1], (pair["a"], pair["b"], 3.0))
+
+    def test_items_answers_a_row_s_callout(self):
+        """Test the Items sheet's row and its callout fragment."""
+        self.assertIn('data-id="2"', self.client.get(f"/projects/{PROJECT}/items").text)
+
+        response = self.client.get(
+            f"/projects/{PROJECT}/items/2/callout", headers={"HX-Request": "true"}
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+
 class TestCompareUnderARootPath(CompareTestCase):
     """Test cases for the sheet behind a reverse proxy on a subpath."""
 
