@@ -195,6 +195,17 @@ class TestNotFound(WebAppTestCase):
                 self.assertEqual(response.status_code, 404)
                 self.assertIn("Not found", response.text)
 
+    def test_the_error_pages_do_not_load_the_sheet_engine(self):
+        """Test that sheet.js, which reloads a page on an error answer, cannot loop on one."""
+        self.write_raw("Broken.pairrank", "{ not json")
+        for path in ("/no-such-sheet", "/probe/Missing.pairrank", "/probe/Broken.pairrank"):
+            with self.subTest(path=path):
+                response = self.client.get(path)
+
+                self.assertGreaterEqual(response.status_code, 400)
+                self.assertNotIn("sheet.js", response.text)
+                self.assertNotIn("bom-field", response.text)
+
     def test_the_not_found_page_offers_a_way_back(self):
         """Test that the error pages link home rather than dead-ending."""
         response = self.client.get("/no-such-sheet")

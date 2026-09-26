@@ -790,6 +790,54 @@
       render();
     });
 
+    // An error answer to one of the sheet's own GETs - a row's callout, a rows swap, a form opened
+    // into the callout - means the project changed under the page: the file was deleted, damaged
+    // or replaced by a newer version, or the item is gone. htmx swaps no 4xx or 5xx answer, so
+    // without this nothing would happen and nothing would be said. The page is loaded again at its
+    // own address (never xhr.responseURL, which names a fragment): that draws the error page, which
+    // does not load this file, or a fresh sheet if only the item went. Other requests - a POST, or
+    // a target outside the field and the callout, such as Compare's frame - are left to whoever
+    // made them. A page that errs again straight after its own reload says so rather than going
+    // round: a fragment that fails every time must not keep reloading a page that draws.
+    const RELOAD_KEY = "sheet:error-reload";
+    const RELOAD_WINDOW_MS = 10000;
+    const ours = (detail) =>
+      detail.requestConfig?.verb === "get" &&
+      !!detail.target &&
+      ((host && (detail.target === host || host.contains(detail.target))) ||
+        detail.target === field ||
+        field.contains(detail.target));
+    const say = (text) => {
+      const status = document.getElementById("callout-status");
+      if (status) status.textContent = text;
+    };
+
+    document.body.addEventListener("htmx:responseError", (e) => {
+      if (!ours(e.detail)) return;
+      const here = window.location.href;
+      let last = null;
+      try {
+        last = JSON.parse(sessionStorage.getItem(RELOAD_KEY) || "null");
+      } catch (error) {
+        last = null;
+      }
+      if (last && last.href === here && Date.now() - last.at < RELOAD_WINDOW_MS) {
+        say("The server could not answer. The page has not changed; reload it to try again.");
+        return;
+      }
+      try {
+        sessionStorage.setItem(RELOAD_KEY, JSON.stringify({ href: here, at: Date.now() }));
+      } catch (error) {
+        // No storage: the reload still happens, only without the second-error guard.
+      }
+      window.location.assign(here);
+    });
+
+    document.body.addEventListener("htmx:sendError", (e) => {
+      if (!ours(e.detail)) return;
+      say("Could not reach the server. The page has not changed; try again.");
+    });
+
     adopt();
 
     return {
