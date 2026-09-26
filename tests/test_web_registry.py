@@ -16,10 +16,12 @@ import unittest
 from dataclasses import FrozenInstanceError
 from datetime import datetime
 from pathlib import Path
+from unittest import mock
 
 from src.data.errors import NewerFormatError
 from src.data.format_version import CURRENT_FORMAT_VERSION, FORMAT_VERSION_KEY
 from src.data.project_storage import ProjectStorage
+from src.models.item import Item
 from src.web.registry import (
     ProjectNotFoundError,
     ProjectRegistry,
@@ -452,6 +454,130 @@ class TestRegistryMutation(RegistryTestCase):
         with self.assertRaises(ProjectNotFoundError):
             with self.registry.mutate("../escape.pairrank"):
                 pass
+
+
+class TestRegistryFailedEdit(RegistryTestCase):
+    """Test cases for an edit whose save fails: memory goes back to the file."""
+
+    def failing_save(self):
+        """
+        Make every save refuse, as a read-only file or a full disk would.
+
+        Returns:
+            The patcher's mock, already started and stopped at cleanup.
+        """
+        patcher = mock.patch.object(
+            ProjectStorage, "save", side_effect=PermissionError(13, "Permission denied")
+        )
+        self.addCleanup(patcher.stop)
+        return patcher.start()
+
+    def test_a_failed_save_is_undone_in_memory(self):
+        """Test that the open project holds what the file holds, not the edit."""
+        entry = self.registry.open(self.project_id)
+        self.failing_save()
+
+        with self.assertRaises(PermissionError):
+            with self.registry.mutate(self.project_id) as mutation:
+                mutation.session.rename("Never saved")
+
+        self.assertEqual(entry.session.project.name, "Tasting")
+        self.assertIs(self.registry.open(self.project_id), entry)
+
+    def test_a_failed_vote_leaves_no_vote_behind(self):
+        """Test the case Compare met: a vote appended before its save failed."""
+        with self.registry.mutate(self.project_id) as mutation:
+            first = mutation.session.add_item(Item(name="First"))
+            second = mutation.session.add_item(Item(name="Second"))
+        self.failing_save()
+
+        with self.assertRaises(PermissionError):
+            with self.registry.mutate(self.project_id) as mutation:
+                mutation.session.vote(first.id, second.id, 2.0)
+
+        self.assertEqual(self.registry.open(self.project_id).session.project.votes, [])
+
+    def test_an_edit_abandoned_by_the_route_is_undone_too(self):
+        """Test that any error out of the block, not only a save's, restores."""
+        with self.assertRaises(RuntimeError):
+            with self.registry.mutate(self.project_id) as mutation:
+                mutation.session.project.name = "Changed in memory only"
+                raise RuntimeError("the route gave up")
+
+        self.assertEqual(self.registry.session(self.project_id).project.name, "Tasting")
+
+    def test_restoring_is_not_a_change_on_disk(self):
+        """Test that reading the file back leaves no notice and keeps the record."""
+        with self.registry.mutate(self.project_id) as mutation:
+            change = mutation.record_change("edited", "oil", "Oil King")
+        self.failing_save()
+
+        with self.assertRaises(PermissionError):
+            with self.registry.mutate(self.project_id) as mutation:
+                mutation.session.rename("Never saved")
+
+        entry = self.registry.open(self.project_id)
+        self.assertFalse(entry.take_reload_notice())
+        self.assertIs(entry.last_change, change)
+
+    def test_a_file_that_cannot_be_read_back_is_dropped(self):
+        """Test that the entry goes when the file went too, and the save's error stands."""
+        entry = self.registry.open(self.project_id)
+        self.failing_save()
+
+        with self.assertRaises(PermissionError):
+            with self.registry.mutate(self.project_id) as mutation:
+                self.path.unlink()
+                mutation.session.rename("Never saved")
+
+        self.assertNotIn(entry.path, self.registry._entries)
+        with self.assertRaises(ProjectNotFoundError):
+            self.registry.open(self.project_id)
+
+
+class TestRegistryVotesChangedOnDisk(RegistryTestCase):
+    """Test cases for the vote count a reload notice can report."""
+
+    def write_votes(self, count: int) -> None:
+        """
+        Rewrite the shared project with some votes between two items.
+
+        Args:
+            count: How many votes to write.
+        """
+        data = json.loads(self.path.read_text(encoding="utf-8"))
+        data["items"] = [
+            {"id": "a", "name": "A", "description": "", "identifier": "", "category": "Default", "status": "active"},
+            {"id": "b", "name": "B", "description": "", "identifier": "", "category": "Default", "status": "active"},
+        ]
+        data["votes"] = [
+            {"id": f"v{n}", "winner_id": "a", "loser_id": "b", "weight": 1.0, "timestamp": "2026-09-16T21:00:00"}
+            for n in range(count)
+        ]
+        self.write_raw(data)
+
+    def test_a_reload_counts_the_votes_it_brought(self):
+        """Test votes added, then removed, across two unreported reloads."""
+        entry = self.registry.open(self.project_id)
+        self.write_votes(3)
+        with self.registry.mutate(self.project_id):
+            pass
+        self.assertEqual(entry.votes_changed_on_disk, 3)
+
+        self.write_votes(1)
+        with self.registry.mutate(self.project_id):
+            pass
+        self.assertEqual(entry.votes_changed_on_disk, 1)
+
+    def test_taking_the_notice_clears_the_count(self):
+        """Test that the count belongs to the notice it goes with."""
+        entry = self.registry.open(self.project_id)
+        self.write_votes(2)
+        with self.registry.mutate(self.project_id):
+            pass
+
+        self.assertTrue(entry.take_reload_notice())
+        self.assertEqual(entry.votes_changed_on_disk, 0)
 
 
 class TestRegistryLastChange(RegistryTestCase):

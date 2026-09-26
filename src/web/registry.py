@@ -181,6 +181,9 @@ class OpenProject:
             session if you intend to keep a reference.
         reloaded_from_disk: Whether a reload has happened that nothing has
             reported to the user yet. See :meth:`take_reload_notice`.
+        votes_changed_on_disk: How many votes the unreported reloads added,
+            less any they removed, for a notice that says so. Read it before
+            taking the notice, which clears it.
         last_change: The last change made through this entry, or None. Set
             only by :meth:`Mutation.record_change`, so only under the file's
             lock; a :class:`LastChange` is immutable and is replaced whole, so
@@ -202,6 +205,7 @@ class OpenProject:
         """
         self.path = path
         self.reloaded_from_disk = False
+        self.votes_changed_on_disk = 0
         self.last_change: Optional[LastChange] = None
         self._stamp: Optional[tuple[int, int]] = None
         self.session = self._open_session(path)
@@ -266,8 +270,33 @@ class OpenProject:
             return
 
         logger.info("Reloading %s: the file changed on disk", self.path.name)
+        before = len(self.session.project.votes)
         self.session = self._open_session(self.path)
         self.reloaded_from_disk = True
+        self.votes_changed_on_disk += len(self.session.project.votes) - before
+
+    def discard_edits(self) -> None:
+        """
+        Throw away whatever the session holds that the file does not.
+
+        A session edits its project in memory and then saves, so an edit whose
+        save failed - the file read-only, the share gone, the disk full - leaves
+        the open project holding a vote or an item the file never received.
+        Every later page would draw it and every later save would write it, so
+        the project is read again from the file, which is the truth. When the
+        file has meanwhile been written by somebody else, that counts as a
+        reload like any other and leaves a notice.
+
+        Raises:
+            ProjectNotFoundError: If the file has since been deleted.
+            ProjectFormatError: If it has been replaced by one in an unusable
+                format version.
+            ProjectUnreadableError: If it cannot be read.
+        """
+        changed = self.changed_on_disk()
+        self.session = self._open_session(self.path)
+        if changed:
+            self.reloaded_from_disk = True
 
     def take_reload_notice(self) -> bool:
         """
@@ -285,6 +314,7 @@ class OpenProject:
         """
         pending = self.reloaded_from_disk
         self.reloaded_from_disk = False
+        self.votes_changed_on_disk = 0
         return pending
 
 
@@ -526,6 +556,16 @@ class ProjectRegistry:
         loaded, reload and flag a notice if it moved, then let the caller
         mutate. The save is the session's own, and is atomic.
 
+        **An edit that raises is undone in memory.** The session changes its
+        project before it saves, so a save that fails (an ``OSError`` out of
+        the block) would otherwise leave the open project holding what the
+        file refused: the next page would draw a vote that was never recorded,
+        and the next save would write it after all. So when the block raises,
+        for any reason, the project is read again from the file before the
+        error goes on; if even that fails, the entry is dropped and the next
+        request opens the file afresh. The error itself is re-raised untouched
+        for the route to answer.
+
         Args:
             project_id: The project's file name.
 
@@ -542,9 +582,38 @@ class ProjectRegistry:
         with self.locked(path):
             entry = self.open(project_id)
             entry.reload_if_changed()
-            # The session is read off the entry after the reload, because a
-            # reload replaces it wholesale.
-            yield Mutation(session=entry.session, entry=entry)
+            try:
+                # The session is read off the entry after the reload, because
+                # a reload replaces it wholesale.
+                yield Mutation(session=entry.session, entry=entry)
+            except Exception:
+                self._discard_edits(path, entry)
+                raise
+
+    def _discard_edits(self, path: Path, entry: OpenProject) -> None:
+        """
+        Put an entry back to what its file holds, after a failed edit.
+
+        Called under the file's lock.
+
+        Args:
+            path: The entry's resolved path.
+            entry: The entry the edit failed on.
+        """
+        try:
+            entry.discard_edits()
+        except (LookupError, ValueError, OSError) as error:
+            # The file cannot be read back either. Nothing in memory can be
+            # trusted, so nothing is kept: the next open reads the file, and
+            # answers with whatever is wrong with it.
+            logger.warning(
+                "Dropped %s after a failed edit: it could not be read back: %s",
+                path.name,
+                error,
+            )
+            with self._guard:
+                if self._entries.get(path) is entry:
+                    del self._entries[path]
 
     def forget(self, project_id: str) -> None:
         """
