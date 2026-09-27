@@ -559,9 +559,10 @@ def scratch_dir(prefix: str) -> str:
     """
     Make a fresh scratch directory inside the repository's ``.scratch/``.
 
-    ``REPO_ROOT`` is resolved from this file, which the Windows venv sees as
-    ``C:\\src\\pairwise_ranking\\scripts``, so the directory is already in the
-    Windows form the server and Chrome need. The caller removes it.
+    ``REPO_ROOT`` is resolved from this file, which the Windows venv sees as a
+    Windows path such as ``C:\\src\\pairwise_ranking\\scripts``, so the
+    directory is already in the Windows form the server and Chrome need. The
+    caller removes it.
 
     Args:
         prefix: The start of the directory's name.
