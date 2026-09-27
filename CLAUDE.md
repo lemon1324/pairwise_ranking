@@ -28,6 +28,27 @@ poetry run python -m unittest discover tests/ -v
 - **Run all tests**: `poetry run python -m unittest discover tests/ -v`
   (or from WSL: `./.venv/Scripts/python.exe -m unittest discover tests/`)
 
+## Subagents
+
+Choose an agent in this order: a specialised agent when one fits (the `impeccable-*` agents for
+Impeccable design builds and finish reviews), then a built-in agent (`Explore`, `Plan`), then the
+project agents in `.claude/agents/`:
+
+- `implementer` (Opus, medium effort): implements one plan phase on its feature branch and commits.
+- `reviewer` (Opus, xhigh effort, read-only): correctness review of a branch or diff against its spec.
+
+When launching built-in agents, set their model explicitly: `sonnet` for `Explore` and other
+search or investigation work, `opus` for everything else. Project agents set their own model and
+effort level; don't override them.
+
+## Scratch files
+
+Agents never create, modify or delete anything outside this repository directory. WSL-only scratch
+goes in the Claude Code scratchpad directory. Anything the Windows venv or Windows Chrome must read,
+such as seeded capture data, throwaway CDP scripts or browser profiles, goes in `.scratch/` at the
+repo root. That folder is excluded through `.git/info/exclude`, and Windows programs cannot see
+WSL's `/tmp`.
+
 ## Architecture
 
 - `src/models/` - Data models (Item, Vote, Settings, RankingResult, BradleyTerryModel, PairSelector)

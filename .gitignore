@@ -1,6 +1,9 @@
 # User data (top-level only, not src/data/)
 /data/
 
+# Claude Code per-machine settings (the shared agent definitions in .claude/agents/ are tracked)
+.claude/settings.local.json
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
