@@ -1,14 +1,19 @@
-[tool.poetry]
+[project]
 name = "pairwise-ranking"
 version = "0.2.0"
-description = "A PyQt6 GUI application for pairwise comparison ranking using Bradley-Terry model"
-authors = ["lemon1324 <916812+lemon1324@users.noreply.github.com>"]
+description = "Pairwise comparison ranking with a Bradley-Terry model, as a PyQt6 desktop app and a FastAPI/HTMX web app"
+authors = [{name = "lemon1324", email = "916812+lemon1324@users.noreply.github.com"}]
 readme = "README.md"
-packages = [{include = "src"}]
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.26.0,<2.0.0",
+]
 
-[tool.poetry.dependencies]
-python = "^3.10"
-numpy = "^1.26.0"
+[project.scripts]
+pairwise-ranking = "main:main"
+
+[tool.poetry]
+packages = [{include = "src"}]
 
 [tool.poetry.group.desktop.dependencies]
 PyQt6 = "^6.6.0"
@@ -35,8 +40,5 @@ itsdangerous = "^2.2.0"
 httpx = "^0.28.0"
 
 [build-system]
-requires = ["poetry-core"]
+requires = ["poetry-core>=2.0"]
 build-backend = "poetry.core.masonry.api"
-
-[tool.poetry.scripts]
-pairwise-ranking = "main:main"

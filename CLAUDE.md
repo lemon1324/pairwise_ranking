@@ -2,14 +2,14 @@
 
 ## Environment
 
-- **Package manager**: Poetry (local venv via `poetry.toml`)
+- **Package manager**: Poetry 2.x (local venv via `poetry.toml`)
 - **Python version**: 3.10+ (developed on 3.11)
 
 ## Commands
 
 ```bash
-# Install dependencies
-poetry install
+# Install dependencies (all groups: desktop, web, dev)
+poetry sync
 
 # Run application
 poetry run python main.py

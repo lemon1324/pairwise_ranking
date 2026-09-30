@@ -29,12 +29,12 @@ samples in a tasting flight, or working a shortlist of candidates down to a deci
 
 ## Installation
 
-Requires Python 3.10+ and [Poetry](https://python-poetry.org/).
+Requires Python 3.10+ and [Poetry](https://python-poetry.org/) 2.x.
 
 ```bash
 git clone <repo-url>
 cd pairwise_ranking
-poetry install
+poetry sync
 ```
 
 ## Running
