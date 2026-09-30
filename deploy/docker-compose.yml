@@ -1,0 +1,43 @@
+# Deployment stack: pulls a prebuilt image from GHCR instead of building.
+# Intended for an Unraid host (Compose Manager plugin) -- copy this file to
+# the host, edit the marked values, then `docker compose pull && docker
+# compose up -d`.
+#
+# Deliberately has no `build:` section: `docker compose pull` is then
+# unambiguous, and the host never needs the source tree. The repo root's
+# docker-compose.yml is the build-from-source stack for local testing.
+#
+# Run one container per data folder, and never add uvicorn workers: the
+# app's per-project locks live in its one process.
+services:
+  pairwise-ranking:
+    image: ghcr.io/lemon1324/pairwise_ranking:latest
+    restart: unless-stopped
+    environment:
+      # Unraid's convention -- nobody:users. Without these the entrypoint
+      # stays root and every project file it saves lands root-owned.
+      PUID: "99"
+      PGID: "100"
+      # Files the app writes stay writable by the share's SMB users, so the
+      # desktop app can still save over them.
+      UMASK: "000"
+      # Votes and modified times are stored as local time, shared with the
+      # desktop app; match the zone the desktop runs in.
+      TZ: America/Denver
+
+      # Signs the session cookie. Unset, a random key is generated at each
+      # start and a warning is logged; that is harmless while the cookie holds
+      # nothing. Set a long random string to keep sessions across restarts.
+      # PAIRRANK_SECRET_KEY: change-me
+
+      # Only if a reverse proxy serves the app under a subpath, e.g.
+      # https://example.com/pairrank -- the proxy strips the prefix and the
+      # app puts it back on every link. Leave unset when served at the root.
+      # PAIRRANK_ROOT_PATH: /pairrank
+    volumes:
+      # EDIT: the share holding your .pairrank files. The same folder the
+      # desktop app opens projects from works; the container never chowns it.
+      - /mnt/user/<share>/pairwise-ranking:/data
+    ports:
+      # EDIT: the host port (left side) you reach the app on.
+      - "8080:8080"

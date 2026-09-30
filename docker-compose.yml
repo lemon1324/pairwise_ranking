@@ -1,0 +1,14 @@
+# Local stack: builds the image from this checkout, for testing on Docker
+# Desktop. `docker compose up --build`, then open http://localhost:8080.
+#
+# The data folder is .scratch/docker-data, which is git-excluded and visible to
+# Windows. Never mount ./data: it holds the plan documents, not projects.
+# deploy/docker-compose.yml is the pull-only stack for the Unraid host.
+services:
+  pairwise-ranking:
+    build: .
+    image: pairwise-ranking:local
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./.scratch/docker-data:/data
