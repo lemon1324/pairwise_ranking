@@ -1,0 +1,248 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Read-only by default; the jobs that write (the badge, the image) widen it
+# for themselves.
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.12']
+    env:
+      # PyQt6 without a display: the desktop tests build real widgets.
+      QT_QPA_PLATFORM: offscreen
+    defaults:
+      run:
+        # Explicit bash turns on pipefail, so a failing suite piped into tee
+        # still fails the step.
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # Full history so the identity check below can see every commit.
+          fetch-depth: 0
+
+      # The repo is public. Every commit must carry a GitHub noreply address,
+      # so a commit made under a stray global git identity fails here instead
+      # of publishing a real address. The check is phrased as an allowlist --
+      # listing the addresses to reject would itself put them in the repo.
+      #
+      # Two forms are legitimate. A commit made from a local clone, or by the
+      # badge job below as 41898282+github-actions[bot], gets
+      # <id>+<user>@users.noreply.github.com. A commit made through the GitHub
+      # web UI is *committed* by GitHub itself as noreply@github.com (with the
+      # human as author), so rejecting that would fail on commits that were
+      # never capable of leaking an address.
+      - name: Check commit author identities
+        run: |
+          bad=$(git log --format='%ae%n%ce' --all \
+                | sort -u \
+                | grep -vE '(@users\.noreply\.github\.com|^noreply@github\.com)$' || true)
+          if [ -n "$bad" ]; then
+            echo "::error::Commit author/committer addresses must be GitHub noreply addresses."
+            echo "$bad" | sed 's/@.*/@<redacted>/'
+            exit 1
+          fi
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # The same pin as the Dockerfile (tests/test_deploy_files.py checks it):
+      # the version poetry.lock was written with.
+      - name: Install Poetry
+        run: pipx install poetry==2.5.1
+
+      # Plain sync installs every group: main, web, desktop (PyQt6) and dev.
+      - name: Install dependencies
+        run: |
+          poetry env use "$(command -v python)"
+          poetry sync --no-root
+
+      - name: Install the Qt runtime libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3
+
+      - name: Run the tests
+        run: poetry run python -m unittest discover tests/ -v 2>&1 | tee test-output.txt
+
+      # The Qt classes raise SkipTest when PyQt6 won't import, and the suite
+      # still passes, so a broken Qt install would go unnoticed. Run them on
+      # their own and fail on any skip, or if nothing ran at all.
+      - name: Check the Qt tests ran
+        run: |
+          poetry run python - <<'EOF'
+          import sys, unittest
+          names = [
+              "tests.test_ui_settings",
+              "tests.test_web_rankings.TestTheExportEqualsTheDesktop",
+          ]
+          suite = unittest.defaultTestLoader.loadTestsFromNames(names)
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          if result.skipped or not result.testsRun or not result.wasSuccessful():
+              print("::error::The Qt test classes were skipped or failed.")
+              sys.exit(1)
+          EOF
+
+      # The tests badge reads tests.json from the badges branch. Only main's
+      # count is published; the badge job does the writing, so this job
+      # keeps read-only permissions.
+      - name: Write the tests badge
+        if: matrix.python-version == '3.12' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          ran=$(sed -nE 's/^Ran ([0-9]+) tests? in .*/\1/p' test-output.txt)
+          skipped=$(sed -nE 's/^OK \(.*skipped=([0-9]+).*/\1/p' test-output.txt)
+          passed=$(( ran - ${skipped:-0} ))
+          mkdir -p badge
+          printf '{"schemaVersion": 1, "label": "tests", "message": "%s passed", "color": "brightgreen"}\n' \
+            "$passed" > badge/tests.json
+          cat badge/tests.json
+
+      - name: Upload the tests badge
+        if: matrix.python-version == '3.12' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: tests-badge
+          path: badge/tests.json
+          retention-days: 1
+
+  badge:
+    needs: [test]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: tests-badge
+
+      # No checkout: the badges branch holds only tests.json, and on the
+      # first run it doesn't exist yet, so it starts as an orphan.
+      - name: Push tests.json to the badges branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          remote="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git init -q badges
+          cd badges
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code --heads "$remote" badges > /dev/null; then
+            git fetch -q --depth 1 "$remote" badges
+            git checkout -q -B badges FETCH_HEAD
+          else
+            git checkout -q --orphan badges
+          fi
+          cp ../tests.json tests.json
+          git add tests.json
+          if git diff --cached --quiet; then
+            echo "tests.json is unchanged."
+            exit 0
+          fi
+          git commit -q -m "Update the tests badge for ${GITHUB_SHA::7}"
+          git push -q "$remote" HEAD:refs/heads/badges
+
+  image:
+    needs: [test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+
+      # pyproject's version drives the image tag, so bumping it on a merge to
+      # main is what produces a new immutable tag. GHCR wants a lowercase
+      # repository name.
+      - name: Read version
+        id: version
+        run: |
+          v=$(python3 -c "import tomllib,pathlib; print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: pairwise-ranking:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # The image's own HEALTHCHECK decides "healthy", so this also proves
+      # the entrypoint's privilege drop and write probe on a real mount.
+      - name: Smoke test
+        run: |
+          data=$(mktemp -d)
+          docker run -d --name pairrank-smoke -p 8080:8080 \
+            -e PUID="$(id -u)" -e PGID="$(id -g)" \
+            -v "$data:/data" pairwise-ranking:ci
+          status=starting
+          for _ in $(seq 60); do
+            status=$(docker inspect -f '{{.State.Health.Status}}' pairrank-smoke 2>/dev/null || echo missing)
+            [ "$status" = healthy ] && break
+            [ "$(docker inspect -f '{{.State.Running}}' pairrank-smoke)" = true ] || break
+            sleep 2
+          done
+          if [ "$status" != healthy ]; then
+            echo "::error::The container did not become healthy (status: $status)."
+            docker logs pairrank-smoke
+            exit 1
+          fi
+          curl -fsS http://127.0.0.1:8080/ > /dev/null
+          curl -fsS http://127.0.0.1:8080/healthz
+
+      - name: Remove the smoke-test container
+        if: always()
+        run: docker rm -f pairrank-smoke || true
+
+      # Owner rule: nothing publishes until the security review's accepted
+      # findings are fixed. The PUBLISH_IMAGE repo variable stays unset until
+      # then, so CI builds and smoke-tests but never pushes; pull requests
+      # never publish.
+      - name: Log in to GHCR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.PUBLISH_IMAGE == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Rebuilds from the gha cache, so this costs little. The sha- tag is
+      # the rollback handle: if :latest breaks the deployment, pin the
+      # previous sha tag and bring the stack back up.
+      - name: Push
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.PUBLISH_IMAGE == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.version.outputs.image }}:latest
+            ${{ steps.version.outputs.image }}:${{ steps.version.outputs.version }}
+            ${{ steps.version.outputs.image }}:sha-${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

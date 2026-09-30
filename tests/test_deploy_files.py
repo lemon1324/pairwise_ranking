@@ -10,6 +10,8 @@ import re
 import unittest
 from pathlib import Path
 
+import yaml
+
 from src.web import config
 
 
@@ -20,8 +22,10 @@ ENTRYPOINT = REPO_ROOT / "docker" / "entrypoint.sh"
 DOCKERIGNORE = REPO_ROOT / ".dockerignore"
 LOCAL_COMPOSE = REPO_ROOT / "docker-compose.yml"
 DEPLOY_COMPOSE = REPO_ROOT / "deploy" / "docker-compose.yml"
+WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 
 POETRY_VERSION = "2.5.1"
+POETRY_PIN = re.compile(r"poetry==([0-9][0-9A-Za-z.]*)")
 
 ENV_NAME = re.compile(r"\bPAIRRANK_[A-Z0-9_]+\b")
 
@@ -67,6 +71,52 @@ class TestTheDeployFiles(unittest.TestCase):
         # A CRLF shebang makes the kernel look for "/bin/sh\r" and the
         # container dies before printing anything.
         self.assertNotIn(b"\r", ENTRYPOINT.read_bytes())
+
+
+class TestTheWorkflow(unittest.TestCase):
+    """The CI workflow installs what the image does and publishes only when allowed."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Parse the workflow once."""
+        cls.workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+
+    def steps(self):
+        """
+        Every step of every job, with the job it belongs to.
+
+        Returns:
+            list[tuple[str, dict]]: (job name, step) pairs.
+        """
+        return [
+            (job_name, step)
+            for job_name, job in self.workflow["jobs"].items()
+            for step in job.get("steps", [])
+        ]
+
+    def test_ci_pins_the_same_poetry_as_the_dockerfile(self):
+        pins = {
+            path.name: POETRY_PIN.findall(path.read_text(encoding="utf-8"))
+            for path in (DOCKERFILE, WORKFLOW)
+        }
+        self.assertEqual(pins, {"Dockerfile": [POETRY_VERSION], "ci.yml": [POETRY_VERSION]})
+
+    def test_every_publish_step_is_guarded(self):
+        publishing = [
+            (job_name, step)
+            for job_name, step in self.steps()
+            if "ghcr.io" in str(step.get("with", {}).get("registry", ""))
+            or str(step.get("with", {}).get("push", "")).lower() == "true"
+        ]
+        # The login and the push, at least; a rename must not empty this.
+        self.assertGreaterEqual(len(publishing), 2)
+        for job_name, step in publishing:
+            with self.subTest(job=job_name, step=step.get("name", step.get("uses"))):
+                condition = step.get("if", "")
+                self.assertIn("vars.PUBLISH_IMAGE == 'true'", condition)
+                self.assertIn("github.ref == 'refs/heads/main'", condition)
+                self.assertIn("github.event_name == 'push'", condition)
+                self.assertNotIn("||", condition)
 
 
 if __name__ == "__main__":
