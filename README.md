@@ -1,11 +1,20 @@
 # Pairwise Ranking
 
+[![CI](https://github.com/lemon1324/pairwise_ranking/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/lemon1324/pairwise_ranking/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/lemon1324/pairwise_ranking/badges/tests.json)](https://github.com/lemon1324/pairwise_ranking/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/python-%3E%3D3.10-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+
 A desktop application (PyQt6) for putting a set of items in order when comparing two of them side
 by side is easy but assigning each one an absolute score is hard. You answer a stream of "which of
 these two is better?" questions; the app fits a Bradley-Terry model to your answers and turns the
 result into a ranked list with ELO-style ratings and an uncertainty estimate for each item. It is
 domain-neutral: typical uses are ranking keyswitches mounted on a tester board, ordering the
 samples in a tasting flight, or working a shortlist of candidates down to a decision.
+
+A web version of the same app works on the same `.pairrank` files, and runs either locally or as
+a container on a home server (see [Running the web app](#running-the-web-app) and
+[Deploying to Unraid](#deploying-to-unraid)).
 
 ## Features
 
@@ -178,6 +187,123 @@ The legacy format is read-only; nothing is ever written back to it.
 list (most recent first, up to ten, with missing files pruned) and an optional default projects
 directory. Without one, new projects default to `~/Documents/PairwiseRanking`, or
 `~/PairwiseRanking` if there is no `Documents` folder.
+
+## Running the web app
+
+The web app serves every `.pairrank` file in one data folder. It addresses projects by file name
+within that folder, never by path.
+
+```bash
+PAIRRANK_DATA_DIR=~/Documents/PairwiseRanking poetry run python web_main.py
+```
+
+Then open http://localhost:8080. Set `PAIRRANK_DATA_DIR` when running outside a container: the
+default, `/data`, is the container's mount point.
+
+The web process is configured entirely through environment variables:
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `PAIRRANK_DATA_DIR` | `/data` | The folder holding the `.pairrank` projects. |
+| `PAIRRANK_PORT` | `8080` | The port the server listens on (all interfaces). Must be 1–65535. |
+| `PAIRRANK_ROOT_PATH` | empty | The subpath a reverse proxy serves the app under, e.g. `/pairrank`. Leading and trailing slashes are optional. Leave unset when served at the root. |
+| `PAIRRANK_SECRET_KEY` | random per start | The key signing the session cookie. Unset, a key is generated at each start and a warning is logged; sessions then don't survive a restart. |
+| `PAIRRANK_AUTH_MODE` | `none` | How users are identified. `none` is the only mode implemented; any other value stops the server at startup. |
+| `PAIRRANK_LOG_LEVEL` | `INFO` | `CRITICAL`, `ERROR`, `WARNING`, `INFO`, `DEBUG` or `TRACE`, in any case (`WARN` and `FATAL` are accepted too). An unknown level logs a warning and falls back to `INFO`. |
+
+A value that can't be used (a bad port, an unsupported auth mode) makes the server print
+`Cannot start: ...` and exit with status 2.
+
+The server runs as a single process on purpose: projects are locked in memory, so two processes on
+one data folder would write the same files without them. Never add uvicorn workers.
+
+### Local Docker stack
+
+`docker-compose.yml` at the repo root builds the image from the checkout, for testing on Docker
+Desktop:
+
+```bash
+docker compose up --build
+```
+
+The app is at http://localhost:8080 and its data folder is `./.scratch/docker-data`. The container
+runs in `America/Denver` unless `TZ` is set in the shell; vote timestamps are stored as local time,
+so match the zone the desktop app runs in.
+
+## Deploying to Unraid
+
+> **Warning: the web app has no authentication.** Anyone who can reach it can read and change every
+> project in its data folder. Run it on your LAN only, and do not expose it to the internet without
+> an authenticating proxy in front of it.
+
+GitHub Actions publishes the image to `ghcr.io/lemon1324/pairwise_ranking` from `main`, tagged
+`:latest`, `:<version>` (from `pyproject.toml`) and `:sha-<commit>`. The image is public, so the
+Unraid host needs no registry token. `deploy/docker-compose.yml` is the deployment stack: it pulls
+the image rather than building, so the host never needs the source tree.
+
+### 1. Share folder
+
+Create a folder on a share for the projects, for example `/mnt/user/documents/pairwise-ranking`,
+and export the share over SMB (*Shares → documents → SMB Security Settings*) so the desktop app
+can reach it. The desktop app then opens the same files over SMB, e.g.
+`\\tower\documents\pairwise-ranking\<name>.pairrank`.
+
+The web app checks each project file before every change and reloads it if the desktop app saved
+it in the meantime. The desktop app does not watch the file, so don't keep a project open in it
+while voting on the web.
+
+### 2. Bring the stack up
+
+With the Compose Manager plugin (Community Applications): add a stack, paste
+`deploy/docker-compose.yml`, and edit the values marked `# EDIT`: the share path on the left of
+`:/data` and the host port. Then compose up, or from the console:
+
+```bash
+docker compose pull
+docker compose up -d
+docker compose logs -f
+```
+
+Open `http://<unraid-ip>:8080` (or the host port you chose).
+
+The stack's other settings:
+
+| Variable | Stack value | Meaning |
+| --- | --- | --- |
+| `PUID` / `PGID` | `99` / `100` | The user and group the app runs as: Unraid's `nobody:users`. With neither set the container stays root and saves root-owned files. |
+| `UMASK` | `000` | Files the app writes stay writable by everyone, so SMB users can save over them from the desktop app. |
+| `TZ` | `America/Denver` | Votes and modified times are stored as local time and shared with the desktop app; set the zone the desktop runs in. |
+
+The entrypoint never changes ownership of the share. If the folder isn't writable by `PUID:PGID`,
+it refuses to start and logs `Cannot start: the data folder /data is not writable by uid:gid ...`;
+fix the folder's permissions (or set `PUID` and `PGID` to its owner) and start it again.
+
+`PAIRRANK_SECRET_KEY` and `PAIRRANK_ROOT_PATH` are in the stack, commented out; see
+[Running the web app](#running-the-web-app) for what they do.
+
+**Run exactly one container per project folder.** Project locks live in the app's one process, so
+a second container (or extra uvicorn workers) on the same folder would write the same files
+without them.
+
+### 3. Update and roll back
+
+To update: `docker compose pull && docker compose up -d` (or *Update Stack* in Compose Manager).
+
+To roll back, change the stack's image from `:latest` to an earlier tag and bring it up again:
+`ghcr.io/lemon1324/pairwise_ranking:sha-<full commit hash>` for a specific build, or `:<version>` for a
+release. Every push to `main` gets a `sha-` tag; a version tag is new only when the version in
+`pyproject.toml` was bumped.
+
+### 4. Optional: Nginx Proxy Manager
+
+To reach the app through Nginx Proxy Manager under a subpath, e.g.
+`https://example.com/pairrank`, set `PAIRRANK_ROOT_PATH: /pairrank` in the stack, and have the
+proxy forward that location to `http://<unraid-ip>:8080` with the prefix stripped. The app puts
+the prefix back on every link it generates. Served at its own hostname instead, leave
+`PAIRRANK_ROOT_PATH` unset.
+
+A proxy does not add authentication by itself. If the proxy is reachable from the internet, put
+an authenticating layer in front of the app as well.
 
 ## Algorithm
 

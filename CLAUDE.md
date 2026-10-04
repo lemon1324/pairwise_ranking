@@ -28,6 +28,17 @@ poetry run python -m unittest discover tests/ -v
 - **Run all tests**: `poetry run python -m unittest discover tests/ -v`
   (or from WSL: `./.venv/Scripts/python.exe -m unittest discover tests/`)
 
+## Docker, CI and publishing
+
+- WSL has no `docker`; run Docker commands through Windows, e.g. `cmd.exe /c docker compose up --build`.
+- CI (`.github/workflows/ci.yml`) runs the tests and builds and smoke-tests the image on every push
+  and pull request. It publishes to GHCR only on a push to `main`, and only when the
+  `PUBLISH_IMAGE` repo variable is `true`.
+- `origin` is HTTPS and WSL has no credential helper, so push over SSH:
+  `git push git@github.com:lemon1324/pairwise_ranking.git <branch>`.
+- Bump `[project].version` in `pyproject.toml` when merging to `main`; that is what produces a new
+  immutable `:<version>` image tag.
+
 ## Subagents
 
 Choose an agent in this order: a specialised agent when one fits (the `impeccable-*` agents for
