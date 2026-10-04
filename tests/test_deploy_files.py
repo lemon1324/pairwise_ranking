@@ -30,6 +30,98 @@ POETRY_PIN = re.compile(r"poetry==([0-9][0-9A-Za-z.]*)")
 ENV_NAME = re.compile(r"\bPAIRRANK_[A-Z0-9_]+\b")
 
 
+PUBLISHING_COMMANDS = ("docker push", "imagetools create", "--push")
+
+
+def _dockerignore_regex(pattern: str) -> re.Pattern:
+    """
+    Compile one .dockerignore pattern the way Docker reads it.
+
+    Covers the syntax the file uses: ``*`` within one path segment, ``**``
+    across any number of them, and a trailing ``/``, which Docker cleans off.
+
+    Args:
+        pattern: The pattern, without any leading ``!``.
+
+    Returns:
+        re.Pattern: A regex matching a whole slash-separated path.
+    """
+    pattern = pattern.strip("/")
+    parts = []
+    i = 0
+    while i < len(pattern):
+        if pattern.startswith("**/", i):
+            parts.append("(?:.*/)?")
+            i += 3
+        elif pattern.startswith("**", i):
+            parts.append(".*")
+            i += 2
+        elif pattern[i] == "*":
+            parts.append("[^/]*")
+            i += 1
+        elif pattern[i] == "?":
+            parts.append("[^/]")
+            i += 1
+        else:
+            parts.append(re.escape(pattern[i]))
+            i += 1
+    return re.compile("".join(parts))
+
+
+def _dockerignore_excludes(text: str, path: str) -> bool:
+    """
+    Whether a .dockerignore leaves a file out of the build context.
+
+    Docker's rules: every pattern is tried in order and the last one to match
+    decides, ``!`` re-including; a pattern matching a parent directory matches
+    everything under it.
+
+    Args:
+        text: The .dockerignore contents.
+        path: A slash-separated path relative to the context root.
+
+    Returns:
+        bool: True if the file is excluded.
+    """
+    segments = path.split("/")
+    candidates = ["/".join(segments[:n]) for n in range(1, len(segments) + 1)]
+    excluded = False
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        negated = line.startswith("!")
+        regex = _dockerignore_regex(line[1:] if negated else line)
+        if any(regex.fullmatch(candidate) for candidate in candidates):
+            excluded = not negated
+    return excluded
+
+
+def _is_publishing(step: dict) -> bool:
+    """
+    Whether a workflow step can write to a registry.
+
+    A build step counts unless its ``push`` is literally false (an expression
+    might be true), as does any registry login and any shell command that
+    pushes. Read-only commands such as ``imagetools inspect`` do not.
+
+    Args:
+        step: One step of a job.
+
+    Returns:
+        bool: True if the step logs in to or pushes to a registry.
+    """
+    with_ = step.get("with", {}) or {}
+    if "ghcr.io" in str(with_.get("registry", "")):
+        return True
+    if "push" in with_ and str(with_["push"]).strip().lower() != "false":
+        return True
+    if str(step.get("uses", "")).startswith("docker/login-action"):
+        return True
+    run = str(step.get("run", ""))
+    return any(command in run for command in PUBLISHING_COMMANDS)
+
+
 def _config_env_names() -> set[str]:
     """Every ``PAIRRANK_*`` name src/web/config.py defines as a constant."""
     return {
@@ -55,8 +147,16 @@ class TestTheDeployFiles(unittest.TestCase):
         self.assertIn(f"poetry=={POETRY_VERSION}", text)
 
     def test_the_image_leaves_out_the_desktop_ui(self):
-        lines = DOCKERIGNORE.read_text(encoding="utf-8").splitlines()
-        self.assertIn("src/ui/", [line.strip() for line in lines])
+        text = DOCKERIGNORE.read_text(encoding="utf-8")
+        self.assertTrue((REPO_ROOT / "src" / "ui" / "main_window.py").is_file())
+        self.assertTrue(_dockerignore_excludes(text, "src/ui/main_window.py"))
+
+    def test_the_image_gets_what_the_web_app_runs(self):
+        text = DOCKERIGNORE.read_text(encoding="utf-8")
+        for path in ("src/web/app.py", "web_main.py", "docker/entrypoint.sh"):
+            with self.subTest(path=path):
+                self.assertTrue((REPO_ROOT / path).is_file())
+                self.assertFalse(_dockerignore_excludes(text, path))
 
     def test_the_entrypoint_never_chowns(self):
         # Commands only: the comment explaining why there is no chown names it.
@@ -103,10 +203,7 @@ class TestTheWorkflow(unittest.TestCase):
 
     def test_every_publish_step_is_guarded(self):
         publishing = [
-            (job_name, step)
-            for job_name, step in self.steps()
-            if "ghcr.io" in str(step.get("with", {}).get("registry", ""))
-            or str(step.get("with", {}).get("push", "")).lower() == "true"
+            (job_name, step) for job_name, step in self.steps() if _is_publishing(step)
         ]
         # The login and the push, at least; a rename must not empty this.
         self.assertGreaterEqual(len(publishing), 2)

@@ -36,8 +36,9 @@ poetry run python -m unittest discover tests/ -v
   `PUBLISH_IMAGE` repo variable is `true`.
 - `origin` is HTTPS and WSL has no credential helper, so push over SSH:
   `git push git@github.com:lemon1324/pairwise_ranking.git <branch>`.
-- Bump `[project].version` in `pyproject.toml` when merging to `main`; that is what produces a new
-  immutable `:<version>` image tag.
+- Bump `[project].version` in `pyproject.toml` when merging to `main`: CI pushes `:<version>` only
+  when that tag doesn't exist yet (otherwise it warns and skips it), so an unbumped merge publishes
+  no new version tag. `:latest` only moves when the commit is still `main`'s head.
 
 ## Subagents
 

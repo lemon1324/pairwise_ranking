@@ -39,8 +39,11 @@ COPY src ./src
 COPY web_main.py ./
 COPY --chmod=755 docker/entrypoint.sh /entrypoint.sh
 
-# No VOLUME: an unmounted run should fail the entrypoint's write probe rather
-# than quietly keep its projects in an anonymous volume nobody will find.
+# No VOLUME: projects should never quietly land in an anonymous volume nobody
+# will find. An unmounted run with PUID/PGID set fails the entrypoint's write
+# probe (the unprivileged user can't create /data). With neither set the
+# entrypoint stays root, creates /data in the container's own layer, and the
+# projects saved there are lost when the container is recreated.
 
 EXPOSE 8080
 
@@ -49,7 +52,7 @@ EXPOSE 8080
 # prefix when a request carries it). The venv's python does the request, so
 # the image needs no curl.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD ["python", "-c", "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:' + os.environ['PAIRRANK_PORT'] + '/healthz', timeout=4)"]
+    CMD ["python", "-c", "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:' + (os.environ.get('PAIRRANK_PORT') or '8080').strip() + '/healthz', timeout=4)"]
 
 ENTRYPOINT ["/entrypoint.sh"]
 # Never add uvicorn workers (or run several replicas on one data folder): the

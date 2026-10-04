@@ -226,6 +226,26 @@ class TestErrorPagesUnderARootPath(WebAppTestCase):
         self.assertIn('href="/rank/"', response.text)
 
 
+class TestStaticFilesUnderARootPath(WebAppTestCase):
+    """Test cases for the stylesheets behind a proxy that keeps the prefix."""
+
+    root_path = "/rank"
+
+    def test_a_prefixed_static_path_is_served(self):
+        """
+        Test that a stylesheet asked for under the subpath is found.
+
+        The deployment docs tell the proxy to forward the path unchanged: the
+        mount only matches with the prefix kept, so a stripping proxy would
+        404 every asset while the pages themselves still answered.
+        """
+        response = self.client.get(f"/rank{STATIC_MOUNT}/css/sheet.css")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertGreater(len(response.content), 0)
+        self.assertIn("css", response.headers["content-type"])
+
+
 class TestProjectFormatErrorPages(WebAppTestCase):
     """Test cases for the two ways a project file can be unusable.
 

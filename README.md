@@ -193,8 +193,16 @@ directory. Without one, new projects default to `~/Documents/PairwiseRanking`, o
 The web app serves every `.pairrank` file in one data folder. It addresses projects by file name
 within that folder, never by path.
 
+In bash or zsh:
+
 ```bash
 PAIRRANK_DATA_DIR=~/Documents/PairwiseRanking poetry run python web_main.py
+```
+
+In PowerShell:
+
+```powershell
+$env:PAIRRANK_DATA_DIR="$HOME\Documents\PairwiseRanking"; poetry run python web_main.py
 ```
 
 Then open http://localhost:8080. Set `PAIRRANK_DATA_DIR` when running outside a container: the
@@ -291,16 +299,21 @@ To update: `docker compose pull && docker compose up -d` (or *Update Stack* in C
 
 To roll back, change the stack's image from `:latest` to an earlier tag and bring it up again:
 `ghcr.io/lemon1324/pairwise_ranking:sha-<full commit hash>` for a specific build, or `:<version>` for a
-release. Every push to `main` gets a `sha-` tag; a version tag is new only when the version in
-`pyproject.toml` was bumped.
+release. Every push to `main` gets a `sha-` tag. CI pushes `:<version>` only when that tag
+doesn't exist yet, so bump the version in `pyproject.toml` to publish a new one; an unbumped push
+leaves the existing version tag alone. `:latest` only moves when the commit being published is
+still the head of `main`, so re-running an old CI run can't move it back.
 
 ### 4. Optional: Nginx Proxy Manager
 
 To reach the app through Nginx Proxy Manager under a subpath, e.g.
 `https://example.com/pairrank`, set `PAIRRANK_ROOT_PATH: /pairrank` in the stack, and have the
-proxy forward that location to `http://<unraid-ip>:8080` with the prefix stripped. The app puts
-the prefix back on every link it generates. Served at its own hostname instead, leave
-`PAIRRANK_ROOT_PATH` unset.
+proxy forward the path unchanged, prefix included. **Do not strip the prefix:** the pages would
+still load, but every stylesheet and script under `/static` would 404. In Nginx Proxy Manager, add
+a Custom Location `/pairrank` on the proxy host, forwarding to `<unraid-ip>` port `8080` with no
+path or trailing slash after the host, so nginx emits `proxy_pass http://<unraid-ip>:8080;`, which
+passes the request URI through as it came. The app puts the prefix on every link it generates.
+Served at its own hostname instead, leave `PAIRRANK_ROOT_PATH` unset.
 
 A proxy does not add authentication by itself. If the proxy is reachable from the internet, put
 an authenticating layer in front of the app as well.

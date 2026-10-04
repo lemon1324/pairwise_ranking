@@ -31,8 +31,10 @@ services:
       # PAIRRANK_SECRET_KEY: change-me
 
       # Only if a reverse proxy serves the app under a subpath, e.g.
-      # https://example.com/pairrank -- the proxy strips the prefix and the
-      # app puts it back on every link. Leave unset when served at the root.
+      # https://example.com/pairrank -- the proxy must forward the path
+      # unchanged and must NOT strip the prefix (stripped, every /static asset
+      # 404s); the app puts it on every link. Leave unset when served at the
+      # root.
       # PAIRRANK_ROOT_PATH: /pairrank
     volumes:
       # EDIT: the share holding your .pairrank files. The same folder the
