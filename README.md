@@ -294,8 +294,8 @@ The stack's other settings:
 
 | Variable | Stack value | Meaning |
 | --- | --- | --- |
-| `PUID` / `PGID` | `99` / `100` | The user and group the app runs as: Unraid's `nobody:users`. With neither set the container stays root and saves root-owned files. |
-| `UMASK` | `000` | Files the app writes stay writable by everyone, so SMB users can save over them from the desktop app. |
+| `PUID` / `PGID` | `99` / `100` | The user and group the app runs as: Unraid's `nobody:users`. Set just one and the other takes that default. With neither set, or both set to `0`, the container runs as root and saves root-owned files; that is acceptable only because the app is LAN-only. |
+| `UMASK` | `000` | Files the app writes stay writable by everyone, so SMB users can save over them from the desktop app. The image's own default is `022`; the stack sets `000` for the share. |
 | `TZ` | `America/Denver` | Votes and modified times are stored as local time and shared with the desktop app; set the zone the desktop runs in. |
 
 The entrypoint never changes ownership of the share. If the folder isn't writable by `PUID:PGID`,

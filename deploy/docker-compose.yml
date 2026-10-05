@@ -19,7 +19,7 @@ services:
       PUID: "99"
       PGID: "100"
       # Files the app writes stay writable by the share's SMB users, so the
-      # desktop app can still save over them.
+      # desktop app can still save over them. The image defaults to 022.
       UMASK: "000"
       # Votes and modified times are stored as local time, shared with the
       # desktop app; match the zone the desktop runs in.

@@ -5,7 +5,11 @@
 # install would pick up whatever is newest and could refuse or rewrite the lock.
 FROM python:3.12-slim AS build
 
+# NO_PIP: the venv is created without pip, so the runtime image carries no
+# package installer the app never uses. Poetry installs into it with its own
+# installer, not the venv's pip.
 ENV POETRY_VIRTUALENVS_IN_PROJECT=true \
+    POETRY_VIRTUALENVS_OPTIONS_NO_PIP=true \
     POETRY_NO_INTERACTION=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 

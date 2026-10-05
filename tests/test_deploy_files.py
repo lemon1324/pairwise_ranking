@@ -205,6 +205,22 @@ class TestTheDeployFiles(unittest.TestCase):
         ]
         self.assertFalse([line for line in commands if "chown" in line])
 
+    def test_the_privilege_drop_sets_no_new_privs(self):
+        text = ENTRYPOINT.read_text(encoding="utf-8")
+        calls = [line for line in text.splitlines() if "exec setpriv" in line]
+        self.assertTrue(calls)
+        for line in calls:
+            self.assertIn("--no-new-privs", line)
+
+    def test_only_the_unraid_stack_opens_the_umask(self):
+        # The image keeps the usual 022; the Unraid stack opts into 000 so the
+        # share's SMB users can save over what the container writes.
+        self.assertIn('umask "${UMASK:-022}"', ENTRYPOINT.read_text(encoding="utf-8"))
+        environment = yaml.safe_load(DEPLOY_COMPOSE.read_text(encoding="utf-8"))[
+            "services"
+        ]["pairwise-ranking"]["environment"]
+        self.assertEqual(environment["UMASK"], "000")
+
     def test_the_entrypoint_has_unix_line_endings(self):
         # A CRLF shebang makes the kernel look for "/bin/sh\r" and the
         # container dies before printing anything.
