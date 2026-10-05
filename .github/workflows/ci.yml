@@ -9,8 +9,8 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-# Read-only by default; the jobs that write (the badge, the image) widen it
-# for themselves.
+# Read-only by default; the jobs that write (the badge, the image publish)
+# widen it for themselves.
 permissions:
   contents: read
 
@@ -34,26 +34,50 @@ jobs:
         with:
           # Full history so the identity check below can see every commit.
           fetch-depth: 0
+          persist-credentials: false
 
-      # The repo is public. Every commit must carry a GitHub noreply address,
-      # so a commit made under a stray global git identity fails here instead
-      # of publishing a real address. The check is phrased as an allowlist --
-      # listing the addresses to reject would itself put them in the repo.
+      # The repo is public. Every commit must carry a GitHub noreply address
+      # and a known name, so a commit made under a stray global git identity
+      # fails here instead of publishing a real one. The check is phrased as
+      # an allowlist -- listing the identities to reject would itself put them
+      # in the repo -- and on failure it prints only the commit hashes, so the
+      # log doesn't publish what it caught either.
       #
       # Two forms are legitimate. A commit made from a local clone, or by the
       # badge job below as 41898282+github-actions[bot], gets
       # <id>+<user>@users.noreply.github.com. A commit made through the GitHub
-      # web UI is *committed* by GitHub itself as noreply@github.com (with the
-      # human as author), so rejecting that would fail on commits that were
-      # never capable of leaking an address.
+      # web UI is *committed* by GitHub itself as "GitHub <noreply@github.com>"
+      # (with the human as author), so rejecting that would fail on commits
+      # that were never capable of leaking an address. Co-authored-by and
+      # Signed-off-by trailers may also name Claude's noreply@anthropic.com,
+      # and must carry an address in <...>.
       - name: Check commit author identities
         run: |
-          bad=$(git log --format='%ae%n%ce' --all \
-                | sort -u \
-                | grep -vE '(@users\.noreply\.github\.com|^noreply@github\.com)$' || true)
+          names='^(lemon1324|github-actions\[bot\]|GitHub)$'
+          emails='(@users\.noreply\.github\.com|^noreply@github\.com)$'
+          trailer_emails='(@users\.noreply\.github\.com|^noreply@github\.com|^noreply@anthropic\.com)$'
+          address='<([^>]*)>[[:space:]]*$'
+          bad=$(
+            git log --all --format='%H%x09%an%x09%ae%x09%cn%x09%ce' |
+            while IFS=$'\t' read -r hash an ae cn ce; do
+              if ! { [[ $an =~ $names ]] && [[ $cn =~ $names ]] \
+                     && [[ $ae =~ $emails ]] && [[ $ce =~ $emails ]]; }; then
+                echo "$hash"
+              fi
+            done
+            git log --all --format='%H%x09%(trailers:key=Co-authored-by,key=Signed-off-by,valueonly,separator=%x09)' |
+            while IFS=$'\t' read -r -a fields; do
+              for value in "${fields[@]:1}"; do
+                if ! { [[ $value =~ $address ]] \
+                       && [[ ${BASH_REMATCH[1]} =~ $trailer_emails ]]; }; then
+                  echo "${fields[0]}"
+                fi
+              done
+            done
+          )
           if [ -n "$bad" ]; then
-            echo "::error::Commit author/committer addresses must be GitHub noreply addresses."
-            echo "$bad" | sed 's/@.*/@<redacted>/'
+            echo "::error::Commit names, addresses and trailers must be allowlisted GitHub noreply identities. Offending commits:"
+            echo "$bad" | sort -u
             exit 1
           fi
 
@@ -158,27 +182,26 @@ jobs:
           git commit -q -m "Update the tests badge for ${GITHUB_SHA::7}"
           git push -q "$remote" HEAD:refs/heads/badges
 
+  # Builds and smoke-tests the image on every run, read-only: it never holds
+  # a token that can write to the registry. The publish job below does that.
   image:
     needs: [test]
     runs-on: ubuntu-26.04
     permissions:
       contents: read
-      packages: write
+    env:
+      # The build-push action otherwise uploads a build record artifact
+      # (.dockerbuild) on every build.
+      DOCKER_BUILD_RECORD_UPLOAD: false
     steps:
       - uses: actions/checkout@v7
-
-      # pyproject's version drives the image tag, so bumping it on a merge to
-      # main is what produces a new version tag (see "Choose tags"). GHCR
-      # wants a lowercase repository name.
-      - name: Read version
-        id: version
-        run: |
-          v=$(python3 -c "import tomllib,pathlib; print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")
-          echo "version=$v" >> "$GITHUB_OUTPUT"
-          echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+        with:
+          persist-credentials: false
 
       - uses: docker/setup-buildx-action@v4
 
+      # Both builds use the gha cache's default scope (no scope= on either),
+      # so the publish job's build finds every layer this one wrote.
       - name: Build
         uses: docker/build-push-action@v7
         with:
@@ -215,10 +238,37 @@ jobs:
         if: always()
         run: docker rm -f pairrank-smoke || true
 
-      # Owner rule: nothing publishes until the security review's accepted
-      # findings are fixed. The PUBLISH_IMAGE repo variable stays unset until
-      # then, so CI builds and smoke-tests but never pushes; pull requests
-      # never publish.
+  # Owner rule: nothing publishes until the security review's accepted
+  # findings are fixed. The PUBLISH_IMAGE repo variable stays unset until
+  # then, so CI builds and smoke-tests but never pushes; pull requests never
+  # publish. The guard sits on the job, so no other run ever gets a token
+  # with packages: write, and again on each step that writes.
+  publish:
+    needs: [image]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.PUBLISH_IMAGE == 'true'
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+      packages: write
+    env:
+      DOCKER_BUILD_RECORD_UPLOAD: false
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # pyproject's version drives the image tag, so bumping it on a merge to
+      # main is what produces a new version tag (see "Choose tags"). GHCR
+      # wants a lowercase repository name.
+      - name: Read version
+        id: version
+        run: |
+          v=$(python3 -c "import tomllib,pathlib; print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v4
+
       - name: Log in to GHCR
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.PUBLISH_IMAGE == 'true'
         uses: docker/login-action@v4
@@ -259,9 +309,10 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "$tags"
 
-      # Rebuilds from the gha cache, so this costs little. The sha- tag is
-      # the rollback handle: if :latest breaks the deployment, pin the
-      # previous sha tag and bring the stack back up.
+      # Rebuilds from the image job's gha cache, so this costs little; what
+      # goes out is a rebuild of the tested image rather than the image
+      # itself. The sha- tag is the rollback handle: if :latest breaks the
+      # deployment, pin the previous sha tag and bring the stack back up.
       - name: Push
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.PUBLISH_IMAGE == 'true'
         uses: docker/build-push-action@v7

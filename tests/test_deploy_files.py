@@ -32,6 +32,13 @@ ENV_NAME = re.compile(r"\bPAIRRANK_[A-Z0-9_]+\b")
 
 PUBLISHING_COMMANDS = ("docker push", "imagetools create", "--push")
 
+# Every condition that lets a job or step publish must hold all three.
+PUBLISH_GUARDS = (
+    "github.event_name == 'push'",
+    "github.ref == 'refs/heads/main'",
+    "vars.PUBLISH_IMAGE == 'true'",
+)
+
 
 def _dockerignore_regex(pattern: str) -> re.Pattern:
     """
@@ -120,6 +127,23 @@ def _is_publishing(step: dict) -> bool:
         return True
     run = str(step.get("run", ""))
     return any(command in run for command in PUBLISHING_COMMANDS)
+
+
+def _grants_write(permissions, scope: str) -> bool:
+    """
+    Whether a workflow or job ``permissions`` block grants write on a scope.
+
+    Args:
+        permissions: The block as parsed: a mapping, a string such as
+            ``write-all``, or None when absent.
+        scope: The permission scope, e.g. ``packages``.
+
+    Returns:
+        bool: True if the block lets the token write to that scope.
+    """
+    if isinstance(permissions, str):
+        return permissions.strip() == "write-all"
+    return isinstance(permissions, dict) and permissions.get(scope) == "write"
 
 
 def _config_env_names() -> set[str]:
@@ -215,6 +239,21 @@ class TestTheWorkflow(unittest.TestCase):
         }
         self.assertEqual(pins, {"Dockerfile": [POETRY_VERSION], "ci.yml": [POETRY_VERSION]})
 
+    def assert_publish_guarded(self, condition):
+        """Fail unless an ``if`` condition holds every publish guard."""
+        condition = str(condition or "")
+        for guard in PUBLISH_GUARDS:
+            self.assertIn(guard, condition)
+        self.assertNotIn("||", condition)
+
+    def jobs_granting(self, scope):
+        """Names of the jobs whose own permissions grant write on ``scope``."""
+        return {
+            job_name
+            for job_name, job in self.workflow["jobs"].items()
+            if _grants_write(job.get("permissions"), scope)
+        }
+
     def test_every_publish_step_is_guarded(self):
         publishing = [
             (job_name, step) for job_name, step in self.steps() if _is_publishing(step)
@@ -223,11 +262,32 @@ class TestTheWorkflow(unittest.TestCase):
         self.assertGreaterEqual(len(publishing), 2)
         for job_name, step in publishing:
             with self.subTest(job=job_name, step=step.get("name", step.get("uses"))):
-                condition = step.get("if", "")
-                self.assertIn("vars.PUBLISH_IMAGE == 'true'", condition)
-                self.assertIn("github.ref == 'refs/heads/main'", condition)
-                self.assertIn("github.event_name == 'push'", condition)
-                self.assertNotIn("||", condition)
+                self.assert_publish_guarded(step.get("if"))
+
+    def test_only_a_guarded_job_can_write_packages(self):
+        # The build and smoke test run on every push and pull request; only a
+        # job that cannot run otherwise may hold a registry-writing token.
+        self.assertFalse(_grants_write(self.workflow.get("permissions"), "packages"))
+        writers = self.jobs_granting("packages")
+        self.assertTrue(writers)
+        for job_name in writers:
+            with self.subTest(job=job_name):
+                job = self.workflow["jobs"][job_name]
+                self.assert_publish_guarded(job.get("if"))
+                # Publishes only what passed the smoke test.
+                needs = job.get("needs", [])
+                self.assertIn("image", [needs] if isinstance(needs, str) else needs)
+
+    def test_every_publish_step_is_in_the_publishing_job(self):
+        writers = self.jobs_granting("packages")
+        for job_name, step in self.steps():
+            if _is_publishing(step):
+                with self.subTest(job=job_name, step=step.get("name", step.get("uses"))):
+                    self.assertIn(job_name, writers)
+
+    def test_only_the_badge_job_can_write_contents(self):
+        self.assertFalse(_grants_write(self.workflow.get("permissions"), "contents"))
+        self.assertEqual(self.jobs_granting("contents"), {"badge"})
 
 
 if __name__ == "__main__":
