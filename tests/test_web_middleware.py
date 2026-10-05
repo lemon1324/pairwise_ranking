@@ -15,9 +15,16 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from fastapi.responses import PlainTextResponse
 from fastapi.testclient import TestClient
 
-from src.web.app import MAX_REQUEST_BYTES, create_app
+import web_main
+from src.web.app import (
+    MAX_REQUEST_BYTES,
+    SECURITY_HEADERS,
+    STATIC_MOUNT,
+    create_app,
+)
 from src.web.config import ANY_HOST
 from src.web.routes.projects import MAX_IMPORT_BYTES
 from tests.test_web_projects import config_for, project_data, silence
@@ -377,6 +384,91 @@ class TestBodySizeLimit(MiddlewareTestCase):
         self.assertEqual(response.status_code, 303)
         self.assertIn("error=size", response.headers["location"])
         self.assertEqual(self.project_files(), [])
+
+
+class TestSecurityHeaders(MiddlewareTestCase):
+    """Test cases for the hardening headers on every response."""
+
+    def assert_hardened(self, response):
+        """
+        Check one response carries every security header.
+
+        Args:
+            response: The response to check.
+        """
+        for name, value in SECURITY_HEADERS.items():
+            self.assertEqual(response.headers.get(name), value, name)
+
+    def test_a_page_is_hardened(self):
+        """Test that the register carries the headers."""
+        response = self.client.get("/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assert_hardened(response)
+
+    def test_the_policy_only_forbids_framing(self):
+        """Test that the CSP does not also block the templates' inline scripts."""
+        policy = SECURITY_HEADERS["Content-Security-Policy"]
+
+        self.assertEqual(policy, "frame-ancestors 'none'")
+
+    def test_a_static_file_is_hardened(self):
+        """Test that the stylesheets carry the headers too."""
+        response = self.client.get(f"{STATIC_MOUNT}/css/sheet.css")
+
+        self.assertEqual(response.status_code, 200)
+        self.assert_hardened(response)
+
+    def test_an_error_page_is_hardened(self):
+        """Test that the not-found page carries the headers."""
+        response = self.client.get("/no-such-page")
+
+        self.assertEqual(response.status_code, 404)
+        self.assert_hardened(response)
+
+    def test_the_filters_refusals_are_hardened(self):
+        """Test that the 400, 403 and 413 answered ahead of the app carry them."""
+        refused_host = self.client.get("/", headers={"Host": "attacker.example"})
+        cross_site = self.create(sec_fetch_site="cross-site")
+        too_large = self.client.post(
+            "/projects/new",
+            content=b"name=x",
+            headers={"Content-Length": str(MAX_REQUEST_BYTES + 1)},
+        )
+
+        for response, status in ((refused_host, 400), (cross_site, 403), (too_large, 413)):
+            with self.subTest(status=status):
+                self.assertEqual(response.status_code, status)
+                self.assert_hardened(response)
+
+    def test_a_header_a_route_sets_is_left_alone(self):
+        """Test that the headers are defaults rather than overrides."""
+
+        @self.app.get("/framable")
+        async def framable() -> PlainTextResponse:
+            """Answer with a framing policy of its own."""
+            return PlainTextResponse(
+                "ok", headers={"X-Frame-Options": "SAMEORIGIN"}
+            )
+
+        response = self.client.get("/framable")
+
+        self.assertEqual(response.headers["x-frame-options"], "SAMEORIGIN")
+        self.assertEqual(response.headers["x-content-type-options"], "nosniff")
+
+
+class TestServerHeader(unittest.TestCase):
+    """Test cases for what web_main hands uvicorn."""
+
+    def test_uvicorn_is_told_not_to_name_itself(self):
+        """Test that responses go out without a Server header."""
+        with patch("web_main.configure_logging"), patch(
+            "web_main.load_config", return_value=config_for(Path("unused"))
+        ), patch("web_main.create_app"), patch("web_main.uvicorn.run") as run:
+            self.assertEqual(web_main.main(), 0)
+
+        self.assertIs(run.call_args.kwargs["server_header"], False)
+        self.assertEqual(run.call_args.kwargs["host"], "127.0.0.1")
 
 
 if __name__ == "__main__":

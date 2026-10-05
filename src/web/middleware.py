@@ -16,7 +16,7 @@ there.
 from typing import Iterable
 
 from fastapi import HTTPException
-from starlette.datastructures import Headers
+from starlette.datastructures import Headers, MutableHeaders
 from starlette.responses import PlainTextResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
@@ -216,6 +216,39 @@ class BodySizeLimitMiddleware:
         """Answer 413 without reading the body."""
         response = PlainTextResponse("Request body too large", status_code=413)
         await response(scope, receive, send)
+
+
+class SecurityHeadersMiddleware:
+    """
+    Add the browser-hardening headers to every response.
+
+    A header a route set on purpose is left alone: these are defaults, not
+    overrides.
+    """
+
+    def __init__(self, app: ASGIApp, headers: dict) -> None:
+        """
+        Args:
+            app: The application whose responses to mark.
+            headers: Header names and values to add where missing.
+        """
+        self.app = app
+        self.headers = dict(headers)
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async def marking_send(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                headers = MutableHeaders(scope=message)
+                for name, value in self.headers.items():
+                    if name not in headers:
+                        headers[name] = value
+            await send(message)
+
+        await self.app(scope, receive, marking_send)
 
 
 class SameOriginMiddleware:

@@ -57,6 +57,8 @@ def main() -> int:
         # Not passed as uvicorn's root_path: the application already carries it,
         # and setting it in both places prefixes it twice.
         log_config=None,
+        # No "Server: uvicorn": naming the server only helps whoever probes it.
+        server_header=False,
         # Safe to hand over unexamined: load_config has already settled on a
         # name uvicorn knows. uvicorn looks this up in a dict, so a level it
         # has not heard of is a KeyError here rather than a "Cannot start".
