@@ -5,7 +5,9 @@ they look at headers, wrap ``receive`` or ``send``, and either step aside or
 answer on the spot, and none of that needs a ``Request`` object or the task
 juggling ``BaseHTTPMiddleware`` brings with it. Their refusals are short plain
 text, like Starlette's own: they are answered before the application has
-looked at the request, so there is no page to draw them into.
+looked at the request, so there is no page to draw them into. The one
+exception is a body found too large while a route is reading it, which the
+application's own error page answers.
 
 :func:`~src.web.app.create_app` decides the order they run in; see the comment
 there.
@@ -13,9 +15,10 @@ there.
 
 from typing import Iterable
 
+from fastapi import HTTPException
 from starlette.datastructures import Headers
 from starlette.responses import PlainTextResponse
-from starlette.types import ASGIApp, Receive, Scope, Send
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from .config import ANY_HOST, LOOPBACK_HOSTS
 
@@ -131,6 +134,88 @@ def is_cross_site(headers: Headers) -> bool:
         return True
     authority = origin.partition("://")[2].partition("/")[0]
     return authority != headers.get("host", "").strip().lower()
+
+
+class RequestTooLarge(HTTPException):
+    """
+    Raised out of ``receive`` when a body without a declared length runs past the limit.
+
+    FastAPI's HTTPException rather than a private class, because FastAPI turns
+    anything else raised while it parses a form into a 400 "error parsing the
+    body", and re-raises only this. The application's handlers then draw the
+    413 as its usual error page.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=413, detail="That request is too large to be served."
+        )
+
+
+class BodySizeLimitMiddleware:
+    """
+    Refuse a request body larger than any form or import could need.
+
+    Starlette spools a multipart upload to a temporary file before the import
+    route gets to look at its size, so without this a single request can fill
+    the container's disk, however small the route's own limit.
+    """
+
+    def __init__(self, app: ASGIApp, max_bytes: int) -> None:
+        """
+        Args:
+            app: The application to guard.
+            max_bytes: The largest body allowed through.
+        """
+        self.app = app
+        self.max_bytes = max_bytes
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        # A declared length is refused before a byte is read. One that does
+        # not parse is left to the server, which has already accepted it.
+        declared = Headers(scope=scope).get("content-length", "")
+        if declared.strip().isdigit() and int(declared) > self.max_bytes:
+            await self._refuse(scope, receive, send)
+            return
+
+        # A chunked body has no length to check, so it is counted as it comes.
+        received = 0
+        response_started = False
+
+        async def counting_receive() -> Message:
+            nonlocal received
+            message = await receive()
+            if message["type"] == "http.request":
+                received += len(message.get("body", b""))
+                if received > self.max_bytes:
+                    raise RequestTooLarge()
+            return message
+
+        async def watching_send(message: Message) -> None:
+            nonlocal response_started
+            if message["type"] == "http.response.start":
+                response_started = True
+            await send(message)
+
+        try:
+            await self.app(scope, counting_receive, watching_send)
+        except RequestTooLarge:
+            # Normally the application's handlers have answered already. If
+            # the body was read somewhere they do not reach, answer here, or -
+            # with a response half sent - let the server drop the connection.
+            if response_started:
+                raise
+            await self._refuse(scope, receive, send)
+
+    @staticmethod
+    async def _refuse(scope: Scope, receive: Receive, send: Send) -> None:
+        """Answer 413 without reading the body."""
+        response = PlainTextResponse("Request body too large", status_code=413)
+        await response(scope, receive, send)
 
 
 class SameOriginMiddleware:

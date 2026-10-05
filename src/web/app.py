@@ -29,7 +29,11 @@ from src.data.errors import NewerFormatError, ProjectFormatError
 from src.data.migration import StorageMigration
 
 from .config import WebConfig, load_config
-from .middleware import AllowedHostsMiddleware, SameOriginMiddleware
+from .middleware import (
+    AllowedHostsMiddleware,
+    BodySizeLimitMiddleware,
+    SameOriginMiddleware,
+)
 from .registry import ProjectNotFoundError, ProjectRegistry, ProjectUnreadableError
 from .routes import compare, items, projects, rankings, settings
 from .urls import SHEET_TABS, project_url, register_url
@@ -53,6 +57,12 @@ STATIC_MOUNT = "/static"
 # application cannot work with; 422 says the file itself will not parse.
 NEWER_FORMAT_STATUS = 409
 DAMAGED_STATUS = 422
+
+# The largest request body anything is allowed to send: the biggest project
+# import, plus room for the multipart framing and the form's other fields. The
+# import route still refuses a file over its own limit with its own message;
+# this only stops a body nobody could need from being spooled to disk first.
+MAX_REQUEST_BYTES = projects.MAX_IMPORT_BYTES + 1024 * 1024
 
 
 def _render_error(
@@ -256,9 +266,13 @@ def create_app(config: Optional[WebConfig] = None) -> FastAPI:
 
     # The request filters. Starlette runs the last one added first, so read
     # these bottom up for the order a request meets them in: the host check,
-    # then the cross-site check, then the session. Both checks answer from the
-    # headers alone, before anything reads the body or opens a project.
+    # then the body limit, then the cross-site check, then the session. All
+    # of them run before Starlette parses a form or a route opens a project;
+    # the host check goes first because it is the cheapest way to turn a
+    # request away, and the body limit next so nothing behind it can be made
+    # to read an oversized body.
     app.add_middleware(SameOriginMiddleware)
+    app.add_middleware(BodySizeLimitMiddleware, max_bytes=MAX_REQUEST_BYTES)
     app.add_middleware(AllowedHostsMiddleware, allowed_hosts=config.allowed_hosts)
 
     STATIC_DIR.mkdir(parents=True, exist_ok=True)

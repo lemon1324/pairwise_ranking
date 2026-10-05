@@ -8,16 +8,19 @@ them.
 """
 
 import dataclasses
+import json
 import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from src.web.app import create_app
+from src.web.app import MAX_REQUEST_BYTES, create_app
 from src.web.config import ANY_HOST
-from tests.test_web_projects import config_for, silence
+from src.web.routes.projects import MAX_IMPORT_BYTES
+from tests.test_web_projects import config_for, project_data, silence
 
 
 class MiddlewareTestCase(unittest.TestCase):
@@ -235,6 +238,145 @@ class TestCrossSiteRequestsUnderARootPath(MiddlewareTestCase):
         )
 
         self.assertEqual(response.status_code, 403)
+
+
+class TestBodySizeLimit(MiddlewareTestCase):
+    """
+    Test cases for refusing request bodies no form could need.
+
+    The real limit is 33 MiB, so most of these patch it down rather than
+    upload past it; the declared-length tests use the real one, since a
+    Content-Length is refused before any body is sent.
+    """
+
+    # Small enough to cross cheaply, large enough for a real multipart form.
+    SMALL_LIMIT = 4096
+
+    def project_bytes(self) -> bytes:
+        """
+        Build a small, valid project file to import.
+
+        Returns:
+            bytes: Its contents.
+        """
+        return json.dumps(project_data(name="Imported")).encode()
+
+    def import_project(self, raw: bytes, file_name: str = "Imported.pairrank"):
+        """
+        Post the import form.
+
+        Args:
+            raw: The uploaded file's bytes.
+            file_name: The name it is uploaded under.
+
+        Returns:
+            Response: The response, without following a redirect.
+        """
+        return self.client.post(
+            "/projects/import",
+            files={"file": (file_name, raw, "application/json")},
+            follow_redirects=False,
+        )
+
+    def test_an_oversized_declared_length_is_refused_unread(self):
+        """Test that a Content-Length past the limit never reaches a route."""
+        too_long = str(MAX_REQUEST_BYTES + 1)
+        for path in ("/projects/new", "/projects/import"):
+            with self.subTest(path=path):
+                response = self.client.post(
+                    path,
+                    content=b"name=Big",
+                    headers={
+                        "Content-Type": "application/x-www-form-urlencoded",
+                        "Content-Length": too_long,
+                    },
+                    follow_redirects=False,
+                )
+                self.assertEqual(response.status_code, 413)
+        self.assertEqual(self.project_files(), [])
+
+    def test_the_limit_leaves_room_for_the_largest_import(self):
+        """Test that the body limit sits above the import route's own."""
+        self.assertGreater(MAX_REQUEST_BYTES, MAX_IMPORT_BYTES)
+
+    def test_an_oversized_streamed_body_is_refused(self):
+        """Test that a body with no declared length is counted as it arrives."""
+
+        def chunks():
+            """Yield a form body twice the limit, a kilobyte at a time."""
+            yield b"name="
+            for _ in range(2 * self.SMALL_LIMIT // 1024):
+                yield b"x" * 1024
+
+        with patch("src.web.app.MAX_REQUEST_BYTES", self.SMALL_LIMIT):
+            client = TestClient(self.build_app(), raise_server_exceptions=False)
+        response = client.post(
+            "/projects/new",
+            content=chunks(),
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 413)
+        # Found while the form was being parsed, so the application's own
+        # error page answers rather than the middleware's plain text.
+        self.assertIn("request refused", response.text)
+        self.assertEqual(self.project_files(), [])
+
+    def test_an_oversized_streamed_upload_is_refused(self):
+        """Test that a chunked multipart import stops at the limit too."""
+        boundary = "limit-test-boundary"
+
+        def chunks():
+            """Yield one file part twice the limit, a kilobyte at a time."""
+            yield (
+                f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; "
+                f"filename=\"Big.pairrank\"\r\nContent-Type: application/json\r\n\r\n"
+            ).encode()
+            for _ in range(2 * self.SMALL_LIMIT // 1024):
+                yield b" " * 1024
+            yield f"\r\n--{boundary}--\r\n".encode()
+
+        with patch("src.web.app.MAX_REQUEST_BYTES", self.SMALL_LIMIT):
+            client = TestClient(self.build_app(), raise_server_exceptions=False)
+        response = client.post(
+            "/projects/import",
+            content=chunks(),
+            headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 413)
+        self.assertEqual(self.project_files(), [])
+
+    def test_an_oversized_upload_is_refused(self):
+        """Test that a multipart import past the limit is turned away."""
+        with patch("src.web.app.MAX_REQUEST_BYTES", self.SMALL_LIMIT):
+            self.client = TestClient(self.build_app(), raise_server_exceptions=False)
+
+        response = self.import_project(b" " * (2 * self.SMALL_LIMIT))
+
+        self.assertEqual(response.status_code, 413)
+        self.assertEqual(self.project_files(), [])
+
+    def test_a_normal_import_still_works(self):
+        """Test that the limit is no obstacle to a real project."""
+        response = self.import_project(self.project_bytes())
+
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(self.project_files(), ["Imported.pairrank"])
+
+    def test_a_body_under_the_limit_reaches_the_import_check(self):
+        """Test that the route's own size message still answers what gets through."""
+        with patch("src.web.app.MAX_REQUEST_BYTES", self.SMALL_LIMIT):
+            self.client = TestClient(self.build_app(), raise_server_exceptions=False)
+
+        with patch("src.web.routes.projects.MAX_IMPORT_BYTES", 64):
+            response = self.import_project(b" " * 1024)
+
+        self.assertEqual(response.status_code, 303)
+        self.assertIn("error=size", response.headers["location"])
+        self.assertEqual(self.project_files(), [])
 
 
 if __name__ == "__main__":

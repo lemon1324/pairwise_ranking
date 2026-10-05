@@ -225,7 +225,8 @@ it) makes the server print `Cannot start: ...` and exit with status 2.
 
 The app refuses a request addressed to a host name not in `PAIRRANK_ALLOWED_HOSTS`, which stops a
 web page from reaching it through DNS rebinding. It also refuses, with `403`, any change (a form
-post) that a browser says came from a page on another site.
+post) that a browser says came from a page on another site, and any request body over 33 MiB
+(the 32 MiB import limit plus room for the form) with `413`.
 
 The server runs as a single process on purpose: projects are locked in memory, so two processes on
 one data folder would write the same files without them. Never add uvicorn workers.
