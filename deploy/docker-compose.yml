@@ -21,9 +21,10 @@ services:
       # Files the app writes stay writable by the share's SMB users, so the
       # desktop app can still save over them. The image defaults to 022.
       UMASK: "000"
-      # Votes and modified times are stored as local time, shared with the
-      # desktop app; match the zone the desktop runs in.
-      TZ: America/Denver
+      # EDIT: the time zone the desktop app runs in, as Region/City. Votes and
+      # modified times are stored as naive local times shared with the desktop
+      # app, so a different zone here skews them by the offset.
+      TZ: Etc/UTC
       # EDIT: every name and IP you browse to the app by (add the proxy's
       # hostname if Nginx Proxy Manager fronts it); others get "Invalid host
       # header". localhost and 127.0.0.1 are always allowed.

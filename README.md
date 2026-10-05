@@ -248,9 +248,9 @@ docker compose up --build
 ```
 
 The app is at http://localhost:8080, published on this machine's loopback address only, and its
-data folder is `./.scratch/docker-data`. The container
-runs in `America/Denver` unless `TZ` is set in the shell; vote timestamps are stored as local time,
-so match the zone the desktop app runs in.
+data folder is `./.scratch/docker-data`. The container runs in UTC unless `TZ` is set in the
+shell; vote timestamps are stored as local time, so set `TZ` to the zone the desktop app runs in
+(e.g. `Region/City`).
 
 ## Deploying to Unraid
 
@@ -265,10 +265,10 @@ the image rather than building, so the host never needs the source tree.
 
 ### 1. Share folder
 
-Create a folder on a share for the projects, for example `/mnt/user/documents/pairwise-ranking`,
-and export the share over SMB (*Shares → documents → SMB Security Settings*) so the desktop app
+Create a folder on a share for the projects, for example `/mnt/user/<share>/pairwise-ranking`,
+and export the share over SMB (*Shares → `<share>` → SMB Security Settings*) so the desktop app
 can reach it. The desktop app then opens the same files over SMB, e.g.
-`\\tower\documents\pairwise-ranking\<name>.pairrank`.
+`\\<server>\<share>\pairwise-ranking\<name>.pairrank`.
 
 The web app checks each project file before every change and reloads it if the desktop app saved
 it in the meantime. The desktop app does not watch the file, so don't keep a project open in it
@@ -278,9 +278,10 @@ while voting on the web.
 
 With the Compose Manager plugin (Community Applications): add a stack, paste
 `deploy/docker-compose.yml`, and edit the values marked `# EDIT`: the share path on the left of
-`:/data`, the host port, and `PAIRRANK_ALLOWED_HOSTS`, the names and addresses you browse to the
-app by (the server's IP and name, plus the proxy's hostname if you use one). Browsing by a name
-or IP that isn't in the list gives `Invalid host header`. Then compose up, or from the console:
+`:/data`, the host port, `TZ` (the zone the desktop app runs in), and `PAIRRANK_ALLOWED_HOSTS`,
+the names and addresses you browse to the app by (the server's IP and name, plus the proxy's
+hostname if you use one). Browsing by a name or IP that isn't in the list gives
+`Invalid host header`. Then compose up, or from the console:
 
 ```bash
 docker compose pull
@@ -296,7 +297,7 @@ The stack's other settings:
 | --- | --- | --- |
 | `PUID` / `PGID` | `99` / `100` | The user and group the app runs as: Unraid's `nobody:users`. Set just one and the other takes that default. With neither set, or both set to `0`, the container runs as root and saves root-owned files; that is acceptable only because the app is LAN-only. |
 | `UMASK` | `000` | Files the app writes stay writable by everyone, so SMB users can save over them from the desktop app. The image's own default is `022`; the stack sets `000` for the share. |
-| `TZ` | `America/Denver` | Votes and modified times are stored as local time and shared with the desktop app; set the zone the desktop runs in. |
+| `TZ` | `Etc/UTC` (edit) | Votes and modified times are stored as local time and shared with the desktop app; set the zone the desktop runs in, e.g. `Region/City`. |
 
 The entrypoint never changes ownership of the share. If the folder isn't writable by `PUID:PGID`,
 it refuses to start and logs `Cannot start: the data folder /data is not writable by uid:gid ...`;
