@@ -218,9 +218,14 @@ The web process is configured entirely through environment variables:
 | `PAIRRANK_SECRET_KEY` | random per start | The key signing the session cookie. Unset, a key is generated at each start and a warning is logged; sessions then don't survive a restart. |
 | `PAIRRANK_AUTH_MODE` | `none` | How users are identified. `none` is the only mode implemented; any other value stops the server at startup. |
 | `PAIRRANK_LOG_LEVEL` | `INFO` | `CRITICAL`, `ERROR`, `WARNING`, `INFO`, `DEBUG` or `TRACE`, in any case (`WARN` and `FATAL` are accepted too). An unknown level logs a warning and falls back to `INFO`. |
+| `PAIRRANK_ALLOWED_HOSTS` | empty | Comma-separated host names and IP addresses the app may be reached by, e.g. `<unraid-ip>,<server>,rank.example.lan`. No ports or schemes; `*.example.lan` matches any subdomain. `localhost`, `127.0.0.1` and `::1` are always allowed, and unset means only those. A request under any other name gets `400 Invalid host header`. A lone `*` turns the check off and logs a warning. |
 
-A value that can't be used (a bad port, an unsupported auth mode) makes the server print
-`Cannot start: ...` and exit with status 2.
+A value that can't be used (a bad port, an unsupported auth mode, an allowed host with a port in
+it) makes the server print `Cannot start: ...` and exit with status 2.
+
+The app refuses a request addressed to a host name not in `PAIRRANK_ALLOWED_HOSTS`, which stops a
+web page from reaching it through DNS rebinding. It also refuses, with `403`, any change (a form
+post) that a browser says came from a page on another site.
 
 The server runs as a single process on purpose: projects are locked in memory, so two processes on
 one data folder would write the same files without them. Never add uvicorn workers.
@@ -264,7 +269,9 @@ while voting on the web.
 
 With the Compose Manager plugin (Community Applications): add a stack, paste
 `deploy/docker-compose.yml`, and edit the values marked `# EDIT`: the share path on the left of
-`:/data` and the host port. Then compose up, or from the console:
+`:/data`, the host port, and `PAIRRANK_ALLOWED_HOSTS`, the names and addresses you browse to the
+app by (the server's IP and name, plus the proxy's hostname if you use one). Browsing by a name
+or IP that isn't in the list gives `Invalid host header`. Then compose up, or from the console:
 
 ```bash
 docker compose pull
@@ -314,6 +321,11 @@ a Custom Location `/pairrank` on the proxy host, forwarding to `<unraid-ip>` por
 path or trailing slash after the host, so nginx emits `proxy_pass http://<unraid-ip>:8080;`, which
 passes the request URI through as it came. The app puts the prefix on every link it generates.
 Served at its own hostname instead, leave `PAIRRANK_ROOT_PATH` unset.
+
+Either way, add the proxy's public hostname (`example.com` above) to `PAIRRANK_ALLOWED_HOSTS`.
+Nginx Proxy Manager forwards the browser's `Host` header unchanged, so the app sees that name
+rather than `<unraid-ip>`; keep that default, or every request through the proxy gets
+`Invalid host header` and every form post is refused as cross-site.
 
 A proxy does not add authentication by itself. If the proxy is reachable from the internet, put
 an authenticating layer in front of the app as well.

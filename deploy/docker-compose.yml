@@ -24,6 +24,10 @@ services:
       # Votes and modified times are stored as local time, shared with the
       # desktop app; match the zone the desktop runs in.
       TZ: America/Denver
+      # EDIT: every name and IP you browse to the app by (add the proxy's
+      # hostname if Nginx Proxy Manager fronts it); others get "Invalid host
+      # header". localhost and 127.0.0.1 are always allowed.
+      PAIRRANK_ALLOWED_HOSTS: "<unraid-ip>,<server>"
 
       # Signs the session cookie. Unset, a random key is generated at each
       # start and a warning is logged; that is harmless while the cookie holds

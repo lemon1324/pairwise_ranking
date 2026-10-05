@@ -29,6 +29,7 @@ from src.data.errors import NewerFormatError, ProjectFormatError
 from src.data.migration import StorageMigration
 
 from .config import WebConfig, load_config
+from .middleware import AllowedHostsMiddleware, SameOriginMiddleware
 from .registry import ProjectNotFoundError, ProjectRegistry, ProjectUnreadableError
 from .routes import compare, items, projects, rankings, settings
 from .urls import SHEET_TABS, project_url, register_url
@@ -253,6 +254,13 @@ def create_app(config: Optional[WebConfig] = None) -> FastAPI:
         https_only=False,
     )
 
+    # The request filters. Starlette runs the last one added first, so read
+    # these bottom up for the order a request meets them in: the host check,
+    # then the cross-site check, then the session. Both checks answer from the
+    # headers alone, before anything reads the body or opens a project.
+    app.add_middleware(SameOriginMiddleware)
+    app.add_middleware(AllowedHostsMiddleware, allowed_hosts=config.allowed_hosts)
+
     STATIC_DIR.mkdir(parents=True, exist_ok=True)
     app.mount(
         STATIC_MOUNT, StaticFiles(directory=str(STATIC_DIR)), name="static"
@@ -283,9 +291,11 @@ def create_app(config: Optional[WebConfig] = None) -> FastAPI:
         return JSONResponse({"status": "ok"})
 
     logger.info(
-        "Serving projects from %s (root path %r, auth mode %s)",
+        "Serving projects from %s (root path %r, auth mode %s, "
+        "allowed hosts: loopback%s)",
         config.data_dir,
         config.root_path,
         config.auth_mode,
+        "".join(f", {host}" for host in config.allowed_hosts),
     )
     return app

@@ -35,6 +35,8 @@ from src.web.app import (
     create_app,
 )
 from src.web.config import (
+    ALLOWED_HOSTS_VAR,
+    ANY_HOST,
     AUTH_MODE_VAR,
     DATA_DIR_VAR,
     DEFAULT_DATA_DIR,
@@ -51,6 +53,10 @@ from src.web.config import (
 from src.web.deps import LOCAL_PRINCIPAL, Principal, get_current_user, get_session
 
 
+# The Host header TestClient sends. The application allows loopback names only
+# unless told otherwise, so the test configuration has to name this one.
+TEST_CLIENT_HOST = "testserver"
+
 def config_for(data_dir: Path, root_path: str = "") -> WebConfig:
     """
     Build a configuration pointing at a temporary data directory.
@@ -61,7 +67,8 @@ def config_for(data_dir: Path, root_path: str = "") -> WebConfig:
 
     Returns:
         WebConfig: A configuration with a fixed key, so nothing in a test run
-        depends on a generated one.
+        depends on a generated one, that allows the host name TestClient
+        sends.
     """
     return WebConfig(
         data_dir=data_dir,
@@ -71,6 +78,7 @@ def config_for(data_dir: Path, root_path: str = "") -> WebConfig:
         secret_key_generated=False,
         auth_mode="none",
         log_level="CRITICAL",
+        allowed_hosts=(TEST_CLIENT_HOST,),
     )
 
 
@@ -494,6 +502,44 @@ class TestConfig(unittest.TestCase):
             with self.subTest(raw=raw):
                 with self.assertRaises(ValueError):
                     load_config({PORT_VAR: raw})
+
+    def test_unset_allowed_hosts_leave_loopback_only(self):
+        """Test that the host allowlist fails closed rather than open."""
+        self.assertEqual(load_config({}).allowed_hosts, ())
+        self.assertEqual(load_config({ALLOWED_HOSTS_VAR: " , "}).allowed_hosts, ())
+
+    def test_allowed_hosts_are_trimmed_and_lower_cased(self):
+        """Test that the list is read the way an operator would write it."""
+        config = load_config(
+            {ALLOWED_HOSTS_VAR: " NAS.lan , 10.0.0.20,*.Example.LAN, [fd00::5]"}
+        )
+
+        self.assertEqual(
+            config.allowed_hosts,
+            ("nas.lan", "10.0.0.20", "*.example.lan", "fd00::5"),
+        )
+
+    def test_a_lone_wildcard_allows_any_host_with_a_warning(self):
+        """Test that switching the check off is loud."""
+        with self.assertLogs("src.web.config", "WARNING") as logged:
+            config = load_config({SECRET_KEY_VAR: "k", ALLOWED_HOSTS_VAR: "*"})
+
+        self.assertEqual(config.allowed_hosts, (ANY_HOST,))
+        self.assertIn(ALLOWED_HOSTS_VAR, logged.output[0])
+
+    def test_an_allowed_host_that_can_never_match_is_refused(self):
+        """Test that a URL, a port or a misplaced wildcard stops the server."""
+        for raw in (
+            "http://nas.lan",
+            "nas.lan:8080",
+            "nas.*.lan",
+            "*nas.lan",
+            "*.*.lan",
+            "nas lan",
+        ):
+            with self.subTest(raw=raw):
+                with self.assertRaises(ValueError):
+                    load_config({ALLOWED_HOSTS_VAR: raw})
 
     def test_an_unimplemented_auth_mode_is_refused(self):
         """Test that a misspelt mode is not read as no authentication."""

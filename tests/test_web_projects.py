@@ -48,6 +48,10 @@ from src.web.urls import DEFAULT_SHEET
 # tag and the page that goes with it.
 FUTURE_VERSION = CURRENT_FORMAT_VERSION + 1
 
+# The Host header TestClient sends. The application allows loopback names only
+# unless told otherwise, so the test configuration has to name this one.
+TEST_CLIENT_HOST = "testserver"
+
 
 def config_for(data_dir: Path, root_path: str = "") -> WebConfig:
     """
@@ -59,7 +63,8 @@ def config_for(data_dir: Path, root_path: str = "") -> WebConfig:
 
     Returns:
         WebConfig: A configuration with a fixed key, so nothing in a test run
-        depends on a generated one.
+        depends on a generated one, that allows the host name TestClient
+        sends.
     """
     return WebConfig(
         data_dir=data_dir,
@@ -69,6 +74,7 @@ def config_for(data_dir: Path, root_path: str = "") -> WebConfig:
         secret_key_generated=False,
         auth_mode="none",
         log_level="CRITICAL",
+        allowed_hosts=(TEST_CLIENT_HOST,),
     )
 
 

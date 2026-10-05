@@ -80,6 +80,11 @@ def ancestors_of(markup: str, element_id: str) -> list:
     return walker.found or []
 
 
+# The Host header TestClient sends. The application allows loopback names only
+# unless told otherwise, so the test configuration has to name this one.
+TEST_CLIENT_HOST = "testserver"
+
+
 def config_for(data_dir: Path, root_path: str = "") -> WebConfig:
     """
     Build a configuration pointing at a temporary data directory.
@@ -89,7 +94,8 @@ def config_for(data_dir: Path, root_path: str = "") -> WebConfig:
         root_path: The subpath a reverse proxy would serve it under.
 
     Returns:
-        WebConfig: A configuration with a fixed key.
+        WebConfig: A configuration with a fixed key that allows the host name
+        TestClient sends.
     """
     return WebConfig(
         data_dir=data_dir,
@@ -99,6 +105,7 @@ def config_for(data_dir: Path, root_path: str = "") -> WebConfig:
         secret_key_generated=False,
         auth_mode="none",
         log_level="CRITICAL",
+        allowed_hosts=(TEST_CLIENT_HOST,),
     )
 
 
