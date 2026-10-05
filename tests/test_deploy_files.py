@@ -146,6 +146,20 @@ class TestTheDeployFiles(unittest.TestCase):
         text = DOCKERFILE.read_text(encoding="utf-8")
         self.assertIn(f"poetry=={POETRY_VERSION}", text)
 
+    def test_the_image_listens_on_every_interface(self):
+        # The app binds loopback by default; inside a container that would be
+        # unreachable through the published port.
+        text = DOCKERFILE.read_text(encoding="utf-8")
+        self.assertRegex(text, rf"\b{config.HOST_VAR}=0\.0\.0\.0\b")
+
+    def test_the_local_stack_publishes_on_loopback_only(self):
+        ports = yaml.safe_load(LOCAL_COMPOSE.read_text(encoding="utf-8"))[
+            "services"
+        ]["pairwise-ranking"]["ports"]
+        self.assertTrue(ports)
+        for port in ports:
+            self.assertTrue(str(port).startswith("127.0.0.1:"), port)
+
     def test_the_image_leaves_out_the_desktop_ui(self):
         text = DOCKERIGNORE.read_text(encoding="utf-8")
         self.assertTrue((REPO_ROOT / "src" / "ui" / "main_window.py").is_file())

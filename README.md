@@ -208,12 +208,19 @@ $env:PAIRRANK_DATA_DIR="$HOME\Documents\PairwiseRanking"; poetry run python web_
 Then open http://localhost:8080. Set `PAIRRANK_DATA_DIR` when running outside a container: the
 default, `/data`, is the container's mount point.
 
+> **Warning: the web app has no authentication.** Anyone who can reach it can read and change every
+> project in its data folder. Run this way it listens on `127.0.0.1` only, so only this machine can
+> reach it. Setting `PAIRRANK_HOST=0.0.0.0` exposes it to your whole network with no login; do
+> that only on a network you trust, and list the names you reach it by in
+> `PAIRRANK_ALLOWED_HOSTS`.
+
 The web process is configured entirely through environment variables:
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `PAIRRANK_DATA_DIR` | `/data` | The folder holding the `.pairrank` projects. |
-| `PAIRRANK_PORT` | `8080` | The port the server listens on (all interfaces). Must be 1–65535. |
+| `PAIRRANK_HOST` | `127.0.0.1` | The address the server listens on. The default is loopback only; `0.0.0.0` listens on every interface, which the image sets because a container is only reachable through its published port. |
+| `PAIRRANK_PORT` | `8080` | The port the server listens on. Must be 1–65535. |
 | `PAIRRANK_ROOT_PATH` | empty | The subpath a reverse proxy serves the app under, e.g. `/pairrank`. Leading and trailing slashes are optional. Leave unset when served at the root. |
 | `PAIRRANK_SECRET_KEY` | random per start | The key signing the session cookie. Unset, a key is generated at each start and a warning is logged; sessions then don't survive a restart. |
 | `PAIRRANK_AUTH_MODE` | `none` | How users are identified. `none` is the only mode implemented; any other value stops the server at startup. |
@@ -240,7 +247,8 @@ Desktop:
 docker compose up --build
 ```
 
-The app is at http://localhost:8080 and its data folder is `./.scratch/docker-data`. The container
+The app is at http://localhost:8080, published on this machine's loopback address only, and its
+data folder is `./.scratch/docker-data`. The container
 runs in `America/Denver` unless `TZ` is set in the shell; vote timestamps are stored as local time,
 so match the zone the desktop app runs in.
 

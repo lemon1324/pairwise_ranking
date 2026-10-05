@@ -40,8 +40,10 @@ from src.web.config import (
     AUTH_MODE_VAR,
     DATA_DIR_VAR,
     DEFAULT_DATA_DIR,
+    DEFAULT_HOST,
     DEFAULT_LOG_LEVEL,
     DEFAULT_PORT,
+    HOST_VAR,
     LOG_LEVEL_VAR,
     PORT_VAR,
     ROOT_PATH_VAR,
@@ -502,6 +504,20 @@ class TestConfig(unittest.TestCase):
             with self.subTest(raw=raw):
                 with self.assertRaises(ValueError):
                     load_config({PORT_VAR: raw})
+
+    def test_the_server_binds_loopback_unless_told_otherwise(self):
+        """Test that a local run is not exposed to the network by default."""
+        self.assertEqual(load_config({}).host, DEFAULT_HOST)
+        self.assertEqual(DEFAULT_HOST, "127.0.0.1")
+        self.assertEqual(load_config({HOST_VAR: "  "}).host, DEFAULT_HOST)
+        self.assertEqual(load_config({HOST_VAR: " 0.0.0.0 "}).host, "0.0.0.0")
+
+    def test_a_bind_address_that_is_not_one_is_refused(self):
+        """Test that a URL or a stray space stops the server readably."""
+        for raw in ("http://0.0.0.0", "0.0.0.0 8080"):
+            with self.subTest(raw=raw):
+                with self.assertRaises(ValueError):
+                    load_config({HOST_VAR: raw})
 
     def test_unset_allowed_hosts_leave_loopback_only(self):
         """Test that the host allowlist fails closed rather than open."""

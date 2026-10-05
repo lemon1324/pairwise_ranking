@@ -9,7 +9,9 @@ services:
     build: .
     image: pairwise-ranking:local
     ports:
-      - "8080:8080"
+      # Loopback only: this stack is for testing on this machine, and the
+      # app has no authentication.
+      - "127.0.0.1:8080:8080"
     environment:
       # Votes are stored as naive local times shared with the desktop app, so
       # the container has to run in the desktop's zone rather than UTC.

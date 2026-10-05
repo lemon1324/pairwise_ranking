@@ -20,10 +20,6 @@ from src.web.config import configure_logging, load_config
 
 logger = logging.getLogger(__name__)
 
-# Bound on every interface because the process lives in a container whose only
-# route in is a published port; binding loopback would make it unreachable.
-HOST = "0.0.0.0"
-
 # The application sits behind the user's own reverse proxy on a LAN, so the
 # forwarded headers are as trustworthy as anything else on that network and
 # there is no sensible fixed list of proxy addresses to name. Without this,
@@ -52,7 +48,9 @@ def main() -> int:
 
     uvicorn.run(
         create_app(config),
-        host=HOST,
+        # Loopback unless PAIRRANK_HOST says otherwise. The image sets
+        # 0.0.0.0, since a container's only route in is a published port.
+        host=config.host,
         port=config.port,
         proxy_headers=True,
         forwarded_allow_ips=FORWARDED_ALLOW_IPS,

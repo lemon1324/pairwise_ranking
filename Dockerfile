@@ -31,7 +31,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/app/.venv/bin:$PATH" \
     PAIRRANK_DATA_DIR=/data \
-    PAIRRANK_PORT=8080
+    PAIRRANK_PORT=8080 \
+    PAIRRANK_HOST=0.0.0.0
 
 WORKDIR /app
 COPY --from=build /app/.venv /app/.venv
