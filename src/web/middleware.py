@@ -52,6 +52,25 @@ def _host_name(host_header: str) -> str:
     return host.partition(":")[0].rstrip(".")
 
 
+def _split_port(authority: str) -> tuple:
+    """
+    Split a ``host[:port]`` authority into its name and port.
+
+    Args:
+        authority: A ``Host`` header or the authority of an ``Origin``,
+            already lower case.
+
+    Returns:
+        tuple: The name, an IPv6 address keeping its brackets, and the port,
+        or an empty string when there is none.
+    """
+    if authority.startswith("["):
+        name, _, rest = authority.partition("]")
+        return name + "]", rest.partition(":")[2]
+    name, _, port = authority.partition(":")
+    return name, port
+
+
 class AllowedHostsMiddleware:
     """
     Refuse a request whose ``Host`` header names a host this server is not.
@@ -108,10 +127,11 @@ def is_cross_site(headers: Headers) -> bool:
     Whether a browser says a request came from a page on another site.
 
     ``Sec-Fetch-Site`` decides when it is there, which it is in every current
-    browser. Without it, ``Origin`` is compared with ``Host``: a reverse proxy
-    that forwards the ``Host`` it was sent (Nginx Proxy Manager does) keeps the
-    two equal for this application's own pages, under any root path. A request
-    with neither is not from a browser that could be tricked into sending it,
+    browser except over plain HTTP to a name other than localhost. Without it,
+    ``Origin`` is compared with ``Host``: a reverse proxy that forwards the
+    host name it was sent, with or without the port (Nginx Proxy Manager drops
+    it), keeps the two matching for this application's own pages, under any
+    root path. A request with neither is not from a browser that could be tricked into sending it,
     so it passes.
 
     Args:
@@ -133,7 +153,14 @@ def is_cross_site(headers: Headers) -> bool:
     if origin == "null":
         return True
     authority = origin.partition("://")[2].partition("/")[0]
-    return authority != headers.get("host", "").strip().lower()
+    host = headers.get("host", "").strip().lower()
+    host_name, host_port = _split_port(host)
+    if not host_port:
+        # Nginx Proxy Manager forwards the host name without the port, so a
+        # Host with no port matches an Origin on any port of that name. Another
+        # port on the same name then counts as this site: fine on a LAN.
+        return _split_port(authority)[0] != host_name
+    return authority != host
 
 
 class RequestTooLarge(HTTPException):

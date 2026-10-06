@@ -333,9 +333,10 @@ passes the request URI through as it came. The app puts the prefix on every link
 Served at its own hostname instead, leave `PAIRRANK_ROOT_PATH` unset.
 
 Either way, add the proxy's public hostname (`example.com` above) to `PAIRRANK_ALLOWED_HOSTS`.
-Nginx Proxy Manager forwards the browser's `Host` header unchanged, so the app sees that name
-rather than `<unraid-ip>`; keep that default, or every request through the proxy gets
-`Invalid host header` and every form post is refused as cross-site.
+Nginx Proxy Manager forwards the host name the browser asked for, without the port, so the app
+sees that name rather than `<unraid-ip>`, and accepts a form posted from that name on any port;
+keep that default, or every request through the proxy gets `Invalid host header` and every form
+post is refused as cross-site.
 
 A proxy does not add authentication by itself. If the proxy is reachable from the internet, put
 an authenticating layer in front of the app as well.

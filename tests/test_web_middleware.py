@@ -187,13 +187,56 @@ class TestCrossSiteRequests(MiddlewareTestCase):
         """Test that an older browser's Origin is compared with the host."""
         for origin in (
             "http://evil.example",
-            "http://testserver:8080",
+            "http://evil.example:8080",
             "http://testserver.evil.example",
+            "http://eviltestserver",
             "null",
         ):
             with self.subTest(origin=origin):
                 self.assertEqual(self.create(origin=origin).status_code, 403)
         self.assertEqual(self.project_files(), [])
+
+    def test_a_port_mismatch_is_refused_when_the_host_has_a_port(self):
+        """Test that a Host with a port is matched port and all."""
+        for host, origin in (
+            ("testserver:8080", "http://testserver"),
+            ("testserver:8080", "http://testserver:9090"),
+            ("[::1]:8080", "http://[::1]:9090"),
+        ):
+            with self.subTest(host=host, origin=origin):
+                self.assertEqual(
+                    self.create(host=host, origin=origin).status_code, 403
+                )
+        self.assertEqual(self.project_files(), [])
+
+    def test_a_host_without_a_port_matches_its_name_on_any_port(self):
+        """Test that a proxy dropping the port from Host keeps forms working."""
+        for name, host, origin in (
+            ("A", "testserver", "http://testserver:1880"),
+            ("B", "TestServer", "https://testserver:8443"),
+            ("C", "[::1]", "http://[::1]:1880"),
+            ("D", "testserver:8080", "http://TESTSERVER:8080"),
+        ):
+            with self.subTest(host=host, origin=origin):
+                self.assertEqual(
+                    self.create(name, host=host, origin=origin).status_code, 303
+                )
+        self.assertEqual(
+            self.project_files(),
+            ["A.pairrank", "B.pairrank", "C.pairrank", "D.pairrank"],
+        )
+
+    def test_a_host_without_a_port_still_refuses_another_name(self):
+        """Test that dropping the port compares names, not prefixes."""
+        for host, origin in (
+            ("testserver", "http://evil.example:1880"),
+            ("[::1]", "http://[::2]:1880"),
+            ("[::1]", "http://localhost:1880"),
+        ):
+            with self.subTest(host=host, origin=origin):
+                self.assertEqual(
+                    self.create(host=host, origin=origin).status_code, 403
+                )
 
     def test_a_same_origin_post_is_served(self):
         """Test that the application's own forms still work."""
