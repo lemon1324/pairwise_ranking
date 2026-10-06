@@ -1,6 +1,6 @@
 [project]
 name = "pairwise-ranking"
-version = "0.2.0"
+version = "0.3.0"
 description = "Pairwise comparison ranking with a Bradley-Terry model, as a PyQt6 desktop app and a FastAPI/HTMX web app"
 authors = [{name = "lemon1324", email = "916812+lemon1324@users.noreply.github.com"}]
 readme = "README.md"
