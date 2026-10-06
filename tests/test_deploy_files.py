@@ -146,6 +146,24 @@ def _grants_write(permissions, scope: str) -> bool:
     return isinstance(permissions, dict) and permissions.get(scope) == "write"
 
 
+def _is_read_only(permissions) -> bool:
+    """
+    Whether a workflow or job ``permissions`` block grants no write scope at all.
+
+    Args:
+        permissions: The block as parsed: a mapping, a string such as
+            ``read-all``, or None when absent.
+
+    Returns:
+        bool: True if the block is there and writes nothing. An absent block
+        is not read-only: the token then gets the repository's default, which
+        may be write on everything.
+    """
+    if isinstance(permissions, str):
+        return permissions.strip() == "read-all"
+    return isinstance(permissions, dict) and "write" not in permissions.values()
+
+
 def _config_env_names() -> set[str]:
     """Every ``PAIRRANK_*`` name src/web/config.py defines as a constant."""
     return {
@@ -263,12 +281,38 @@ class TestTheWorkflow(unittest.TestCase):
         self.assertNotIn("||", condition)
 
     def jobs_granting(self, scope):
-        """Names of the jobs whose own permissions grant write on ``scope``."""
+        """Names of the jobs whose permissions, own or inherited, grant write on ``scope``."""
         return {
             job_name
             for job_name, job in self.workflow["jobs"].items()
-            if _grants_write(job.get("permissions"), scope)
+            if _grants_write(
+                job.get("permissions", self.workflow.get("permissions")), scope
+            )
         }
+
+    def assert_read_only_by_default(self, workflow):
+        """Fail unless the workflow's block, which jobs without one inherit, writes nothing."""
+        self.assertTrue(_is_read_only(workflow.get("permissions")))
+        inheriting = [name for name, job in workflow["jobs"].items() if "permissions" not in job]
+        for job_name in inheriting:
+            # Not a subTest: one would swallow the failure assertRaises looks for.
+            self.assertTrue(_is_read_only(workflow.get("permissions")), job_name)
+
+    def test_the_workflow_token_is_read_only_by_default(self):
+        # A job without its own block inherits this one; with none at all it
+        # would get the repository's default token, which may write.
+        self.assert_read_only_by_default(self.workflow)
+
+    def test_a_missing_or_writing_default_would_be_caught(self):
+        for permissions in (None, "write-all", {"contents": "read", "packages": "write"}):
+            with self.subTest(permissions=permissions):
+                workflow = dict(self.workflow)
+                if permissions is None:
+                    workflow.pop("permissions", None)
+                else:
+                    workflow["permissions"] = permissions
+                with self.assertRaises(AssertionError):
+                    self.assert_read_only_by_default(workflow)
 
     def test_every_publish_step_is_guarded(self):
         publishing = [
