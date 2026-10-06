@@ -29,6 +29,12 @@ from src.data.errors import NewerFormatError, ProjectFormatError
 from src.data.migration import StorageMigration
 
 from .config import WebConfig, load_config
+from .middleware import (
+    AllowedHostsMiddleware,
+    BodySizeLimitMiddleware,
+    SameOriginMiddleware,
+    SecurityHeadersMiddleware,
+)
 from .registry import ProjectNotFoundError, ProjectRegistry, ProjectUnreadableError
 from .routes import compare, items, projects, rankings, settings
 from .urls import SHEET_TABS, project_url, register_url
@@ -52,6 +58,23 @@ STATIC_MOUNT = "/static"
 # application cannot work with; 422 says the file itself will not parse.
 NEWER_FORMAT_STATUS = 409
 DAMAGED_STATUS = 422
+
+# The largest request body anything is allowed to send: the biggest project
+# import, plus room for the multipart framing and the form's other fields. The
+# import route still refuses a file over its own limit with its own message;
+# this only stops a body nobody could need from being spooled to disk first.
+MAX_REQUEST_BYTES = projects.MAX_IMPORT_BYTES + 1024 * 1024
+
+# Added to every response that does not set them itself. The policy is
+# frame-ancestors only - no page may be framed, which is what stops a page
+# elsewhere overlaying a delete button - and deliberately no broader CSP: the
+# templates carry inline scripts a script-src would have to carve out.
+SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Content-Security-Policy": "frame-ancestors 'none'",
+    "Referrer-Policy": "same-origin",
+}
 
 
 def _render_error(
@@ -253,6 +276,20 @@ def create_app(config: Optional[WebConfig] = None) -> FastAPI:
         https_only=False,
     )
 
+    # The request filters. Starlette runs the last one added first, so read
+    # these bottom up for the order a request meets them in: the security
+    # headers, the host check, the body limit, the cross-site check, then the
+    # session. The filters all run before Starlette parses a form or a route
+    # opens a project; the host check goes first because it is the cheapest
+    # way to turn a request away, and the body limit next so nothing behind it
+    # can be made to read an oversized body. The headers wrap all of them, so
+    # their 400, 413 and 403 answers carry the headers too. Only the 500 page
+    # goes without: Starlette draws it outside every added middleware.
+    app.add_middleware(SameOriginMiddleware)
+    app.add_middleware(BodySizeLimitMiddleware, max_bytes=MAX_REQUEST_BYTES)
+    app.add_middleware(AllowedHostsMiddleware, allowed_hosts=config.allowed_hosts)
+    app.add_middleware(SecurityHeadersMiddleware, headers=SECURITY_HEADERS)
+
     STATIC_DIR.mkdir(parents=True, exist_ok=True)
     app.mount(
         STATIC_MOUNT, StaticFiles(directory=str(STATIC_DIR)), name="static"
@@ -283,9 +320,11 @@ def create_app(config: Optional[WebConfig] = None) -> FastAPI:
         return JSONResponse({"status": "ok"})
 
     logger.info(
-        "Serving projects from %s (root path %r, auth mode %s)",
+        "Serving projects from %s (root path %r, auth mode %s, "
+        "allowed hosts: loopback%s)",
         config.data_dir,
         config.root_path,
         config.auth_mode,
+        "".join(f", {host}" for host in config.allowed_hosts),
     )
     return app

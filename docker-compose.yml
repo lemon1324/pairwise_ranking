@@ -1,0 +1,21 @@
+# Local stack: builds the image from this checkout, for testing on Docker
+# Desktop. `docker compose up --build`, then open http://localhost:8080.
+#
+# The data folder is .scratch/docker-data, which is git-excluded and visible to
+# Windows. Never mount ./data: it holds the plan documents, not projects.
+# deploy/docker-compose.yml is the pull-only stack for the Unraid host.
+services:
+  pairwise-ranking:
+    build: .
+    image: pairwise-ranking:local
+    ports:
+      # Loopback only: this stack is for testing on this machine, and the
+      # app has no authentication.
+      - "127.0.0.1:8080:8080"
+    environment:
+      # Votes are stored as naive local times shared with the desktop app, so
+      # the container has to run in the desktop's zone. Set TZ (Region/City)
+      # in the shell before `docker compose up`; unset, it falls back to UTC.
+      TZ: ${TZ:-Etc/UTC}
+    volumes:
+      - ./.scratch/docker-data:/data

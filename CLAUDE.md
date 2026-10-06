@@ -2,14 +2,14 @@
 
 ## Environment
 
-- **Package manager**: Poetry (local venv via `poetry.toml`)
+- **Package manager**: Poetry 2.x (local venv via `poetry.toml`)
 - **Python version**: 3.10+ (developed on 3.11)
 
 ## Commands
 
 ```bash
-# Install dependencies
-poetry install
+# Install dependencies (all groups: desktop, web, dev)
+poetry sync
 
 # Run application
 poetry run python main.py
@@ -27,6 +27,20 @@ poetry run python -m unittest discover tests/ -v
 - **Test location**: `tests/`
 - **Run all tests**: `poetry run python -m unittest discover tests/ -v`
   (or from WSL: `./.venv/Scripts/python.exe -m unittest discover tests/`)
+
+## Docker, CI and publishing
+
+- WSL has no `docker`; run Docker commands through Windows, e.g. `cmd.exe /c docker compose up --build`.
+- CI (`.github/workflows/ci.yml`) runs the tests and builds and smoke-tests the image on every push
+  and pull request, with a read-only token. A separate `publish` job, the only one with
+  `packages: write`, rebuilds the image from the `image` job's cache and pushes it to GHCR, and it
+  runs only on a push to `main` when the `PUBLISH_IMAGE` repo variable is `true`.
+  `tests/test_deploy_files.py` checks those guards.
+- `origin` is HTTPS and WSL has no credential helper, so push over SSH:
+  `git push git@github.com:lemon1324/pairwise_ranking.git <branch>`.
+- Bump `[project].version` in `pyproject.toml` when merging to `main`: CI pushes `:<version>` only
+  when that tag doesn't exist yet (otherwise it warns and skips it), so an unbumped merge publishes
+  no new version tag. `:latest` only moves when the commit is still `main`'s head.
 
 ## Subagents
 

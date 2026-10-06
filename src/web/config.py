@@ -9,6 +9,7 @@ Names are prefixed ``PAIRRANK_`` because the Unraid template drops them into a
 shared container environment alongside ``PUID``, ``PGID`` and ``TZ``.
 """
 
+import ipaddress
 import logging
 import os
 import secrets
@@ -26,11 +27,28 @@ ROOT_PATH_VAR = "PAIRRANK_ROOT_PATH"
 SECRET_KEY_VAR = "PAIRRANK_SECRET_KEY"
 AUTH_MODE_VAR = "PAIRRANK_AUTH_MODE"
 LOG_LEVEL_VAR = "PAIRRANK_LOG_LEVEL"
+HOST_VAR = "PAIRRANK_HOST"
+ALLOWED_HOSTS_VAR = "PAIRRANK_ALLOWED_HOSTS"
 
 # The bind mount the Unraid template points at the appdata share.
 DEFAULT_DATA_DIR = "/data"
 
 DEFAULT_PORT = 8080
+
+# Loopback only, so a developer's ``python web_main.py`` is not an
+# unauthenticated server on whatever network the laptop is on. The image sets
+# 0.0.0.0, because inside a container loopback is unreachable from the
+# published port.
+DEFAULT_HOST = "127.0.0.1"
+
+# Host names every request may arrive under, whatever the operator lists: the
+# image's HEALTHCHECK, the CI smoke test and a developer's browser all reach
+# the server this way, and none of them is something a DNS-rebinding page can
+# make a browser call.
+LOOPBACK_HOSTS = ("localhost", "127.0.0.1", "::1")
+
+# The allowed-hosts entry that switches the check off.
+ANY_HOST = "*"
 
 # The only authentication mode that exists yet. The plan's later modes are
 # named here so that the error raised by a typo says what the alternatives will
@@ -84,6 +102,13 @@ class WebConfig:
         log_level: The root log level name, always upper case and always one
             :data:`UVICORN_LOG_LEVELS` holds, so it can be handed to either
             logger without a second opinion about what it means.
+        host: The address :mod:`web_main` binds.
+        allowed_hosts: The host names, lower case, a request's ``Host`` header
+            may carry besides :data:`LOOPBACK_HOSTS`, which are always allowed.
+            An entry may be ``*.example.lan`` for any subdomain, or
+            :data:`ANY_HOST` to allow every name. Empty, the default, allows
+            loopback only - so a test or a caller that builds a config by hand
+            gets the closed answer unless it asks for another.
     """
 
     data_dir: Path
@@ -93,6 +118,8 @@ class WebConfig:
     secret_key_generated: bool
     auth_mode: str
     log_level: str
+    host: str = DEFAULT_HOST
+    allowed_hosts: tuple = ()
 
 
 def _normalized_root_path(raw: str) -> str:
@@ -135,6 +162,101 @@ def _port(raw: str) -> int:
     if not 1 <= port <= 65535:
         raise ValueError(f"{PORT_VAR} must be between 1 and 65535, got {port}")
     return port
+
+
+def _bind_host(raw: str) -> str:
+    """
+    Read the address to bind.
+
+    Args:
+        raw: The configured value.
+
+    Returns:
+        str: The address, or :data:`DEFAULT_HOST` when none was given.
+
+    Raises:
+        ValueError: If the value is plainly not an address - a URL, or a name
+            with a space in it - which uvicorn would otherwise turn into a
+            traceback rather than a readable refusal.
+    """
+    host = raw.strip()
+    if not host:
+        return DEFAULT_HOST
+    if "/" in host or any(ch.isspace() for ch in host):
+        raise ValueError(
+            f"{HOST_VAR} must be an address to listen on, such as "
+            f"{DEFAULT_HOST} or 0.0.0.0, got {raw!r}"
+        )
+    return host
+
+
+def _host_pattern(entry: str) -> str:
+    """
+    Check one allowed-hosts entry and put it into the form requests are matched in.
+
+    Args:
+        entry: One comma-separated entry, already stripped.
+
+    Returns:
+        str: The entry in lower case, an IPv6 address without its brackets,
+        a name without the trailing dot of a fully qualified one - requests
+        are matched with it stripped too.
+
+    Raises:
+        ValueError: If the entry could never match a ``Host`` header: an empty
+            name, a URL, a name with a port, or a wildcard anywhere but a
+            leading ``*.``. A list that silently matches nothing is how a
+            server ends up refusing its own operator with no clue why.
+    """
+    pattern = entry.lower()
+    if pattern == ANY_HOST:
+        return pattern
+    if pattern.startswith("[") and pattern.endswith("]"):
+        pattern = pattern[1:-1]
+    else:
+        pattern = pattern.rstrip(".")
+
+    problem = ""
+    if not pattern or "/" in pattern or any(ch.isspace() for ch in pattern):
+        problem = "is not a host name"
+    elif "*" in pattern and (not pattern.startswith("*.") or "*" in pattern[1:]):
+        problem = "can only use * as a whole leading label, as in *.example.lan"
+    elif ":" in pattern:
+        try:
+            ipaddress.IPv6Address(pattern)
+        except ValueError:
+            problem = "has a port or scheme; list the bare host name"
+    if problem:
+        raise ValueError(f"{ALLOWED_HOSTS_VAR} entry {entry!r} {problem}")
+    return pattern
+
+
+def _allowed_hosts(raw: str) -> tuple:
+    """
+    Read the host names requests may arrive under.
+
+    Args:
+        raw: The configured comma-separated list.
+
+    Returns:
+        tuple: The entries, checked and lower-cased, in the order given.
+        Empty when nothing was configured, which leaves loopback only.
+
+    Raises:
+        ValueError: If an entry could never match a request.
+    """
+    hosts = tuple(
+        _host_pattern(entry.strip()) for entry in raw.split(",") if entry.strip()
+    )
+    if ANY_HOST in hosts:
+        logger.warning(
+            "%s includes %r, so requests are accepted under any host name. "
+            "That re-opens the server to DNS rebinding; list the names it is "
+            "reached by instead.",
+            ALLOWED_HOSTS_VAR,
+            ANY_HOST,
+        )
+    return hosts
 
 
 def _auth_mode(raw: str) -> str:
@@ -229,6 +351,8 @@ def load_config(env: dict = None) -> WebConfig:
         secret_key_generated=generated,
         auth_mode=_auth_mode(source.get(AUTH_MODE_VAR) or ""),
         log_level=_log_level(source.get(LOG_LEVEL_VAR) or DEFAULT_LOG_LEVEL),
+        host=_bind_host(source.get(HOST_VAR) or ""),
+        allowed_hosts=_allowed_hosts(source.get(ALLOWED_HOSTS_VAR) or ""),
     )
 
 

@@ -1,0 +1,20 @@
+# Default-deny build context: the image ships only what the web app needs to
+# run. Everything else -- git history, the venv, local data and plan docs,
+# .scratch/, editor and tooling state -- stays out without having to be named.
+# A new top-level path the image needs means adding a `!` line below.
+*
+**
+
+!src/
+!web_main.py
+!pyproject.toml
+!poetry.lock
+!README.md
+!LICENSE
+!docker/
+
+# Re-exclude what the web image must not carry inside the allowed trees. The
+# desktop UI imports PyQt6; leaving it out proves nothing else needs it.
+**/__pycache__/
+**/*.pyc
+src/ui/

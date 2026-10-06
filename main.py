@@ -29,7 +29,7 @@ def main():
     """
     app = QApplication(sys.argv)
     app.setApplicationName("Pairwise Ranking")
-    app.setApplicationVersion("0.2.0")
+    app.setApplicationVersion("0.3.0")
 
     # Load user configuration
     user_config = UserConfig()
