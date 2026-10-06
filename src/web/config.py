@@ -198,22 +198,26 @@ def _host_pattern(entry: str) -> str:
         entry: One comma-separated entry, already stripped.
 
     Returns:
-        str: The entry in lower case, an IPv6 address without its brackets.
+        str: The entry in lower case, an IPv6 address without its brackets,
+        a name without the trailing dot of a fully qualified one - requests
+        are matched with it stripped too.
 
     Raises:
-        ValueError: If the entry could never match a ``Host`` header: a URL, a
-            name with a port, or a wildcard anywhere but a leading ``*.``. A
-            list that silently matches nothing is how a server ends up
-            refusing its own operator with no clue why.
+        ValueError: If the entry could never match a ``Host`` header: an empty
+            name, a URL, a name with a port, or a wildcard anywhere but a
+            leading ``*.``. A list that silently matches nothing is how a
+            server ends up refusing its own operator with no clue why.
     """
     pattern = entry.lower()
-    if pattern.startswith("[") and pattern.endswith("]"):
-        pattern = pattern[1:-1]
     if pattern == ANY_HOST:
         return pattern
+    if pattern.startswith("[") and pattern.endswith("]"):
+        pattern = pattern[1:-1]
+    else:
+        pattern = pattern.rstrip(".")
 
     problem = ""
-    if "/" in pattern or any(ch.isspace() for ch in pattern):
+    if not pattern or "/" in pattern or any(ch.isspace() for ch in pattern):
         problem = "is not a host name"
     elif "*" in pattern and (not pattern.startswith("*.") or "*" in pattern[1:]):
         problem = "can only use * as a whole leading label, as in *.example.lan"

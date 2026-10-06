@@ -25,7 +25,7 @@ from src.web.app import (
     STATIC_MOUNT,
     create_app,
 )
-from src.web.config import ANY_HOST
+from src.web.config import ALLOWED_HOSTS_VAR, ANY_HOST, load_config
 from src.web.routes.projects import MAX_IMPORT_BYTES
 from tests.test_web_projects import config_for, project_data, silence
 
@@ -136,6 +136,39 @@ class TestAllowedHosts(MiddlewareTestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertEqual(self.project_files(), [])
+
+
+class TestFullyQualifiedAllowedHosts(MiddlewareTestCase):
+    """Test cases for allowed hosts written with a trailing dot."""
+
+    def build_app(self):
+        """Build the application from the configured list, as the server does."""
+        config = dataclasses.replace(
+            config_for(self.data_dir, self.root_path),
+            allowed_hosts=load_config(
+                {ALLOWED_HOSTS_VAR: "nas.lan., *.example.lan."}
+            ).allowed_hosts,
+        )
+        return create_app(config)
+
+    def test_a_fully_qualified_entry_matches_with_or_without_the_dot(self):
+        """Test that a trailing dot on an entry does not lock everyone out."""
+        for host in (
+            "nas.lan",
+            "nas.lan.",
+            "rank.example.lan:8080",
+            "a.example.lan.",
+        ):
+            with self.subTest(host=host):
+                response = self.client.get("/healthz", headers={"Host": host})
+                self.assertEqual(response.status_code, 200)
+
+    def test_other_names_are_still_refused(self):
+        """Test that stripping the dot widens nothing."""
+        for host in ("example.lan", "nas.lan.attacker.example"):
+            with self.subTest(host=host):
+                response = self.client.get("/healthz", headers={"Host": host})
+                self.assertEqual(response.status_code, 400)
 
 
 class TestUnsetAllowedHosts(MiddlewareTestCase):

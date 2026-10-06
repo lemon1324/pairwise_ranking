@@ -535,6 +535,12 @@ class TestConfig(unittest.TestCase):
             ("nas.lan", "10.0.0.20", "*.example.lan", "fd00::5"),
         )
 
+    def test_a_fully_qualified_allowed_host_loses_its_trailing_dot(self):
+        """Test that an entry is kept the way a request's Host is matched."""
+        config = load_config({ALLOWED_HOSTS_VAR: "nas.lan., *.Home.LAN."})
+
+        self.assertEqual(config.allowed_hosts, ("nas.lan", "*.home.lan"))
+
     def test_a_lone_wildcard_allows_any_host_with_a_warning(self):
         """Test that switching the check off is loud."""
         with self.assertLogs("src.web.config", "WARNING") as logged:
@@ -552,6 +558,9 @@ class TestConfig(unittest.TestCase):
             "*nas.lan",
             "*.*.lan",
             "nas lan",
+            ".",
+            "*.",
+            "[]",
         ):
             with self.subTest(raw=raw):
                 with self.assertRaises(ValueError):
