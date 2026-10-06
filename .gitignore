@@ -7,6 +7,9 @@
 # Claude Code per-machine settings (the shared agent definitions in .claude/agents/ are tracked)
 .claude/settings.local.json
 
+# Impeccable design-tool state and review captures (DESIGN.md is the tracked design record)
+.impeccable/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
