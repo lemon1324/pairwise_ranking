@@ -413,6 +413,22 @@ class Project:
         """
         self.slot_labels = normalize_slot_labels(raw, self.slots)
 
+    def vote_index(self, vote_id: str) -> Optional[int]:
+        """
+        Find where a vote sits in the order votes were cast.
+
+        Args:
+            vote_id: The vote's id.
+
+        Returns:
+            Optional[int]: Its position, from 0, or None when the project holds
+            no vote with that id.
+        """
+        return next(
+            (index for index, vote in enumerate(self.votes) if vote.id == vote_id),
+            None,
+        )
+
     def pop_last_vote(self) -> Optional[Vote]:
         """
         Remove and return the most recently recorded vote.

@@ -461,8 +461,39 @@
   align-content: start;
 }
 
-.tb-revision .label {
+.rev-head {
   grid-column: 1 / -1;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+
+.rev-history {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  margin-left: auto;
+  /* A bigger target than the words, for a thumb on the phone layout. */
+  padding: var(--s-2) 0 var(--s-2) var(--s-3);
+  margin-block: calc(-1 * var(--s-2));
+  font-family: var(--font-label);
+  font-weight: 600;
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  text-decoration: none;
+}
+
+.rev-history:hover {
+  color: var(--ink);
+  text-decoration: underline;
+}
+
+.rev-history .icon {
+  width: 0.75rem;
+  height: 0.75rem;
 }
 
 .rev-rows {

@@ -238,6 +238,43 @@ class TestVoteSerialization(unittest.TestCase):
         self.assertEqual(original.weight, restored.weight)
         self.assertEqual(original.timestamp, restored.timestamp)
 
+    def test_an_unrevised_vote_writes_no_revision_key(self):
+        """Test that files of unrevised votes serialize exactly as before."""
+        vote = Vote(winner_id="item1", loser_id="item2", weight=2.0)
+
+        self.assertNotIn("revised_at", vote.to_dict())
+        self.assertIsNone(Vote.from_dict(vote.to_dict()).revised_at)
+
+    def test_a_revision_date_round_trips(self):
+        """Test that revised_at is written and read back."""
+        revised = datetime(2026, 10, 31, 9, 15)
+        vote = Vote(winner_id="item1", loser_id="item2", weight=2.0, revised_at=revised)
+
+        data = vote.to_dict()
+
+        self.assertEqual(data["revised_at"], "2026-10-31T09:15:00")
+        restored = Vote.from_dict(data)
+        self.assertEqual(restored.revised_at, revised)
+        self.assertTrue(restored.is_unchanged_from(vote))
+
+    def test_a_revision_date_that_is_not_text_is_refused(self):
+        """Test that a malformed revised_at fails the load rather than vanishing."""
+        with self.assertRaises(ValueError):
+            Vote.from_dict(
+                {"winner_id": "item1", "loser_id": "item2", "weight": 1.0, "revised_at": 5}
+            )
+
+    def test_is_unchanged_from_sees_any_field(self):
+        """Test that a vote with the same id but a new outcome is a change."""
+        vote = Vote(winner_id="item1", loser_id="item2", weight=2.0)
+        flipped = Vote(
+            winner_id="item2", loser_id="item1", weight=2.0,
+            timestamp=vote.timestamp, id=vote.id,
+        )
+
+        self.assertEqual(vote, flipped)
+        self.assertFalse(vote.is_unchanged_from(flipped))
+
 
 class TestVoteWeights(unittest.TestCase):
     """Test cases for vote weight constants."""

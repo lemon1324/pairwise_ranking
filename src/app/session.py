@@ -154,6 +154,30 @@ class UndoResult:
     pair: Optional[tuple[Item, Item]]
 
 
+class VoteNotFoundError(LookupError):
+    """Raised when a vote to revise or withdraw is not in the project."""
+
+
+@dataclass(frozen=True)
+class VoteRevision:
+    """
+    One correction of a past vote, with what it replaced.
+
+    Enough to put the vote back exactly as it was: see
+    :meth:`ProjectSession.restore_revision`.
+
+    Attributes:
+        before: The vote as it stood before the correction.
+        after: The vote as corrected, or None when it was withdrawn.
+        index: The vote's position in the order votes were cast, which a
+            withdrawn vote returns to when it is restored.
+    """
+
+    before: Vote
+    after: Optional[Vote]
+    index: int
+
+
 class ProjectSession:
     """
     An open project plus the derived state a frontend needs to render it.
@@ -506,6 +530,129 @@ class ProjectSession:
 
         pair = None if winner is None or loser is None else (winner, loser)
         return UndoResult(vote=vote, offer=offer, pair=pair)
+
+    def _held_vote(self, vote_id: str) -> int:
+        """
+        Find a vote the caller means to change.
+
+        Args:
+            vote_id: The vote's id.
+
+        Returns:
+            int: Its position in the project's votes.
+
+        Raises:
+            VoteNotFoundError: If the project holds no such vote.
+        """
+        index = self._project.vote_index(vote_id)
+        if index is None:
+            raise VoteNotFoundError(vote_id)
+        return index
+
+    def revise_vote(
+        self,
+        vote_id: str,
+        winner_id: str,
+        weight: float,
+        revised_at: Optional[datetime] = None,
+    ) -> Optional[VoteRevision]:
+        """
+        Correct a past vote's outcome, keeping its id, place and timestamp.
+
+        Undo only reaches the latest vote; this is for one entered wrongly
+        further back. The pair stays the same - only which of its two items
+        won, and by how much, can change - and the timestamp is kept, so decay
+        and the pair selector go on treating the vote as the age it is. The
+        vote is marked with the time of the correction.
+
+        Args:
+            vote_id: The vote to correct.
+            winner_id: Which of the vote's two items won.
+            weight: The strength of the preference.
+            revised_at: When the correction was made. Defaults to now.
+
+        Returns:
+            Optional[VoteRevision]: The correction, or None when the outcome
+            given is the one already recorded and nothing was changed.
+
+        Raises:
+            VoteNotFoundError: If the project holds no such vote.
+            ValueError: If the winner is not one of the vote's two items or
+                the weight is not positive.
+        """
+        index = self._held_vote(vote_id)
+        before = self._project.votes[index]
+        if winner_id not in before.get_pair():
+            raise ValueError("The winner must be one of the vote's two items")
+        loser_id = before.loser_id if winner_id == before.winner_id else before.winner_id
+
+        if winner_id == before.winner_id and weight == before.weight:
+            return None
+
+        after = Vote(
+            winner_id=winner_id,
+            loser_id=loser_id,
+            weight=weight,
+            timestamp=before.timestamp,
+            id=before.id,
+            revised_at=revised_at or datetime.now(),
+        )
+        self._project.votes[index] = after
+        self._changed()
+        return VoteRevision(before=before, after=after, index=index)
+
+    def withdraw_vote(self, vote_id: str) -> VoteRevision:
+        """
+        Remove a past vote from wherever it sits.
+
+        What choosing Equal on a revision means: Equal records no vote, so the
+        corrected answer is that this one should not be there.
+
+        Args:
+            vote_id: The vote to withdraw.
+
+        Returns:
+            VoteRevision: The withdrawal, with no ``after``.
+
+        Raises:
+            VoteNotFoundError: If the project holds no such vote.
+        """
+        index = self._held_vote(vote_id)
+        before = self._project.votes.pop(index)
+        self._changed()
+        return VoteRevision(before=before, after=None, index=index)
+
+    def restore_revision(self, revision: VoteRevision) -> bool:
+        """
+        Put a revised or withdrawn vote back exactly as it was.
+
+        Only while the file still shows the revision: a vote revised again,
+        undone, or - for a withdrawal - already back is left alone, because
+        restoring over a change made since would lose that change.
+
+        Args:
+            revision: The correction to reverse.
+
+        Returns:
+            bool: True when the vote was restored, False when the project has
+            moved on and nothing was changed.
+        """
+        votes = self._project.votes
+        if revision.after is None:
+            if self._project.vote_index(revision.before.id) is not None:
+                return False
+            # An item deleted since took its votes with it; a vote naming it
+            # cannot come back.
+            if any(self._project.find_item(i) is None for i in revision.before.get_pair()):
+                return False
+            votes.insert(min(revision.index, len(votes)), revision.before)
+        else:
+            index = self._project.vote_index(revision.after.id)
+            if index is None or not votes[index].is_unchanged_from(revision.after):
+                return False
+            votes[index] = revision.before
+        self._changed()
+        return True
 
     def add_item(self, item: Item) -> Item:
         """

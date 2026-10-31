@@ -36,7 +36,7 @@ from .middleware import (
     SecurityHeadersMiddleware,
 )
 from .registry import ProjectNotFoundError, ProjectRegistry, ProjectUnreadableError
-from .routes import compare, items, projects, rankings, settings
+from .routes import compare, history, items, projects, rankings, settings
 from .urls import SHEET_TABS, project_url, register_url
 
 
@@ -304,6 +304,7 @@ def create_app(config: Optional[WebConfig] = None) -> FastAPI:
     app.include_router(compare.router)
     app.include_router(rankings.router)
     app.include_router(settings.router)
+    app.include_router(history.router)
 
     @app.get("/healthz", include_in_schema=False)
     async def healthz() -> JSONResponse:

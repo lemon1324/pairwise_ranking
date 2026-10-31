@@ -1,0 +1,57 @@
+{#
+  Revise one vote: Compare's scale without its middle, in place of the
+  callout's actions.
+
+  A fragment for `#row-callout`. An ordinary POST: every answer is a page of
+  the sheet with the vote selected, so it survives a reload.
+
+  Six stations rather than Compare's seven buttons. A is the winner on file,
+  so what was recorded is always the left-hand station it names, ringed with a
+  dashed rule and said in words under the scale; B is its loser. They are
+  radio buttons, not submit buttons: choosing one changes nothing until Issue
+  revision is pressed. Equal is not a station, because here it means removing
+  the vote - Withdraw, its own button, worded as what it does.
+
+  No key is declared except Escape on Cancel. The digits Compare votes with do
+  nothing here, and Issue revision does not claim ↵: the browser's own Enter
+  on a focused station is the only shortcut, and it needs the focus inside the
+  scale first. `recorded` sends back the winner the stations were drawn
+  against, so a vote revised in another tab meanwhile is not misread.
+#}
+{% from "macros/popover.html" import popover, popover_body %}
+{% from "macros/sheet.html" import key, icon %}
+
+{% call popover("Revise " ~ number, extra_class="is-revise") %}
+  {% call popover_body(title="Revise " ~ number, subtitle="cast " ~ cast) %}
+    <form class="revise" method="post" action="{{ revise_action }}">
+      {% for field, value in view_fields.items() %}<input type="hidden" name="{{ field }}" value="{{ value }}">{% endfor %}
+      <input type="hidden" name="recorded" value="{{ recorded_winner }}">
+      <fieldset class="revise-scale">
+        <legend class="visually-hidden">Corrected outcome</legend>
+        <div class="revise-ends" aria-hidden="true">
+          <span class="revise-end"><i class="fill-a"></i>{{ a_name }}</span>
+          <span class="revise-end"><i class="fill-b"></i>{{ b_name }}</span>
+        </div>
+        <div class="revise-stations">
+          {% for station in stations %}
+          <label class="revise-station side-{{ station.side }}{% if station.recorded %} is-recorded{% endif %}">
+            <input type="radio" name="outcome" value="{{ station.value }}"
+                   {%- if station.recorded %} checked autofocus{% elif loop.first and not stations|selectattr("recorded")|list %} autofocus{% endif %}>
+            <span class="revise-bars" aria-hidden="true">{% for _ in range(station.bars) %}<i class="fill-{{ station.side }}"></i>{% endfor %}</span>
+            <span class="revise-word"><span class="visually-hidden">{{ station.name }}: </span>{{ station.word }}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+      <p class="revise-note">
+        On file: {{ recorded }}. A revision keeps the date it was cast, so decay still counts it as that old.
+      </p>
+      <div class="strip-buttons">
+        <button class="cell-button is-primary" type="submit">Issue revision</button>
+        <button class="cell-button is-danger" type="submit" formaction="{{ withdraw_action }}">Withdraw {{ number }}</button>
+        <a class="cell-button" href="{{ cancel_url }}" data-sheet-key="Escape"
+           aria-keyshortcuts="Escape">Cancel {{ key("Esc") }}</a>
+      </div>
+    </form>
+  {% endcall %}
+{% endcall %}

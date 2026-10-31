@@ -10,7 +10,12 @@ from typing import Optional
 
 from src.app.confidence import ConfidenceReading
 from src.app.record import UNKNOWN_OPPONENT_NAME
-from src.app.session import DuplicateTargetError, NoPairReason, ProjectSession
+from src.app.session import (
+    DuplicateTargetError,
+    NoPairReason,
+    ProjectSession,
+    VoteNotFoundError,
+)
 from src.data.project_storage import ProjectStorage
 from src.models.export import EXPORT_HEADER, build_export_rows
 from src.models.item import Item
@@ -668,6 +673,130 @@ class TestProjectSessionUndoEligibility(unittest.TestCase):
         result = session.undo()
 
         self.assertIsNone(result.pair)
+
+
+class TestProjectSessionVoteRevisions(unittest.TestCase):
+    """Test cases for correcting and withdrawing a past vote."""
+
+    def setUp(self):
+        """Three votes, the middle one the one being corrected."""
+        self.votes = [
+            build_vote("item-0", "item-1", 2.0, days_ago=3),
+            build_vote("item-1", "item-2", 1.0, days_ago=2),
+            build_vote("item-2", "item-3", 3.0, days_ago=1),
+        ]
+        self.session = build_session(project=build_project(votes=list(self.votes)), seed=0)
+        self.middle = self.votes[1]
+
+    def test_revising_changes_the_outcome_in_place(self):
+        """Test the winner flips and the vote keeps its id, place and date."""
+        revision = self.session.revise_vote(
+            self.middle.id, "item-2", 3.0, revised_at=NOW
+        )
+
+        stored = self.session.project.votes[1]
+        self.assertEqual(stored.id, self.middle.id)
+        self.assertEqual((stored.winner_id, stored.loser_id), ("item-2", "item-1"))
+        self.assertEqual(stored.weight, 3.0)
+        self.assertEqual(stored.timestamp, self.middle.timestamp)
+        self.assertEqual(stored.revised_at, NOW)
+        self.assertEqual(revision.index, 1)
+        self.assertIs(revision.before, self.middle)
+        self.assertIs(revision.after, stored)
+
+    def test_revising_only_the_strength_keeps_the_winner(self):
+        """Test a weight-only correction."""
+        self.session.revise_vote(self.middle.id, "item-1", 3.0)
+
+        stored = self.session.project.votes[1]
+        self.assertEqual((stored.winner_id, stored.weight), ("item-1", 3.0))
+
+    def test_revising_to_the_same_outcome_changes_nothing(self):
+        """Test that resubmitting the recorded answer is not a revision."""
+        self.assertIsNone(self.session.revise_vote(self.middle.id, "item-1", 1.0))
+        self.assertIsNone(self.session.project.votes[1].revised_at)
+
+    def test_the_winner_must_be_one_of_the_pair(self):
+        """Test that a revision cannot move the vote to another pair."""
+        with self.assertRaises(ValueError):
+            self.session.revise_vote(self.middle.id, "item-3", 1.0)
+        self.assertIs(self.session.project.votes[1], self.middle)
+
+    def test_an_unknown_vote_is_refused(self):
+        """Test the error for a vote the project does not hold."""
+        with self.assertRaises(VoteNotFoundError):
+            self.session.revise_vote("missing", "item-0", 1.0)
+        with self.assertRaises(VoteNotFoundError):
+            self.session.withdraw_vote("missing")
+
+    def test_withdrawing_removes_the_vote_from_its_place(self):
+        """Test that the votes either side are untouched."""
+        revision = self.session.withdraw_vote(self.middle.id)
+
+        self.assertEqual(
+            [v.id for v in self.session.project.votes],
+            [self.votes[0].id, self.votes[2].id],
+        )
+        self.assertIsNone(revision.after)
+        self.assertEqual(revision.index, 1)
+
+    def test_a_revision_changes_the_rankings(self):
+        """Test that the derived rankings are refitted after a revision."""
+        before = {r.item.id: r.elo_rating for r in self.session.rankings()}
+
+        self.session.revise_vote(self.middle.id, "item-2", 3.0)
+
+        after = {r.item.id: r.elo_rating for r in self.session.rankings()}
+        self.assertNotEqual(before, after)
+
+    def test_restoring_a_revision_puts_the_old_vote_back(self):
+        """Test the exact old vote returns, revision mark and all."""
+        revision = self.session.revise_vote(self.middle.id, "item-2", 3.0)
+
+        self.assertTrue(self.session.restore_revision(revision))
+        self.assertIs(self.session.project.votes[1], self.middle)
+        self.assertIsNone(self.session.project.votes[1].revised_at)
+
+    def test_restoring_a_withdrawal_puts_the_vote_back_in_its_place(self):
+        """Test a withdrawn vote returns to its old position."""
+        revision = self.session.withdraw_vote(self.middle.id)
+
+        self.assertTrue(self.session.restore_revision(revision))
+        self.assertEqual(
+            [v.id for v in self.session.project.votes], [v.id for v in self.votes]
+        )
+
+    def test_a_restore_after_a_later_revision_is_refused(self):
+        """Test that restoring cannot overwrite a change made since."""
+        first = self.session.revise_vote(self.middle.id, "item-2", 3.0)
+        self.session.revise_vote(self.middle.id, "item-2", 1.0)
+
+        self.assertFalse(self.session.restore_revision(first))
+        self.assertEqual(self.session.project.votes[1].weight, 1.0)
+
+    def test_a_restore_after_the_vote_is_gone_is_refused(self):
+        """Test that a revised vote undone since stays gone."""
+        revision = self.session.revise_vote(self.votes[2].id, "item-3", 3.0)
+        self.session.undo()
+
+        self.assertFalse(self.session.restore_revision(revision))
+        self.assertEqual(len(self.session.project.votes), 2)
+
+    def test_a_withdrawal_is_restored_only_once(self):
+        """Test that restoring twice does not duplicate the vote."""
+        revision = self.session.withdraw_vote(self.middle.id)
+
+        self.assertTrue(self.session.restore_revision(revision))
+        self.assertFalse(self.session.restore_revision(revision))
+        self.assertEqual(len(self.session.project.votes), 3)
+
+    def test_a_withdrawal_of_a_deleted_item_s_vote_is_not_restored(self):
+        """Test that a vote cannot come back naming an item that is gone."""
+        revision = self.session.withdraw_vote(self.middle.id)
+        self.session.delete_item("item-2")
+
+        self.assertFalse(self.session.restore_revision(revision))
+        self.assertNotIn(self.middle.id, [v.id for v in self.session.project.votes])
 
 
 class TestProjectSessionItemMutations(unittest.TestCase):

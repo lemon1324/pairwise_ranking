@@ -29,7 +29,12 @@ class Vote:
         loser_id: The ID of the item that was not preferred.
         weight: The strength of preference (1.0=slightly, 2.0=better, 3.0=much better).
         timestamp: When the vote was recorded. Auto-set to current time if not provided.
+            A revision keeps it, so decay goes on treating the vote as the age
+            it really is.
         id: A unique identifier for the vote. Auto-generated if not provided.
+        revised_at: When the vote's outcome was last corrected after the fact,
+            or None for a vote that stands as it was cast. Written to the file
+            only when set, so an unrevised vote serializes exactly as before.
 
     Example:
         >>> vote = Vote(winner_id="item1", loser_id="item2", weight=2.0)
@@ -42,6 +47,7 @@ class Vote:
     weight: float
     timestamp: datetime = field(default_factory=datetime.now)
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    revised_at: Optional[datetime] = None
 
     def __post_init__(self):
         """
@@ -151,13 +157,39 @@ class Vote:
         Returns:
             dict: Dictionary with vote data including ISO format timestamp.
         """
-        return {
+        data = {
             "id": self.id,
             "winner_id": self.winner_id,
             "loser_id": self.loser_id,
             "weight": self.weight,
             "timestamp": self.timestamp.isoformat(),
         }
+        if self.revised_at is not None:
+            data["revised_at"] = self.revised_at.isoformat()
+        return data
+
+    def is_unchanged_from(self, other: "Vote") -> bool:
+        """
+        Check whether this is the same vote with every field as it was.
+
+        Equality is by id alone, which is what a set of votes wants; a
+        revision needs to know whether the vote in the file is still exactly
+        the one it saw.
+
+        Args:
+            other: The vote to compare with.
+
+        Returns:
+            bool: True when every recorded field matches.
+        """
+        return (
+            self.id == other.id
+            and self.winner_id == other.winner_id
+            and self.loser_id == other.loser_id
+            and self.weight == other.weight
+            and self.timestamp == other.timestamp
+            and self.revised_at == other.revised_at
+        )
 
     @classmethod
     def from_dict(cls, data: dict) -> "Vote":
@@ -174,14 +206,20 @@ class Vote:
             KeyError: If required keys are missing from data.
             ValueError: If 'winner_id', 'loser_id' or a present 'id' is empty,
                 null or not text or a number (see
-                :func:`~src.models.item.normalize_id`), or the two items are
-                one.
+                :func:`~src.models.item.normalize_id`), the two items are
+                one, or a present 'revised_at' is not an ISO date and time.
         """
         timestamp = data.get("timestamp")
         if isinstance(timestamp, str):
             timestamp = datetime.fromisoformat(timestamp)
         elif timestamp is None:
             timestamp = datetime.now()
+
+        revised_at = data.get("revised_at")
+        if isinstance(revised_at, str):
+            revised_at = datetime.fromisoformat(revised_at)
+        elif revised_at is not None:
+            raise ValueError("A vote's 'revised_at' must be an ISO date and time")
 
         return cls(
             winner_id=normalize_id(data["winner_id"], "A vote's 'winner_id'"),
@@ -193,4 +231,5 @@ class Vote:
                 if "id" in data
                 else str(uuid.uuid4())
             ),
+            revised_at=revised_at,
         )
