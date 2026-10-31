@@ -59,6 +59,8 @@ from .session import (
     ProjectSession,
     SlotSummary,
     UndoResult,
+    VoteNotFoundError,
+    VoteRevision,
 )
 
 __all__ = [
@@ -105,4 +107,6 @@ __all__ = [
     "ProjectSession",
     "SlotSummary",
     "UndoResult",
+    "VoteNotFoundError",
+    "VoteRevision",
 ]
