@@ -41,7 +41,6 @@ import csv
 import io
 import logging
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Optional
 from urllib.parse import quote, urlencode
 
@@ -51,8 +50,9 @@ from fastapi.templating import Jinja2Templates
 
 from src.app.confidence import rating_points_per_log_unit
 from src.app.record import WeightedRecord
+from src.app.register import export_file_name
 from src.models.project import Project
-from src.models.ranking import RankingResult
+from src.models.ranking import RankingResult, se_in_rating_points
 
 from ..deps import Principal, get_current_user, get_registry
 from ..registry import ProjectRegistry
@@ -103,11 +103,6 @@ RECORD_SHOWN = 7
 
 # What a figure the sheet cannot give reads as: no votes, or no rank.
 NO_FIGURE = "–"
-
-# The name the export is downloaded under, after the project's file stem. The
-# desktop offers "rankings.csv" in its save dialog; a browser has no dialog, so
-# the project's name goes in front and two exports do not overwrite each other.
-EXPORT_SUFFIX = "rankings.csv"
 
 
 def _templates(request: Request) -> Jinja2Templates:
@@ -254,9 +249,7 @@ def _se_points(result: RankingResult, scale: Optional[float]) -> Optional[int]:
         Optional[int]: The rounded standard error, or None when there is no
         scale to measure it on.
     """
-    if scale is None:
-        return None
-    return round(result.log_strength_se * scale)
+    return se_in_rating_points(result, scale)
 
 
 def _row(
@@ -569,13 +562,17 @@ def _download_name(project_id: str) -> str:
     """
     Name the downloaded export after its project.
 
+    A browser has no save dialog, so the project's name goes in front and two
+    projects' exports do not overwrite each other in the downloads folder. The
+    desktop offers the same name in its dialog.
+
     Args:
         project_id: The project's file name.
 
     Returns:
-        str: ``<stem> rankings.csv``.
+        str: ``<slug>-rankings.csv``.
     """
-    return f"{Path(project_id).stem} {EXPORT_SUFFIX}"
+    return export_file_name(project_id)
 
 
 def _disposition(file_name: str) -> str:

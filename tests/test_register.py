@@ -18,6 +18,7 @@ from src.app.register import (
     MAX_FILE_STEM_LENGTH,
     ProjectCondition,
     duplicate_project_file,
+    export_file_name,
     import_file,
     probe_project_file,
     resolve_project_path,
@@ -755,6 +756,24 @@ class TestUniqueFileName(RegisterTestCase):
         self.assertEqual(
             unique_file_name(self.temp_dir, "Taken"), "taken-2.pairrank"
         )
+
+
+class TestExportFileName(unittest.TestCase):
+    """Test cases for naming a project's rankings export."""
+
+    def test_the_project_stem_goes_in_front(self):
+        """Test that a slugged project names its export after itself."""
+        self.assertEqual(
+            export_file_name("tasting-flight.pairrank"), "tasting-flight-rankings.csv"
+        )
+
+    def test_a_hand_named_file_is_slugged(self):
+        """Test that a file named outside the app gets no space in its export."""
+        self.assertEqual(export_file_name("My Switches.pairrank"), "my-switches-rankings.csv")
+
+    def test_a_stem_with_nothing_usable_leaves_the_plain_name(self):
+        """Test the fallback when the slug comes out empty."""
+        self.assertEqual(export_file_name("###.pairrank"), "rankings.csv")
 
 
 class TestResolveProjectPath(RegisterTestCase):

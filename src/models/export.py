@@ -7,10 +7,17 @@ with :class:`csv.writer`, which takes care of quoting.
 
 from typing import Optional
 
-from src.models.ranking import RankingResult
+from src.models.ranking import (
+    RankingResult,
+    rating_points_per_log_unit,
+    se_in_rating_points,
+)
 
 
-# Column headers of an exported rankings file, in order.
+# Column headers of an exported rankings file, in order. The uncertainty is in
+# rating points, the units of the rating beside it and of the +/- on the
+# Rankings sheet; the raw Bradley-Terry standard error follows it under its own
+# name.
 EXPORT_HEADER = [
     "Rank",
     "Name",
@@ -18,10 +25,14 @@ EXPORT_HEADER = [
     "Identifier",
     "Status",
     "ELO Rating",
-    "Uncertainty (SE)",
+    "Uncertainty (± rating)",
+    "Log-strength SE",
     "Comparisons",
     "Description",
 ]
+
+# Suffix of an export's default file name, after the project's file stem.
+EXPORT_SUFFIX = "rankings.csv"
 
 
 def build_export_rows(
@@ -42,9 +53,13 @@ def build_export_rows(
     Returns:
         list[list[str]]: The header row followed by one row per exported
         result. Every cell is a string; the rank cell is empty for items that
-        carry no rank (retired items).
+        carry no rank (retired items), and the rating-point uncertainty is
+        empty when the ratings carry no spread to measure it on.
     """
     rows: list[list[str]] = [list(EXPORT_HEADER)]
+    # Over every result, before any filtering: the ratings are z-scores across
+    # everything the model was given.
+    scale = rating_points_per_log_unit(rankings)
 
     for result in rankings:
         item = result.item
@@ -55,6 +70,7 @@ def build_export_rows(
         if category is not None and item.category != category:
             continue
 
+        se_points = se_in_rating_points(result, scale)
         rows.append([
             "" if result.rank is None else str(result.rank),
             item.name,
@@ -62,6 +78,7 @@ def build_export_rows(
             item.identifier,
             item.status,
             f"{result.elo_rating:.0f}",
+            "" if se_points is None else str(se_points),
             f"{result.log_strength_se:.4f}",
             str(result.comparison_count),
             item.description,

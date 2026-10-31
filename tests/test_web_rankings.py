@@ -607,18 +607,18 @@ class TestTheExport(RankingsTestCase):
         disposition = self.export().headers["content-disposition"]
 
         self.assertTrue(disposition.startswith("attachment;"))
-        self.assertIn('filename="Switches rankings.csv"', disposition)
+        self.assertIn('filename="switches-rankings.csv"', disposition)
 
-    def test_a_name_outside_ascii_keeps_its_exact_spelling(self):
-        """Test the RFC 5987 name beside a safe fallback."""
+    def test_a_hand_named_project_downloads_under_a_slug(self):
+        """Test that spaces and accents in a file's own name are slugged."""
         self.write("Clé 5 #1.pairrank", project_data())
 
         disposition = self.client.get(
             f"/projects/{quote('Clé 5 #1.pairrank')}/rankings/export"
         ).headers["content-disposition"]
-        self.assertIn('filename="Cl_ 5 #1 rankings.csv"', disposition)
+        self.assertIn('filename="cle-5-1-rankings.csv"', disposition)
         exact = re.search(r"filename\*=UTF-8''(\S+)", disposition).group(1)
-        self.assertEqual(unquote(exact), "Clé 5 #1 rankings.csv")
+        self.assertEqual(unquote(exact), "cle-5-1-rankings.csv")
 
     def test_the_columns_are_the_desktop_export_s(self):
         """Test the header row."""

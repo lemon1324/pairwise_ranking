@@ -1,6 +1,7 @@
 """Rankings display widget."""
 
 import csv
+from pathlib import Path
 from typing import Optional
 
 from PyQt6.QtWidgets import (
@@ -21,9 +22,14 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
 
 from src.app.record import OpponentRecord, weighted_record
+from src.app.register import export_file_name
 from src.models.vote import Vote
-from src.models.export import build_export_rows
-from src.models.ranking import RankingResult
+from src.models.export import EXPORT_SUFFIX, build_export_rows
+from src.models.ranking import (
+    RankingResult,
+    rating_points_per_log_unit,
+    se_in_rating_points,
+)
 
 
 # Category filter entry meaning "do not filter"
@@ -51,6 +57,7 @@ class ResultsWidget(QWidget):
         self._rankings: list[RankingResult] = []
         self._votes: list[Vote] = []
         self._selected_category: str = ALL_CATEGORIES
+        self._export_name: str = EXPORT_SUFFIX
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -112,16 +119,26 @@ class ResultsWidget(QWidget):
         self.summary_label.setStyleSheet("color: gray;")
         layout.addWidget(self.summary_label)
 
-    def set_rankings(self, rankings: list[RankingResult], votes: list[Vote]) -> None:
+    def set_rankings(
+        self,
+        rankings: list[RankingResult],
+        votes: list[Vote],
+        project_file: Optional[Path] = None,
+    ) -> None:
         """
         Set the rankings to display.
 
         Args:
             rankings: List of ranking results.
             votes: List of all votes (for detail view).
+            project_file: The project's file, which the export's default name
+                is built from, or None for a project not yet saved.
         """
         self._rankings = rankings
         self._votes = votes
+        self._export_name = (
+            export_file_name(project_file.name) if project_file else EXPORT_SUFFIX
+        )
         self._refresh_category_filter()
         self._refresh_tree()
 
@@ -279,8 +296,14 @@ class ResultsWidget(QWidget):
         # Log-strength
         details["Log-Strength"] = f"{result.log_strength:.4f}"
 
-        # Standard error of log-strength (uncertainty)
-        details["Uncertainty (SE)"] = f"{result.log_strength_se:.4f}"
+        # Uncertainty in rating points, as the web sheet and the export give
+        # it, then the raw standard error of log-strength it comes from
+        se_points = se_in_rating_points(
+            result, rating_points_per_log_unit(self._rankings)
+        )
+        if se_points is not None:
+            details["Uncertainty (± rating)"] = f"±{se_points}"
+        details["Log-Strength SE"] = f"{result.log_strength_se:.4f}"
 
         # Win/loss record against each opponent. The core keeps opponents apart
         # by id; this tab shows raw weights and merges opponents that share a
@@ -333,7 +356,7 @@ class ResultsWidget(QWidget):
         file_path, _ = QFileDialog.getSaveFileName(
             self,
             "Export Rankings",
-            "rankings.csv",
+            self._export_name,
             "CSV Files (*.csv);;All Files (*)",
         )
 

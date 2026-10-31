@@ -47,6 +47,7 @@ from src.data.project_storage import (
     ensure_pairrank_suffix,
     safe_project_filename,
 )
+from src.models.export import EXPORT_SUFFIX
 from src.models.project import Project
 
 
@@ -563,6 +564,22 @@ def default_file_name(name: str) -> str:
         str: A safe, non-empty, length-capped file name, extension included.
     """
     return ensure_pairrank_suffix(Path(_file_stem(name))).name
+
+
+def export_file_name(project_file: str) -> str:
+    """
+    Name a project's rankings export, for a download or a save dialog.
+
+    Args:
+        project_file: The project's file name or path; only its stem is used.
+
+    Returns:
+        str: ``<slug>-rankings.csv``. The stem is slugged again so that a
+        project file named by hand cannot put a space in the export's name,
+        and a stem with nothing usable in it leaves plain ``rankings.csv``.
+    """
+    stem = safe_project_filename(Path(project_file).stem)
+    return f"{stem}-{EXPORT_SUFFIX}" if stem else EXPORT_SUFFIX
 
 
 def _taken_names(data_dir: Path) -> set:
