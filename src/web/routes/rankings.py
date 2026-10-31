@@ -58,6 +58,7 @@ from src.models.ranking import RankingResult, se_in_rating_points
 from ..deps import Principal, get_current_user, get_registry
 from ..registry import ProjectRegistry
 from ..urls import PROJECTS_PREFIX, project_url
+from .history import history_url
 
 
 logger = logging.getLogger(__name__)
@@ -444,25 +445,35 @@ def _weight(raw: float, decayed: float) -> dict:
     }
 
 
-def _record_rows(record: WeightedRecord) -> list:
+def _record_rows(
+    record: WeightedRecord, request: Request, project_id: str, item_id: str
+) -> list:
     """
     Lay out an item's record as the mockup's table: a line per opponent.
 
     The merging and the order - heaviest decayed weight first - are the core's
-    (:func:`~src.app.record.opponent_lines`), shared with the desktop.
+    (:func:`~src.app.record.opponent_lines`), shared with the desktop. Each
+    opponent links to the History sheet filtered to the votes between the two,
+    which is where one of them can be corrected.
 
     Args:
         record: The item's weighted record.
+        request: The incoming request, for the links' prefix.
+        project_id: The project's file name.
+        item_id: The item whose record it is.
 
     Returns:
         list: One mapping per opponent: ``name``, ``won`` and ``lost``, each a
-        :func:`_weight`.
+        :func:`_weight`, and ``history_url``.
     """
     return [
         {
             "name": line.name,
             "won": _weight(line.won_raw, line.won_decayed),
             "lost": _weight(line.lost_raw, line.lost_decayed),
+            "history_url": history_url(
+                request, project_id, item=item_id, vs=line.opponent_id
+            ),
         }
         for line in opponent_lines(record)
     ]
@@ -508,7 +519,11 @@ async def ranking_detail(
     rank = result.rank if voted else None
     item = result.item
     se = _se_points(result, rating_points_per_log_unit(rankings))
-    lines = _record_rows(session.item_details(item.id)) if voted else []
+    lines = (
+        _record_rows(session.item_details(item.id), request, entry.path.name, item.id)
+        if voted
+        else []
+    )
     half_life = project.settings.decay_timescale_days
     context = {
         "label": f"#{rank} {item.name}" if rank else item.name,

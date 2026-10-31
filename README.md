@@ -100,6 +100,13 @@ vote** button below the buttons does the same; undo removes the most recent vote
 items are still eligible, offers that pair again so you can re-answer. Repeated undo keeps popping
 votes. A status line shows how many pairs have been compared and the total vote count.
 
+On the web, a vote too far back to undo can be corrected on the **History** sheet, reached from
+the **History** link beside Compare's Revisions box or from an opponent's name in a Rankings
+item's weighted record. Select the vote, press **Revise…**, choose the corrected outcome and press
+**Issue revision**, or **Withdraw** it. The vote keeps the date it was cast, so decay still counts
+it as that old, and **Restore previous** puts it back until the next change. No keyboard shortcut
+reaches the revise form.
+
 In blinded comparison mode the cards show only each item's identifier, and items without an
 identifier are excluded from comparison.
 
@@ -166,6 +173,10 @@ like this (settings abbreviated):
 
 A retired item has `"identifier": ""`, `"status": "retired"`, an ISO `retired_at`, and
 `replaced_by` set to its successor's id when it was retired through Replace.
+
+A vote corrected on the web History sheet keeps its `id`, place and `timestamp` and gains an ISO
+`revised_at`. Votes never corrected have no such key, so older builds read the file unchanged
+(though an older build saving it drops the key).
 
 **Backups.** Saves are atomic: the new contents go to a `.tmp` file in the same directory, are
 flushed to disk, and are then moved over the target. Before the move, any existing project file is

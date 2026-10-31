@@ -1,0 +1,32 @@
+{#
+  One vote's callout: the vote in full, and the way to revise it.
+
+  A fragment for `#row-callout`. "Revise…" fetches the form into this same
+  host. It declares no key, and neither does anything else here: correcting a
+  vote is meant to take a deliberate press, never a stray ↵ or digit.
+#}
+{% from "macros/popover.html" import popover, popover_body, popover_actions %}
+
+{% call popover(number ~ " " ~ sentence) %}
+  {% call popover_body(title=sentence, subtitle=number) %}
+    <dl class="vote-facts">
+      <dt class="label">Cast</dt><dd>{{ cast }}</dd>
+      {% if revised %}<dt class="label">Revised</dt><dd>{{ revised }}</dd>{% endif %}
+    </dl>
+  {% endcall %}
+  {% if restore_url %}
+  {# The vote's last revision is still the project's last change: putting it
+     back is one press away, here as in the Last change cell. #}
+  <form id="restore-form" method="post" action="{{ restore_url }}" hidden>
+    {% for field, value in view_fields.items() %}<input type="hidden" name="{{ field }}" value="{{ value }}">{% endfor %}
+  </form>
+  {{ popover_actions([
+      {"action": "revise", "label": "Revise " ~ number ~ "…", "url": revise_url},
+      {"action": "restore", "label": "Restore previous", "form": "restore-form"},
+  ]) }}
+  {% else %}
+  {{ popover_actions([
+      {"action": "revise", "label": "Revise " ~ number ~ "…", "url": revise_url},
+  ]) }}
+  {% endif %}
+{% endcall %}

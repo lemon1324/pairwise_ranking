@@ -1,0 +1,155 @@
+{#
+  The History sheet: every vote in a project as a parts list, newest first.
+
+  See src/web/routes/history.py for how its views are addressed and why
+  correcting a vote is kept out of the way. Not one of the four tabs: the tab
+  bars mark nothing current here, and the way in is Compare's Revisions box or
+  a line of a Rankings record.
+
+  **The view controls have the Rankings sheet's shape.** Item and Against join
+  an empty GET form with `form="view"` and swap only the drawing area, carrying
+  the cells that describe the view out of band. Choosing an item drops the
+  opponent (`hx-params`), because the old one may never have met the new item.
+
+  **A row's callout is its actions**, fetched when the row is selected: the
+  vote in full and "Revise…", which declares no key.
+#}
+{% extends "base.html" %}
+{% from "macros/title_block.html" import title_block, keys_block, tb_title, tb_file, tb_sheet, tb_cell, tb_press_cell %}
+{% from "macros/parts_list.html" import parts_list, parts_row, name_cell, empty_state %}
+{% from "macros/tabs.html" import tabs %}
+{% from "macros/sheet.html" import key, icon %}
+
+{% block title %}History &middot; {{ project_name }}{% endblock %}
+
+{% block styles %}
+  <link rel="stylesheet" href="{{ url_for('static', path='css/bom.css').path }}">
+  <link rel="stylesheet" href="{{ url_for('static', path='css/history.css').path }}">
+{% endblock %}
+
+{% block tabs %}{{ tabs(request, project_id) }}{% endblock %}
+
+{% block frame_class %} bom-sheet{% endblock %}
+
+{% macro view_swap(params="*") -%}
+hx-get="{{ history_url }}" hx-include="[form=view]" hx-params="{{ params }}" hx-target="#field" hx-select="#field" hx-swap="outerHTML" hx-select-oob="#vs-cell,#shown-cell" hx-replace-url="true"
+{%- endmacro %}
+
+{% block sheet_body %}
+  <section class="bom-field" id="field" aria-label="Vote history">
+    {% if rows %}
+      {% call parts_list(columns, "Vote history") %}
+        {% for row in rows %}
+          {% call parts_row(row.id, callout_url=row.callout_url) %}
+            <td class="c-find"><span class="bom-rank">{{ row.number }}</span></td>
+            {# The winner on the name line and the loser under it, so a phone's
+               narrow column cuts neither name off the other. #}
+            <td>{{ name_cell(row.winner, description="over " ~ row.loser, tags=(revised_tag,) if row.revised else ()) }}</td>
+            <td>{{ row.strength }}</td>
+            <td class="n c-phone-hide">{{ row.cast }}</td>
+          {% endcall %}
+        {% endfor %}
+      {% endcall %}
+    {% else %}
+      {% call empty_state(empty.lead, empty.detail) %}
+        {% if empty.open_compare %}
+        <a class="cell-button" href="{{ compare_url }}">Open Compare {{ icon("arrow") }}</a>
+        {% endif %}
+      {% endcall %}
+    {% endif %}
+  </section>
+
+  <form id="view" method="get" action="{{ history_url }}" hidden>
+    {% if view_fields.all %}<input type="hidden" name="all" value="1" form="view">{% endif %}
+  </form>
+
+  {% call title_block(rows=3) %}
+    {{ keys_block(keys) }}
+    {{ tb_title(project_name) }}
+    {{ tb_file(file_name) }}
+
+    <div class="tb-cell span-2 phone-wide">
+      <label class="label" for="item">Item</label>
+      <div class="tb-control">
+        <select class="input" id="item" name="item" form="view"
+                aria-keyshortcuts="I" data-sheet-key="I" hx-trigger="change" {{ view_swap("not vs") }}>
+          <option value=""{% if not item %} selected{% endif %}>All items</option>
+          {% for id, label in items %}
+          <option value="{{ id }}"{% if id == item %} selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    {# Redrawn by every swap: its options are the chosen item's opponents. #}
+    <div class="tb-cell span-2 phone-wide" id="vs-cell">
+      <label class="label" for="vs">Against</label>
+      <div class="tb-control">
+        <select class="input" id="vs" name="vs" form="view" hx-trigger="change" {{ view_swap() }}
+                {%- if not item %} disabled aria-describedby="vs-hint"{% endif %}>
+          <option value=""{% if not vs %} selected{% endif %}>All opponents</option>
+          {% for id, name in opponents %}
+          <option value="{{ id }}"{% if id == vs %} selected{% endif %}>{{ name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% if not item %}<span class="visually-hidden" id="vs-hint">Choose an item first.</span>{% endif %}
+    </div>
+    {% if shown_count < matching_count %}
+      {{ tb_press_cell("Newest " ~ shown_count ~ " shown", "All " ~ matching_count, none, "chevron", history_url, params=show_all_params, id="shown-cell") }}
+    {% else %}
+      <div class="tb-cell span-2" id="shown-cell">
+        <span class="label">Shown</span>
+        <p class="tb-text"><span class="num">{{ matching_count }}</span> vote{{ "" if matching_count == 1 else "s" }}</p>
+      </div>
+    {% endif %}
+
+    {% call tb_cell("Last change", span=4, phone_wide=true) %}
+      <div class="tb-last" id="tb-last" aria-live="polite">
+        <p class="tb-text">
+          {%- if last_change -%}
+            {{ last_change }} &middot; <span class="num">{{ change_time }}</span>
+          {%- elif note -%}
+            {{ note }}
+          {%- else -%}
+            Select a vote to revise it. A revision keeps the date it was cast.
+          {%- endif -%}
+        </p>
+        {% if restore_url %}
+        <form method="post" action="{{ restore_url }}">
+          {% for field, value in view_fields.items() %}<input type="hidden" name="{{ field }}" value="{{ value }}">{% endfor %}
+          <button class="cell-button" type="submit">{{ icon("undo") }}Restore previous</button>
+        </form>
+        {% endif %}
+      </div>
+    {% endcall %}
+    {{ tb_sheet(1, 1, paged=true) }}
+  {% endcall %}
+{% endblock %}
+
+{% block bottom_tabs %}{{ tabs(request, project_id, bottom=true) }}{% endblock %}
+
+{% block scripts %}
+  <script src="{{ url_for('static', path='js/sheet.js').path }}" defer></script>
+  <script>
+    // Bound on `window`, never `document`: htmx wires every hx-trigger from a
+    // listener it binds on document, and a window listener runs after it.
+    window.addEventListener("DOMContentLoaded", function () {
+      var sheet = window.sheet;
+      if (!sheet || typeof sheet.select !== "function") return;
+
+      // A new filter starts with nothing selected, as on Rankings.
+      document.body.addEventListener("htmx:afterSettle", function (event) {
+        var config = event.detail && event.detail.requestConfig;
+        var from = config && config.elt;
+        if (from && (from.id === "item" || from.id === "vs") && sheet.selectedId != null) {
+          sheet.clear();
+        }
+      });
+
+      {% if selected %}
+      // The vote this page was asked to arrive on, with its callout.
+      sheet.select({{ selected|tojson }});
+      {% endif %}
+    });
+  </script>
+{% endblock %}

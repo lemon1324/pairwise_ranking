@@ -203,7 +203,12 @@ hx-target="#frame" hx-select="#frame" hx-select-oob="#notice" hx-swap="outerHTML
     {% endif %}
 
     <div class="tb-cell tb-revision">
-      <span class="label">Revisions</span>
+      {# The way to every vote, and to correcting one that undo can no longer
+         reach: a quiet link, because it is never the next thing to do. #}
+      <div class="rev-head">
+        <span class="label">Revisions</span>
+        <a class="rev-history" href="{{ history_url }}">History {{ icon("arrow") }}</a>
+      </div>
       <ol class="rev-rows" id="rev-rows" aria-live="polite">
         {% if refused_note %}
         <li class="rev-empty" id="rev-refused">{{ refused_note }}</li>

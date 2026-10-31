@@ -47,7 +47,7 @@ from pathlib import Path
 from typing import Iterator, Optional
 
 from src.app.register import resolve_project_path
-from src.app.session import ProjectSession
+from src.app.session import ProjectSession, VoteRevision
 from src.data.errors import ProjectFormatError
 from src.data.project_storage import ProjectStorage
 from src.models.project import Project
@@ -104,6 +104,8 @@ class LastChange:
         sides: For a vote, the ids of the items in View A and View B as the
             pair was drawn, which a vote alone does not remember - it knows
             only a winner and a loser - and which an undo puts back.
+        revision: For History's revision or withdrawal, what it replaced,
+            which its Restore puts back; None for every other change.
     """
 
     kind: str
@@ -113,6 +115,7 @@ class LastChange:
     time: datetime
     vote: Optional[Vote] = None
     sides: tuple[str, ...] = ()
+    revision: Optional[VoteRevision] = None
 
 
 def _stamp(path: Path) -> Optional[tuple[int, int]]:
@@ -366,6 +369,7 @@ class Mutation:
         votes: int = 0,
         vote: Optional[Vote] = None,
         sides: tuple[str, ...] = (),
+        revision: Optional[VoteRevision] = None,
     ) -> LastChange:
         """
         Remember this edit as the project's last change, timed now.
@@ -380,12 +384,14 @@ class Mutation:
             votes: The votes that went with it.
             vote: The vote a Compare change recorded or removed.
             sides: The ids in View A and View B, for a vote.
+            revision: The correction a History change made.
 
         Returns:
             LastChange: The record, which replaces the previous one.
         """
         change = LastChange(
-            kind, item_id, label, votes, datetime.now(), vote=vote, sides=tuple(sides)
+            kind, item_id, label, votes, datetime.now(), vote=vote,
+            sides=tuple(sides), revision=revision,
         )
         self.entry.last_change = change
         return change

@@ -10,7 +10,8 @@
   brackets are, so the second figure is never a puzzle.
 
   No actions and no keys: nothing is done to a ranking, and the callout does
-  not declare Escape, so the sheet's verbs stay live while it is open.
+  not declare Escape, so the sheet's verbs stay live while it is open. Each
+  opponent's name links to the History sheet's votes between the two.
 #}
 {% from "macros/popover.html" import popover, popover_body %}
 
@@ -39,7 +40,9 @@
           <tbody>
             {% for line in record %}
             <tr>
-              <td>{{ line.name }}</td>
+              {# To the votes between the two, on History, where one can be
+                 corrected; the note under the table says so. #}
+              <td><a href="{{ line.history_url }}" aria-describedby="record-links">{{ line.name }}</a></td>
               <td class="n">{{ line.won.raw }}{% if line.won.decayed %} <span class="record-decayed">({{ line.won.decayed }})</span>{% endif %}</td>
               <td class="n">{{ line.lost.raw }}{% if line.lost.decayed %} <span class="record-decayed">({{ line.lost.decayed }})</span>{% endif %}</td>
             </tr>
@@ -54,6 +57,7 @@
             In brackets: after decay; none is set.
           {%- endif -%}
         </p>
+        <p class="record more" id="record-links">A name opens the votes between the two, where one can be revised.</p>
         {% else %}
         <p class="field-hint">No votes involve this item yet.</p>
         {% endif %}

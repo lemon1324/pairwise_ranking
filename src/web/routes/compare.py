@@ -743,6 +743,7 @@ async def compare_sheet(
         "vote_url": vote_url,
         "undo_url": undo_url,
         "items_url": project_url(request, pid, "items"),
+        "history_url": project_url(request, pid, "history"),
         "settings_url": project_url(request, pid, "settings"),
     }
     return _templates(request).TemplateResponse(request, "compare.html", context)
