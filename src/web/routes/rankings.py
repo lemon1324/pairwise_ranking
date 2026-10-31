@@ -12,10 +12,11 @@ Bradley-Terry fit with the project's decay, numbered by
 :func:`~src.models.ranking.assign_active_ranks`, so retired items keep their
 rating and carry no rank. The ± SE in rating points is the log-strength
 standard error on the scale the Compare tolerance uses
-(:func:`~src.app.confidence.rating_points_per_log_unit`). The detail's record
+(:func:`~src.models.ranking.rating_points_per_log_unit`). The detail's record
 is :meth:`~src.app.session.ProjectSession.item_details`, which reports every
 opponent's weight both raw and decayed; this sheet shows both (owner answer,
-phase 8), the decayed one in brackets. The desktop tab shows raw only.
+phase 8), the decayed one in brackets, heaviest decayed weight first. The
+desktop tab shows raw only, in the same order.
 
 **Every view of the sheet has an address**, in the shape the Items sheet gave
 it (§5c of the plan): ``category`` and ``retired`` are the query, the category
@@ -49,7 +50,7 @@ from fastapi.responses import Response
 from fastapi.templating import Jinja2Templates
 
 from src.app.confidence import rating_points_per_log_unit
-from src.app.record import WeightedRecord
+from src.app.record import WeightedRecord, opponent_lines
 from src.app.register import export_file_name
 from src.models.project import Project
 from src.models.ranking import RankingResult, se_in_rating_points
@@ -445,11 +446,10 @@ def _weight(raw: float, decayed: float) -> dict:
 
 def _record_rows(record: WeightedRecord) -> list:
     """
-    Merge an item's wins and losses into one line per opponent.
+    Lay out an item's record as the mockup's table: a line per opponent.
 
-    The core keeps the two apart and opponents apart by id; the mockup's table
-    has a line per opponent with both columns, the opponents met most - by
-    total raw weight - first.
+    The merging and the order - heaviest decayed weight first - are the core's
+    (:func:`~src.app.record.opponent_lines`), shared with the desktop.
 
     Args:
         record: The item's weighted record.
@@ -458,25 +458,13 @@ def _record_rows(record: WeightedRecord) -> list:
         list: One mapping per opponent: ``name``, ``won`` and ``lost``, each a
         :func:`_weight`.
     """
-    lines: dict = {}
-    for side, entries in (("won", record.wins), ("lost", record.losses)):
-        for entry in entries:
-            line = lines.setdefault(
-                entry.opponent_id,
-                {"name": entry.name, "won": (0.0, 0.0), "lost": (0.0, 0.0)},
-            )
-            line[side] = (entry.weight_raw, entry.weight_decayed)
-    ordered = sorted(
-        lines.items(),
-        key=lambda pair: (
-            -(pair[1]["won"][0] + pair[1]["lost"][0]),
-            pair[1]["name"].casefold(),
-            pair[0],
-        ),
-    )
     return [
-        {"name": line["name"], "won": _weight(*line["won"]), "lost": _weight(*line["lost"])}
-        for _, line in ordered
+        {
+            "name": line.name,
+            "won": _weight(line.won_raw, line.won_decayed),
+            "lost": _weight(line.lost_raw, line.lost_decayed),
+        }
+        for line in opponent_lines(record)
     ]
 
 

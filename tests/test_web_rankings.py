@@ -701,6 +701,23 @@ class TestTheExportEqualsTheDesktop(RankingsTestCase):
         failed.assert_not_called()
         return target.read_bytes()
 
+    def test_the_desktop_offers_the_web_s_file_name(self):
+        """Test that the save dialog suggests the download's slugged name."""
+        from src.ui.results import ResultsWidget
+
+        session = self.session()
+        widget = ResultsWidget()
+        self.addCleanup(widget.deleteLater)
+        widget.set_rankings(
+            session.rankings(), session.project.votes, session.project.file_path
+        )
+        with mock.patch(
+            "src.ui.results.QFileDialog.getSaveFileName", return_value=("", "")
+        ) as dialog:
+            widget._on_export_clicked()
+
+        self.assertEqual(dialog.call_args.args[2], "switches-rankings.csv")
+
     def test_every_view_exports_the_same_file(self):
         """Test each combination of category and retired items."""
         for category in ("", "Linear", "Tactile"):
