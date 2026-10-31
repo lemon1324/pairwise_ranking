@@ -83,7 +83,8 @@
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
     {% block icons %}
     <symbol id="i-arrow" viewBox="0 0 16 16"><path d="M3 8h10"/><path d="M9 4l4 4-4 4"/></symbol>
-    <symbol id="i-chevron" viewBox="0 0 16 16"><path d="M4 6l4 4 4-4"/></symbol>
+    <symbol id="i-back" viewBox="0 0 16 16"><path d="M13 8H3"/><path d="M7 4L3 8l4 4"/></symbol>
+    <symbol id="i-chevron"viewBox="0 0 16 16"><path d="M4 6l4 4 4-4"/></symbol>
     <symbol id="i-download" viewBox="0 0 16 16"><path d="M8 2.5v8"/><path d="M4.5 7L8 10.5 11.5 7"/><path d="M2.5 13.5h11"/></symbol>
     <symbol id="i-eye" viewBox="0 0 16 16"><path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/></symbol>
     <symbol id="i-eye-off" viewBox="0 0 16 16"><path d="M6.2 3.8A6.6 6.6 0 018 3.5C12 3.5 14.5 8 14.5 8a11.6 11.6 0 01-1.9 2.4M4.2 4.9A11 11 0 001.5 8S4 12.5 8 12.5a6.3 6.3 0 003.4-1"/><path d="M6.6 6.6a2 2 0 002.8 2.8"/><path d="M2 2l12 12"/></symbol>
@@ -104,6 +105,17 @@
   <div class="sheet" id="sheet">
     {% block topbar %}
     <header class="sheet-head">
+      {# The way back to the drawing register from an open project, at every
+         width: the first cell of the bar, before the phone title and the
+         tabs. It comes back with this project's row selected, so the register
+         opens where the user left it. No project open - the register itself,
+         an error page - draws nothing. #}
+      {% if project_id %}
+      <a class="sheet-back" href="{{ register_url(request, selected=project_id) }}">
+        <svg class="icon" aria-hidden="true"><use href="#i-back"/></svg>
+        Projects
+      </a>
+      {% endif %}
       {% block sheet_title %}
         {% if project_name %}
           {# Shown in the bar on phones only; wider sheets carry the name in the

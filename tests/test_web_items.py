@@ -24,6 +24,7 @@ from fastapi.testclient import TestClient
 
 from src.data.format_version import CURRENT_FORMAT_VERSION
 from src.web.app import DAMAGED_STATUS, NEWER_FORMAT_STATUS, create_app
+from src.web.urls import SHEET_TABS
 from src.web.routes.items import (
     FREE_LIST_SHOWN,
     ITEM_KEYS,
@@ -758,10 +759,44 @@ class TestEveryItemsPageReadsTheFile(ItemsTestCase):
         self.assertEqual(response.status_code, 404)
 
 
+class TestTheWayBackToTheRegister(ItemsTestCase):
+    """Test cases for the top bar's link from an open project to the register."""
+
+    BACK = '<a class="sheet-back" href="{href}">'
+
+    def test_every_sheet_links_back_with_its_project_selected(self):
+        """Test the link on all four sheets, selecting this project's row."""
+        for slug, _ in SHEET_TABS:
+            with self.subTest(sheet=slug):
+                response = self.client.get(f"/projects/{PROJECT}/{slug}")
+
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(
+                    response.text.count(self.BACK.format(href=f"/?selected={PROJECT}")), 1
+                )
+
+    def test_the_register_draws_no_link_to_itself(self):
+        """Test that the register, with no project open, has no back link."""
+        self.assertNotIn('class="sheet-back"', self.client.get("/").text)
+
+    def test_an_error_page_draws_no_back_link(self):
+        """Test that a page with no project open falls back to its own link."""
+        response = self.client.get("/projects/Missing.pairrank/items")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertNotIn('class="sheet-back"', response.text)
+
+
 class TestItemsUnderARootPath(ItemsTestCase):
     """Test cases for the sheet behind a reverse proxy on a subpath."""
 
     root_path = "/rank"
+
+    def test_the_back_link_carries_the_prefix(self):
+        """Test that the way back to the register stays under /rank."""
+        self.assertIn(
+            f'<a class="sheet-back" href="/rank/?selected={PROJECT}">', self.sheet()
+        )
 
     def test_every_address_the_sheet_builds_carries_the_prefix(self):
         """Test the controls, the view form and the tabs under /rank."""
