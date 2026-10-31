@@ -51,7 +51,7 @@ from src.models.project import Project
 
 
 # File stem used when a project name sanitizes away to nothing.
-DEFAULT_FILE_STEM = "Project"
+DEFAULT_FILE_STEM = "project"
 
 # Longest file stem the register will build. ``safe_project_filename`` caps
 # nothing, and a project name is free text, so the cap belongs here - a name
@@ -66,8 +66,8 @@ DEFAULT_FILE_STEM = "Project"
 MAX_FILE_STEM_LENGTH = 64
 
 # Separator between the two parts of a collision-suffixed file stem, as in
-# "Tasting (2)".
-_COLLISION_SUFFIX = " ({n})"
+# "tasting-2". A slug itself, so the suffixed stem survives the sanitizer.
+_COLLISION_SUFFIX = "-{n}"
 
 
 class ProjectCondition(Enum):
@@ -542,7 +542,7 @@ def _file_stem(name: str) -> str:
     Returns:
         str: A safe, non-empty, length-capped stem.
     """
-    stem = safe_project_filename(name or "").strip()[:MAX_FILE_STEM_LENGTH].strip()
+    stem = safe_project_filename(name or "")[:MAX_FILE_STEM_LENGTH].strip("-")
     return stem or DEFAULT_FILE_STEM
 
 
@@ -554,7 +554,7 @@ def default_file_name(name: str) -> str:
     copy or an import wants. A screen offering to *create* a project wants the
     other question - "the name this would take" - so that it can say that the
     file already exists and let the user choose another, rather than quietly
-    saving Tasting (2) under a name they did not ask for.
+    saving tasting-2 under a name they did not ask for.
 
     Args:
         name: The project name.
@@ -637,7 +637,7 @@ def unique_file_name(data_dir: Path, name: str) -> str:
     pinned by tests, so both gaps are closed here instead: a name that
     sanitizes away becomes DEFAULT_FILE_STEM and a long one is truncated.
 
-    Collisions are resolved with a " (2)", " (3)" suffix, compared
+    Collisions are resolved with a "-2", "-3" suffix, compared
     case-insensitively because the application's own filesystem is, and two
     names differing only in case would collide there whatever this returned.
 
@@ -771,12 +771,11 @@ def import_file(data_dir: Path, file_name: str, raw_bytes: bytes) -> ProjectFile
         raise ValueError(f"Not a readable project file: {verdict.reason}")
 
     data_dir.mkdir(parents=True, exist_ok=True)
-    # The name is only re-derived when something already holds it. Putting a
-    # name that has already been through the sanitizer back through it is not a
-    # no-op - ``unique_file_name`` answers "Tasting (2)" and reading that back
-    # in gives "Tasting _2_" - so a caller that has already chosen a free name
-    # and shown it to the user, which is what the picker's import preview does,
-    # would find the file written under a third name neither of them named.
+    # The name is only re-derived when something already holds it. A caller
+    # that has already chosen a free name and shown it to the user, which is
+    # what the picker's import preview does, gets the file under that name and
+    # not under one the sanitizer might derive from it, should the two rules
+    # ever drift apart again.
     path = target
     if target.name.casefold() in _taken_names(data_dir):
         path = data_dir / unique_file_name(data_dir, target.stem)

@@ -487,6 +487,7 @@ async def new_callout(
         "label": "Name",
         "submit_label": "Create",
         "action": _fragment_url(request, "/new"),
+        "note_url": _fragment_url(request, "/new/note"),
         "cancel_url": register_url(request),
         "name": name,
         "file_name": file_name,
@@ -496,6 +497,40 @@ async def new_callout(
     }
     return _templates(request).TemplateResponse(
         request, "register/callout_name_form.html", context
+    )
+
+
+@router.get(f"{PROJECTS_PREFIX}/new/note", name="new_name_note")
+async def new_name_note(
+    request: Request,
+    name: str = Query("", description="the project name being drafted"),
+    config: WebConfig = Depends(get_config),
+    user: Principal = Depends(get_current_user),
+) -> Response:
+    """
+    Return the line under a name field, for the name as typed so far.
+
+    New and Duplicate both ask here: the line depends only on the name and the
+    directory. The draft counts as unsubmitted, so an empty field is not an
+    error yet, but a name that is taken already says so.
+
+    Args:
+        request: The incoming request.
+        name: The name as typed.
+        config: The application's configuration.
+        user: The signed-in principal.
+
+    Returns:
+        Response: The note fragment.
+    """
+    file_name, error = _draft(config.data_dir, name, submitted=False)
+    context = {
+        "file_name": file_name,
+        "directory": str(config.data_dir),
+        "error": error,
+    }
+    return _templates(request).TemplateResponse(
+        request, "register/name_note.html", context
     )
 
 
@@ -853,6 +888,7 @@ async def duplicate_callout(
         "label": "New name",
         "submit_label": "Duplicate",
         "action": project_url(request, info.file_name, "duplicate"),
+        "note_url": _fragment_url(request, "/new/note"),
         # Cancelling goes back to the register with this row still selected,
         # which is the actions callout it was opened from.
         "cancel_url": register_url(request, selected=info.file_name),

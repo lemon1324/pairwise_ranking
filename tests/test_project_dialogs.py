@@ -17,32 +17,45 @@ from src.data.project_storage import (
 class TestSafeProjectFilename(unittest.TestCase):
     """Test cases for safe_project_filename."""
 
-    def test_plain_name_unchanged(self):
-        """Test that an already-safe name passes through untouched."""
-        self.assertEqual(safe_project_filename("My Rankings"), "My Rankings")
+    def test_plain_name_becomes_slug(self):
+        """Test that a plain name is lowercased with spaces as hyphens."""
+        self.assertEqual(safe_project_filename("My Rankings"), "my-rankings")
 
-    def test_keeps_allowed_punctuation(self):
-        """Test that spaces, underscores and hyphens are preserved."""
+    def test_separators_collapse_to_one_hyphen(self):
+        """Test that runs of spaces, underscores and hyphens become one hyphen."""
         self.assertEqual(
-            safe_project_filename("switch_test-2024 v1"),
-            "switch_test-2024 v1",
+            safe_project_filename("switch_test - 2024  v1"),
+            "switch-test-2024-v1",
         )
 
     def test_replaces_path_separators(self):
         """Test that path separators cannot escape the target directory."""
-        self.assertEqual(safe_project_filename("a/b\\c"), "a_b_c")
+        self.assertEqual(safe_project_filename("a/b\\c"), "a-b-c")
 
-    def test_replaces_other_punctuation(self):
-        """Test that other punctuation becomes underscores."""
-        self.assertEqual(safe_project_filename("Tasting: flight #3!"), "Tasting_ flight _3_")
+    def test_trims_leading_and_trailing_punctuation(self):
+        """Test that punctuation at either end leaves no hyphen behind."""
+        self.assertEqual(
+            safe_project_filename("  Tasting: Flight #3 (Clé)! "),
+            "tasting-flight-3-cle",
+        )
 
     def test_empty_name(self):
         """Test that an empty name yields an empty stem."""
         self.assertEqual(safe_project_filename(""), "")
 
-    def test_keeps_unicode_alphanumerics(self):
-        """Test that non-ASCII letters and digits are kept."""
-        self.assertEqual(safe_project_filename("Clé 5"), "Clé 5")
+    def test_folds_accents_to_ascii(self):
+        """Test that accented letters fold to their base letter."""
+        self.assertEqual(safe_project_filename("Clé 5"), "cle-5")
+
+    def test_drops_unfoldable_characters(self):
+        """Test that characters with no ASCII form are dropped."""
+        self.assertEqual(safe_project_filename("日本 tea"), "tea")
+        self.assertEqual(safe_project_filename("日本"), "")
+
+    def test_slug_is_idempotent(self):
+        """Test that slugging a slug changes nothing."""
+        slug = safe_project_filename("Tasting: Flight #3")
+        self.assertEqual(safe_project_filename(slug), slug)
 
 
 class TestEnsurePairrankSuffix(unittest.TestCase):

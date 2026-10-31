@@ -648,10 +648,10 @@ class TestUniqueFileName(RegisterTestCase):
     """Test cases for choosing a file name nothing holds yet."""
 
     def test_plain_name(self):
-        """Test that a safe name becomes itself plus the extension."""
+        """Test that a name becomes its slug plus the extension."""
         self.assertEqual(
             unique_file_name(self.temp_dir, "My Rankings"),
-            "My Rankings.pairrank",
+            "my-rankings.pairrank",
         )
 
     def test_unsafe_characters_are_replaced(self):
@@ -671,9 +671,17 @@ class TestUniqueFileName(RegisterTestCase):
                     f"{DEFAULT_FILE_STEM}.pairrank",
                 )
 
-    def test_name_of_only_punctuation_is_kept_as_underscores(self):
-        """Test that punctuation sanitizes to a usable stem rather than nothing."""
-        self.assertEqual(unique_file_name(self.temp_dir, "///"), "___.pairrank")
+    def test_name_of_only_punctuation_gets_the_default(self):
+        """Test that a name of punctuation alone falls back to the default stem."""
+        self.assertEqual(
+            unique_file_name(self.temp_dir, "///"), f"{DEFAULT_FILE_STEM}.pairrank"
+        )
+
+    def test_a_capped_stem_does_not_end_in_a_hyphen(self):
+        """Test that the length cap trims a separator it cuts the name at."""
+        name = unique_file_name(self.temp_dir, "x" * (MAX_FILE_STEM_LENGTH - 1) + " y")
+
+        self.assertEqual(Path(name).stem, "x" * (MAX_FILE_STEM_LENGTH - 1))
 
     def test_long_name_is_capped(self):
         """Test that a very long project name cannot build an unusable path."""
@@ -683,35 +691,35 @@ class TestUniqueFileName(RegisterTestCase):
 
     def test_collision_gets_a_suffix(self):
         """Test that an existing file is never the answer."""
-        write_project(self.temp_dir / "Taken.pairrank")
+        write_project(self.temp_dir / "taken.pairrank")
 
         self.assertEqual(
-            unique_file_name(self.temp_dir, "Taken"), "Taken (2).pairrank"
+            unique_file_name(self.temp_dir, "Taken"), "taken-2.pairrank"
         )
 
     def test_repeated_collisions_count_up(self):
         """Test that the suffix rises until it finds a free name."""
-        write_project(self.temp_dir / "Taken.pairrank")
-        write_project(self.temp_dir / "Taken (2).pairrank")
-        write_project(self.temp_dir / "Taken (3).pairrank")
+        write_project(self.temp_dir / "taken.pairrank")
+        write_project(self.temp_dir / "taken-2.pairrank")
+        write_project(self.temp_dir / "taken-3.pairrank")
 
         self.assertEqual(
-            unique_file_name(self.temp_dir, "Taken"), "Taken (4).pairrank"
+            unique_file_name(self.temp_dir, "Taken"), "taken-4.pairrank"
         )
 
     def test_collisions_ignore_case(self):
-        """Test that a name differing only in case still counts as taken."""
+        """Test that an existing file differing only in case counts as taken."""
         write_project(self.temp_dir / "Taken.pairrank")
 
         self.assertEqual(
-            unique_file_name(self.temp_dir, "taken"), "taken (2).pairrank"
+            unique_file_name(self.temp_dir, "taken"), "taken-2.pairrank"
         )
 
     def test_missing_directory_is_tolerated(self):
         """Test that naming a file for a directory yet to exist works."""
         self.assertEqual(
             unique_file_name(self.temp_dir / "nowhere", "Fresh"),
-            "Fresh.pairrank",
+            "fresh.pairrank",
         )
 
     def test_a_directory_that_cannot_be_listed_is_not_answered_as_empty(self):
@@ -745,7 +753,7 @@ class TestUniqueFileName(RegisterTestCase):
         (self.temp_dir / "Taken.PAIRRANK").write_text("{}", encoding="utf-8")
 
         self.assertEqual(
-            unique_file_name(self.temp_dir, "Taken"), "Taken (2).pairrank"
+            unique_file_name(self.temp_dir, "Taken"), "taken-2.pairrank"
         )
 
 
@@ -852,7 +860,7 @@ class TestImportFile(RegisterTestCase):
 
         info = import_file(self.temp_dir, "incoming.pairrank", raw)
 
-        self.assertEqual(info.file_name, "incoming (2).pairrank")
+        self.assertEqual(info.file_name, "incoming-2.pairrank")
         self.assertEqual(
             (self.temp_dir / "incoming.pairrank").read_bytes(), original
         )
@@ -861,19 +869,16 @@ class TestImportFile(RegisterTestCase):
         """
         Test that a name nothing holds is not put through the sanitizer again.
 
-        The sanitizer is not idempotent over unique_file_name's own answer -
-        "incoming (2)" comes back "incoming _2_" - so a caller that has already
-        chosen a free name and shown it to someone, which is what the web
-        picker's import preview does, has to get that name and not a third one.
+        A caller that has already chosen a free name and shown it to someone,
+        which is what the web picker's import preview does, has to get that
+        name and not one the sanitizer derives from it - here a name the
+        sanitizer would lowercase.
         """
-        write_project(self.temp_dir / "incoming.pairrank", name="Original")
-        chosen = unique_file_name(self.temp_dir, "incoming")
         raw = json.dumps(project_data(name="Incoming")).encode("utf-8")
 
-        info = import_file(self.temp_dir, chosen, raw)
+        info = import_file(self.temp_dir, "Incoming (2).pairrank", raw)
 
-        self.assertEqual(chosen, "incoming (2).pairrank")
-        self.assertEqual(info.file_name, chosen)
+        self.assertEqual(info.file_name, "Incoming (2).pairrank")
 
     def test_directory_is_created(self):
         """Test that importing into a directory that is not there yet works."""
@@ -975,11 +980,11 @@ class TestDuplicateWithoutVotes(RegisterTestCase):
     def test_copy_gets_a_free_file_name(self):
         """Test that a copy named after an existing file writes beside it."""
         write_project(self.temp_dir / "source.pairrank")
-        write_project(self.temp_dir / "Copy.pairrank")
+        write_project(self.temp_dir / "copy.pairrank")
 
         info = duplicate_project_file(self.temp_dir, "source.pairrank", "Copy")
 
-        self.assertEqual(info.file_name, "Copy (2).pairrank")
+        self.assertEqual(info.file_name, "copy-2.pairrank")
 
     def test_missing_source_raises(self):
         """Test that copying a file that is not there is an error."""

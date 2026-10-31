@@ -12,11 +12,13 @@
   can be photographed; and a form the browser posts itself is one that works
   with the folding engine switched off.
 
-  The file name is stated rather than derived as the user types. The mockup
-  derived it live, which meant a second copy of `safe_project_filename` in the
-  browser - the one duplication this port is in a position not to ship - and
-  the moment the name matters is the moment it is refused, which is where the
-  error says it in full.
+  The file name follows the name as it is typed, but is never derived in the
+  browser: a pause in typing asks the server for the line again
+  (`register/name_note.html`), so `safe_project_filename` has no second copy.
+  The region is polite and the request waits for the pause, so a screen reader
+  hears the settled name rather than every keystroke. With JavaScript off the
+  line keeps the name it was drawn with, and a refused submit still says the
+  name in full.
 #}
 {% from "macros/popover.html" import popover, popover_body %}
 {% from "macros/sheet.html" import icon, key %}
@@ -27,12 +29,12 @@
       <div class="field field-wide{% if error %} is-error{% endif %}">
         <label class="label" for="f-name">{{ label }}</label>
         <input class="input" id="f-name" name="name" value="{{ name }}" autocomplete="off"
-               autofocus{% if error %} aria-invalid="true"{% endif %} aria-describedby="f-name-note">
-        {% if error %}
-        <p class="field-error" id="f-name-note">{{ icon("warn") }}<span><strong>{{ error.lead }}</strong>{% if error.detail %} {{ error.detail }}{% endif %}</span></p>
-        {% else %}
-        <span class="field-hint" id="f-name-note">Saves as <span class="num">{{ directory }}/{{ file_name or "….pairrank" }}</span></span>
-        {% endif %}
+               autofocus{% if error %} aria-invalid="true"{% endif %} aria-describedby="f-name-note"
+               hx-get="{{ note_url }}" hx-trigger="input changed delay:400ms"
+               hx-target="#f-name-live" hx-swap="innerHTML">
+        <div id="f-name-live" aria-live="polite">
+          {% include "register/name_note.html" %}
+        </div>
       </div>
       {% if detail %}<p class="field-hint field-wide">{{ detail }}</p>{% endif %}
       <div class="strip-buttons">

@@ -3,8 +3,10 @@
 import json
 import logging
 import os
+import re
 import shutil
 import time
+import unicodedata
 from datetime import datetime
 from pathlib import Path
 
@@ -282,16 +284,22 @@ def safe_project_filename(name: str) -> str:
     """
     Build a filesystem-safe file stem from a project name.
 
-    Alphanumeric characters, spaces, underscores and hyphens are kept; every
-    other character becomes an underscore.
+    The stem is a lowercase ASCII slug: accented letters are folded to their
+    base letter, any other non-ASCII character is dropped, every run of
+    characters that is not a letter or digit becomes one hyphen, and leading
+    and trailing hyphens are trimmed. Lowercase because the filesystems this
+    runs on compare names without regard to case, and no spaces because the
+    name ends up in URLs and download names.
 
     Args:
         name: The project name.
 
     Returns:
-        str: A file stem safe to use in a default save path.
+        str: A file stem safe to use in a default save path, empty when
+        nothing in the name survives.
     """
-    return "".join(c if c.isalnum() or c in " _-" else "_" for c in name)
+    folded = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"[^a-z0-9]+", "-", folded.lower()).strip("-")
 
 
 def ensure_pairrank_suffix(path: Path) -> Path:

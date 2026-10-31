@@ -616,7 +616,7 @@ class TestRegisterNote(RegisterTestCase):
             "/projects/new", data={"name": "Keyswitches"}, follow_redirects=True
         )
 
-        self.assertEqual(note_of(response.text), "Created Keyswitches.pairrank.")
+        self.assertEqual(note_of(response.text), "Created keyswitches.pairrank.")
 
     def test_duplicating_says_what_it_did_not_copy(self):
         """Test that the copy's note names the file and the votes it dropped."""
@@ -627,7 +627,7 @@ class TestRegisterNote(RegisterTestCase):
         )
 
         self.assertEqual(
-            note_of(response.text), "Duplicated Alpha copy.pairrank, without votes."
+            note_of(response.text), "Duplicated alpha-copy.pairrank, without votes."
         )
 
     def test_importing_says_the_name_the_file_actually_landed_under(self):
@@ -645,7 +645,7 @@ class TestRegisterNote(RegisterTestCase):
             follow_redirects=True,
         )
 
-        self.assertEqual(note_of(response.text), "Imported Alpha (2).pairrank.")
+        self.assertEqual(note_of(response.text), "Imported alpha-2.pairrank.")
 
     def test_every_mutation_has_a_sentence_of_its_own(self):
         """Test that no two mutations report themselves the same way."""
@@ -945,14 +945,14 @@ class TestNewProject(RegisterTestCase):
 
         path, query = self.redirect_of(response)
         self.assertEqual(path, "/")
-        self.assertEqual(query, {"selected": "Keyswitches.pairrank", "done": "created"})
-        self.assertIn("Keyswitches.pairrank", self.listed())
+        self.assertEqual(query, {"selected": "keyswitches.pairrank", "done": "created"})
+        self.assertIn("keyswitches.pairrank", self.listed())
 
     def test_the_created_project_carries_the_name_that_was_typed(self):
         """Test that the file name is derived from the name, not the other way."""
         self.post("/projects/new", data={"name": "  Keyswitches  "})
 
-        project = ProjectStorage.load(self.data_dir / "Keyswitches.pairrank")
+        project = ProjectStorage.load(self.data_dir / "keyswitches.pairrank")
 
         self.assertEqual(project.name, "Keyswitches")
         self.assertEqual(project.items, [])
@@ -967,9 +967,9 @@ class TestNewProject(RegisterTestCase):
         """
         self.post("/projects/new", data={"name": "Cost/Benefit"})
 
-        self.assertIn("Cost_Benefit.pairrank", self.listed())
+        self.assertIn("cost-benefit.pairrank", self.listed())
         self.assertEqual(
-            ProjectStorage.load(self.data_dir / "Cost_Benefit.pairrank").name,
+            ProjectStorage.load(self.data_dir / "cost-benefit.pairrank").name,
             "Cost/Benefit",
         )
 
@@ -978,7 +978,7 @@ class TestNewProject(RegisterTestCase):
         Test that creating never overwrites, and says so instead.
 
         A collision is answered by reopening the form on the draft rather than
-        by quietly saving "Alpha (2)" under a name nobody asked for.
+        by quietly saving "alpha-2" under a name nobody asked for.
         """
         before = self.snapshot()
 
@@ -1026,7 +1026,38 @@ class TestNewProject(RegisterTestCase):
         self.assertIn("is-error", body)
         # The whole path, because this line replaces the hint that said where
         # the project would have been saved.
-        self.assertIn(f"{self.data_dir}/Alpha.pairrank already exists", body)
+        self.assertIn(f"{self.data_dir}/alpha.pairrank already exists", body)
+
+    def test_the_name_field_asks_for_its_note_as_it_is_typed(self):
+        """Test that both name forms re-ask the server for the file name."""
+        for url in ("/projects/new/callout", "/projects/Alpha.pairrank/duplicate"):
+            with self.subTest(url=url):
+                body = self.client.get(url).text
+
+                self.assertIn('hx-get="/projects/new/note"', body)
+                self.assertIn('id="f-name-live" aria-live="polite"', body)
+
+    def test_the_note_names_the_file_the_typed_name_would_take(self):
+        """Test that the live note is the server's own slug of the name."""
+        body = self.client.get(
+            "/projects/new/note", params={"name": "Tasting: Flight #3"}
+        ).text
+
+        self.assertIn(f"{self.data_dir}/tasting-flight-3.pairrank", body)
+        self.assertNotIn("field-error", body)
+
+    def test_the_note_says_a_taken_name_is_taken(self):
+        """Test that a collision shows while typing, not only after submit."""
+        body = self.client.get("/projects/new/note", params={"name": "Alpha"}).text
+
+        self.assertIn(f"{self.data_dir}/alpha.pairrank already exists", body)
+
+    def test_the_note_for_an_empty_name_is_not_an_error(self):
+        """Test that clearing the field while typing does not complain."""
+        body = self.client.get("/projects/new/note", params={"name": "  "}).text
+
+        self.assertIn("….pairrank", body)
+        self.assertNotIn("field-error", body)
 
     def test_an_empty_field_is_not_an_error_until_it_has_been_submitted(self):
         """Test that opening the form does not open it complaining."""
@@ -1102,9 +1133,9 @@ class TestDuplicateProject(RegisterTestCase):
         path, query = self.redirect_of(response)
         self.assertEqual(path, "/")
         self.assertEqual(
-            query, {"selected": "Alpha again.pairrank", "done": "duplicated"}
+            query, {"selected": "alpha-again.pairrank", "done": "duplicated"}
         )
-        copy = ProjectStorage.load(self.data_dir / "Alpha again.pairrank")
+        copy = ProjectStorage.load(self.data_dir / "alpha-again.pairrank")
         self.assertEqual(copy.name, "Alpha again")
         self.assertEqual(len(copy.items), 3)
         self.assertEqual(copy.votes, [])
@@ -1351,7 +1382,7 @@ class TestImportProject(RegisterTestCase):
             files=self.upload("Alpha.pairrank", self.good_bytes(name="Alpha")),
         )
 
-        self.assertIn("Alpha (2).pairrank", response.text)
+        self.assertIn("alpha-2.pairrank", response.text)
 
     def test_a_preview_puts_the_chosen_name_on_the_drop_zone(self):
         """
@@ -1413,11 +1444,11 @@ class TestImportProject(RegisterTestCase):
 
         path, query = self.redirect_of(response)
         self.assertEqual(path, "/")
-        self.assertEqual(query, {"selected": "Ancient.pairrank", "done": "imported"})
-        self.assertEqual((self.data_dir / "Ancient.pairrank").read_bytes(), raw)
+        self.assertEqual(query, {"selected": "ancient.pairrank", "done": "imported"})
+        self.assertEqual((self.data_dir / "ancient.pairrank").read_bytes(), raw)
         self.assertIn(
             '<span class="tag">Old format</span>',
-            row_of(self.client.get("/").text, "Ancient.pairrank"),
+            row_of(self.client.get("/").text, "ancient.pairrank"),
         )
 
     def test_importing_over_a_name_that_is_taken_suffixes_instead(self):
@@ -1436,7 +1467,7 @@ class TestImportProject(RegisterTestCase):
         )
 
         _, query = self.redirect_of(response)
-        self.assertEqual(query["selected"], "Alpha (2).pairrank")
+        self.assertEqual(query["selected"], "alpha-2.pairrank")
         self.assertEqual((self.data_dir / "Alpha.pairrank").read_bytes(), before)
 
     def test_a_file_that_is_not_a_pairrank_is_refused_by_its_name(self):
@@ -1770,7 +1801,7 @@ class TestRegisterUnderARootPath(RegisterTestCase):
 
         path, query = self.redirect_of(response)
         self.assertEqual(path, "/rank/")
-        self.assertEqual(query, {"selected": "Keyswitches.pairrank", "done": "created"})
+        self.assertEqual(query, {"selected": "keyswitches.pairrank", "done": "created"})
 
     def test_opening_redirects_to_the_screen_under_the_prefix(self):
         """Test that Open leads to a sheet the proxy actually serves."""
@@ -1845,19 +1876,20 @@ class TestAwkwardFileNames(RegisterTestCase):
             'filename="Cost #1.pairrank"', response.headers["content-disposition"]
         )
 
-    def test_a_mutation_selects_an_awkward_name_when_it_comes_back(self):
+    def test_a_copy_of_an_awkward_name_gets_a_plain_one(self):
         """
-        Test that the selected row's id survives the redirect's query.
+        Test that duplicating an awkwardly named file writes a slugged copy.
 
-        A duplicate is the only mutation that can produce such a name, because
-        New sanitizes what it is given.
+        Every mutation now sanitizes the name it writes under, so an awkward
+        name can only come from a file put in the directory by hand; the copy
+        of one is as plain as any other new file.
         """
         response = self.post(
             "/projects/Cost%20%231.pairrank/duplicate", data={"name": "Cost #2"}
         )
 
         _, query = self.redirect_of(response)
-        self.assertEqual(query["selected"], "Cost _2.pairrank")
+        self.assertEqual(query["selected"], "cost-2.pairrank")
 
 
 if __name__ == "__main__":

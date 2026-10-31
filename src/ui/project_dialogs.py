@@ -11,6 +11,7 @@ from typing import Optional
 
 from PyQt6.QtWidgets import QFileDialog, QInputDialog, QMessageBox, QWidget
 
+from src.app.register import default_file_name
 from src.app.session import DuplicateTargetError, ProjectSession
 from src.data.project_storage import (
     ProjectStorage,
@@ -54,9 +55,7 @@ def ask_save_as_path(
     default_dir = user_config.get_default_projects_dir()
     default_dir.mkdir(parents=True, exist_ok=True)
 
-    default_path = default_dir / (
-        f"{safe_project_filename(project_name)}{ProjectStorage.FILE_EXTENSION}"
-    )
+    default_path = default_dir / default_file_name(project_name)
 
     file_path, _ = QFileDialog.getSaveFileName(
         parent,

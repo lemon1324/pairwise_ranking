@@ -1,0 +1,14 @@
+{#
+  The line under a project-name field: where the project will be saved, or
+  why it cannot be.
+
+  Drawn inside the name form, and on its own by `new_name_note` each time the
+  user pauses typing, so the file name is always the server's own answer and
+  `safe_project_filename` has no second copy in the browser.
+#}
+{% from "macros/sheet.html" import icon %}
+{% if error %}
+<p class="field-error" id="f-name-note">{{ icon("warn") }}<span><strong>{{ error.lead }}</strong>{% if error.detail %} {{ error.detail }}{% endif %}</span></p>
+{% else %}
+<span class="field-hint" id="f-name-note">Saves as <span class="num">{{ directory }}/{{ file_name or "….pairrank" }}</span></span>
+{% endif %}
