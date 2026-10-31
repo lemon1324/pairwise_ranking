@@ -1,6 +1,7 @@
 """Rankings display widget."""
 
 import csv
+from pathlib import Path
 from typing import Optional
 
 from PyQt6.QtWidgets import (
@@ -20,10 +21,15 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
 
-from src.app.record import OpponentRecord, weighted_record
+from src.app.record import opponent_lines, weighted_record
+from src.app.register import export_file_name
 from src.models.vote import Vote
-from src.models.export import build_export_rows
-from src.models.ranking import RankingResult
+from src.models.export import EXPORT_SUFFIX, build_export_rows
+from src.models.ranking import (
+    RankingResult,
+    rating_points_per_log_unit,
+    se_in_rating_points,
+)
 
 
 # Category filter entry meaning "do not filter"
@@ -51,6 +57,8 @@ class ResultsWidget(QWidget):
         self._rankings: list[RankingResult] = []
         self._votes: list[Vote] = []
         self._selected_category: str = ALL_CATEGORIES
+        self._export_name: str = EXPORT_SUFFIX
+        self._decay_timescale_days: float = 0.0
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -112,16 +120,30 @@ class ResultsWidget(QWidget):
         self.summary_label.setStyleSheet("color: gray;")
         layout.addWidget(self.summary_label)
 
-    def set_rankings(self, rankings: list[RankingResult], votes: list[Vote]) -> None:
+    def set_rankings(
+        self,
+        rankings: list[RankingResult],
+        votes: list[Vote],
+        project_file: Optional[Path] = None,
+        decay_timescale_days: float = 0.0,
+    ) -> None:
         """
         Set the rankings to display.
 
         Args:
             rankings: List of ranking results.
             votes: List of all votes (for detail view).
+            project_file: The project's file, which the export's default name
+                is built from, or None for a project not yet saved.
+            decay_timescale_days: The project's decay half-life, which orders
+                the detail view's record. Zero means no decay.
         """
         self._rankings = rankings
         self._votes = votes
+        self._decay_timescale_days = decay_timescale_days
+        self._export_name = (
+            export_file_name(project_file.name) if project_file else EXPORT_SUFFIX
+        )
         self._refresh_category_filter()
         self._refresh_tree()
 
@@ -279,50 +301,42 @@ class ResultsWidget(QWidget):
         # Log-strength
         details["Log-Strength"] = f"{result.log_strength:.4f}"
 
-        # Standard error of log-strength (uncertainty)
-        details["Uncertainty (SE)"] = f"{result.log_strength_se:.4f}"
+        # Uncertainty in rating points, as the web sheet and the export give
+        # it, then the raw standard error of log-strength it comes from
+        se_points = se_in_rating_points(
+            result, rating_points_per_log_unit(self._rankings)
+        )
+        if se_points is not None:
+            details["Uncertainty (± rating)"] = f"±{se_points}"
+        details["Log-Strength SE"] = f"{result.log_strength_se:.4f}"
 
-        # Win/loss record against each opponent. The core keeps opponents apart
-        # by id; this tab shows raw weights and merges opponents that share a
-        # name, so two items called the same thing read as one line.
+        # Win/loss record against each opponent, in the core's order (heaviest
+        # decayed weight first, as on the web). This tab shows raw weights and
+        # merges opponents that share a name, so two items called the same
+        # thing read as one entry, placed where the first of them falls.
         record = weighted_record(
             result.item.id,
             self._votes,
             [r.item for r in self._rankings],
+            decay_timescale_days=self._decay_timescale_days,
         )
-        wins = self._weight_by_name(record.wins)
-        losses = self._weight_by_name(record.losses)
+        wins: dict[str, float] = {}
+        losses: dict[str, float] = {}
+        for line in opponent_lines(record):
+            if line.won_raw:
+                wins[line.name] = wins.get(line.name, 0.0) + line.won_raw
+            if line.lost_raw:
+                losses[line.name] = losses.get(line.name, 0.0) + line.lost_raw
 
         if wins:
-            win_str = ", ".join(f"{name}: {w:.1f}" for name, w in sorted(wins.items()))
+            win_str = ", ".join(f"{name}: {w:.1f}" for name, w in wins.items())
             details["Wins (weighted)"] = win_str
 
         if losses:
-            loss_str = ", ".join(f"{name}: {l:.1f}" for name, l in sorted(losses.items()))
+            loss_str = ", ".join(f"{name}: {l:.1f}" for name, l in losses.items())
             details["Losses (weighted)"] = loss_str
 
         return details
-
-    @staticmethod
-    def _weight_by_name(records: list[OpponentRecord]) -> dict[str, float]:
-        """
-        Total the raw weight of a record's entries by opponent name.
-
-        The name comes from the record itself: the core resolved it from the
-        same item list this tab passed in, including the fallback for an
-        opponent the project no longer holds.
-
-        Args:
-            records: The wins or the losses of one item.
-
-        Returns:
-            dict[str, float]: Raw weight per opponent name. Opponents sharing a
-            name are added together, which is what the detail rows show.
-        """
-        totals: dict[str, float] = {}
-        for record in records:
-            totals[record.name] = totals.get(record.name, 0.0) + record.weight_raw
-        return totals
 
     def _on_export_clicked(self) -> None:
         """Handle export button click."""
@@ -333,7 +347,7 @@ class ResultsWidget(QWidget):
         file_path, _ = QFileDialog.getSaveFileName(
             self,
             "Export Rankings",
-            "rankings.csv",
+            self._export_name,
             "CSV Files (*.csv);;All Files (*)",
         )
 

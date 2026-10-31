@@ -26,24 +26,16 @@ import math
 from dataclasses import dataclass
 from typing import Optional, Protocol
 
-import numpy as np
-
-from src.models.ranking import RankingResult
+from src.models.ranking import (
+    ELO_SPREAD,
+    MIN_LOG_STRENGTH_SPREAD,
+    RankingResult,
+    rating_points_per_log_unit,
+)
 
 
 # How likely a pair's order has to be before it counts as settled.
 DEFAULT_SETTLED_PROBABILITY = 0.8
-
-# Rating points one standard deviation of log-strength is worth. This is the
-# spread of the z-score conversion in
-# :meth:`~src.models.ranking.BradleyTerryModel._compute_elo_ratings`, which is
-# what makes the tolerance comparable with the +/- SE shown on a rankings row.
-ELO_SPREAD = 200.0
-
-# Below this, the log-strengths are all the same number and the conversion to
-# rating points has no meaning. The same guard as _compute_elo_ratings uses
-# before it gives every item 1500.
-MIN_LOG_STRENGTH_SPREAD = 1e-10
 
 # Rankings need at least this many active ranked items before there is an
 # adjacent pair to judge.
@@ -265,41 +257,6 @@ class AdjacentNeighbourConfidence:
             median = (standard_errors[middle - 1] + standard_errors[middle]) / 2.0
 
         return median * scale
-
-
-def rating_points_per_log_unit(rankings: list[RankingResult]) -> Optional[float]:
-    """
-    Say how many rating points one unit of log-strength is worth.
-
-    The rating of an item is ``1500 + 200 * z``, where ``z`` is the z-score of
-    its log-strength across every item the model was given, retired ones
-    included, so one unit of log-strength is ``200 / std(log-strengths)``
-    points. The Compare tolerance and the +/- SE on a Rankings row are both a
-    log-strength standard error times this, which is what keeps them on one
-    scale. An item whose log-strength is not finite is left out (see
-    :meth:`AdjacentNeighbourConfidence._tolerance`).
-
-    Args:
-        rankings: Every result the model produced, retired items included.
-
-    Returns:
-        Optional[float]: The points per unit, or None when there is nothing to
-        measure or the log-strengths carry no spread, so rating points mean
-        nothing.
-    """
-    log_strengths = [
-        result.log_strength
-        for result in rankings
-        if math.isfinite(result.log_strength)
-    ]
-    if not log_strengths:
-        return None
-
-    spread = float(np.std(log_strengths))
-    if spread < MIN_LOG_STRENGTH_SPREAD:
-        return None
-
-    return ELO_SPREAD / spread
 
 
 # The reader a screen gets when it asks for no particular one.

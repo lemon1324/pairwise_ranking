@@ -15,6 +15,7 @@ def _result(
     elo_rating: float = 1500.0,
     log_strength_se: float = 0.0,
     comparison_count: int = 0,
+    log_strength: float = 0.0,
 ) -> RankingResult:
     """
     Build a RankingResult for the given item with plausible defaults.
@@ -25,6 +26,7 @@ def _result(
         elo_rating: The ELO rating to record.
         log_strength_se: The standard error to record.
         comparison_count: The comparison count to record.
+        log_strength: The log-strength to record.
 
     Returns:
         RankingResult: The constructed result.
@@ -32,7 +34,7 @@ def _result(
     return RankingResult(
         item=item,
         strength=1.0,
-        log_strength=0.0,
+        log_strength=log_strength,
         elo_rating=elo_rating,
         rank=rank,
         comparison_count=comparison_count,
@@ -57,7 +59,8 @@ class TestBuildExportRowsHeader(unittest.TestCase):
                 "Identifier",
                 "Status",
                 "ELO Rating",
-                "Uncertainty (SE)",
+                "Uncertainty (± rating)",
+                "Log-strength SE",
                 "Comparisons",
                 "Description",
             ],
@@ -87,17 +90,52 @@ class TestBuildExportRowsContent(unittest.TestCase):
             category="Linear",
             id="alpha",
         )
+        other = Item(name="Beta", id="beta")
+        # Log-strengths of +1 and -1 have a spread of 1, so one unit of
+        # log-strength is 200 rating points and the SE is 24.69 points.
         rows = build_export_rows(
             [_result(item, rank=1, elo_rating=1612.6, log_strength_se=0.123456,
-                     comparison_count=7)],
+                     comparison_count=7, log_strength=1.0),
+             _result(other, rank=2, log_strength=-1.0)],
             include_retired=False,
             category=None,
         )
 
         self.assertEqual(
             rows[1],
-            ["1", "Alpha", "Linear", "A1", "active", "1613", "0.1235", "7", "First item"],
+            ["1", "Alpha", "Linear", "A1", "active", "1613", "25", "0.1235", "7",
+             "First item"],
         )
+
+    def test_uncertainty_is_blank_without_a_spread(self):
+        """Test that ratings with no spread leave the points cell empty."""
+        item = Item(name="Alpha", id="alpha")
+        rows = build_export_rows(
+            [_result(item, rank=1, log_strength_se=0.5)],
+            include_retired=False,
+            category=None,
+        )
+
+        self.assertEqual(rows[1][6:8], ["", "0.5000"])
+
+    def test_uncertainty_scale_counts_rows_left_out(self):
+        """
+        Test that the points scale is taken before filtering.
+
+        The ratings are z-scores over every item the model was given, so an
+        export of one category must measure its SE on the same scale as an
+        export of all of them.
+        """
+        shown = Item(name="Shown", id="shown", category="A")
+        hidden = Item(name="Hidden", id="hidden", category="B")
+        rankings = [
+            _result(shown, rank=1, log_strength_se=0.5, log_strength=1.0),
+            _result(hidden, rank=2, log_strength=-1.0),
+        ]
+
+        rows = build_export_rows(rankings, include_retired=False, category="A")
+
+        self.assertEqual(rows[1][6], "100")
 
     def test_all_cells_are_strings(self):
         """Test that rows contain only strings, as csv.writer expects text."""

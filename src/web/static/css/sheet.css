@@ -396,7 +396,8 @@ html {
 }
 
 .sheet-tabs a,
-.sheet-menu {
+.sheet-menu,
+.sheet-back {
   display: flex;
   align-items: center;
   align-self: stretch;
@@ -421,12 +422,20 @@ html {
   margin-left: auto;
 }
 
+/* Back to the register: the bar's first cell, so its rule is on the right, where the first
+   tab - which draws none of its own - meets it. */
+.sheet-back {
+  border-left: 0;
+  border-right: var(--w-cell) solid var(--ink);
+}
+
 .sheet-head .sheet-tabs li:first-child a {
   border-left: 0;
 }
 
 .sheet-tabs a:hover,
-.sheet-menu:hover {
+.sheet-menu:hover,
+.sheet-back:hover {
   background: var(--paper-2);
   color: var(--ink);
 }
@@ -886,7 +895,8 @@ html {
     display: none;
   }
 
-  .sheet-menu {
+  .sheet-menu,
+  .sheet-back {
     padding: 0 var(--s-4);
   }
 

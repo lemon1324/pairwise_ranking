@@ -264,7 +264,12 @@ class MainWindow(QMainWindow):
         """Refresh the results widget."""
         rankings = self.session.rankings()
         if rankings:
-            self.results_widget.set_rankings(rankings, self.project.votes)
+            self.results_widget.set_rankings(
+                rankings,
+                self.project.votes,
+                self.project.file_path,
+                self.project.settings.decay_timescale_days,
+            )
         else:
             self.results_widget.set_no_rankings()
 

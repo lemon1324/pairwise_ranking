@@ -53,6 +53,66 @@ class WeightedRecord:
     losses: list[OpponentRecord]
 
 
+@dataclass(frozen=True)
+class OpponentLine:
+    """
+    Everything an item won and lost against one opponent, on one line.
+
+    Attributes:
+        opponent_id: Id of the opposing item.
+        name: Name of the opposing item.
+        won_raw: Raw weight the item won against this opponent.
+        won_decayed: The same after time decay.
+        lost_raw: Raw weight the item lost to this opponent.
+        lost_decayed: The same after time decay.
+    """
+
+    opponent_id: str
+    name: str
+    won_raw: float = 0.0
+    won_decayed: float = 0.0
+    lost_raw: float = 0.0
+    lost_decayed: float = 0.0
+
+
+def opponent_lines(record: WeightedRecord) -> list[OpponentLine]:
+    """
+    Merge a record's wins and losses into one line per opponent, heaviest first.
+
+    The order is the one every frontend shows a record in: the opponents that
+    weigh most in the fit come first, so the comparisons driving an item's
+    rating head the list. That is the total (won + lost) **decayed** weight,
+    which is what the model uses, then the total raw weight, then the name and
+    the id for a stable order. With decay off the two weights are equal.
+
+    Args:
+        record: The item's weighted record.
+
+    Returns:
+        list[OpponentLine]: One line per opponent, in display order.
+    """
+    lines: dict[str, dict] = {}
+    for side, entries in (("won", record.wins), ("lost", record.losses)):
+        for entry in entries:
+            line = lines.setdefault(
+                entry.opponent_id,
+                {"opponent_id": entry.opponent_id, "name": entry.name},
+            )
+            line[f"{side}_raw"] = entry.weight_raw
+            line[f"{side}_decayed"] = entry.weight_decayed
+
+    merged = [OpponentLine(**line) for line in lines.values()]
+    merged.sort(
+        key=lambda line: (
+            -(line.won_decayed + line.lost_decayed),
+            -(line.won_raw + line.lost_raw),
+            line.name.casefold(),
+            line.opponent_id,
+        )
+    )
+    return merged
+
+
 def _ordered(
     raw: dict[str, float],
     decayed: dict[str, float],

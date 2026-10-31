@@ -607,18 +607,18 @@ class TestTheExport(RankingsTestCase):
         disposition = self.export().headers["content-disposition"]
 
         self.assertTrue(disposition.startswith("attachment;"))
-        self.assertIn('filename="Switches rankings.csv"', disposition)
+        self.assertIn('filename="switches-rankings.csv"', disposition)
 
-    def test_a_name_outside_ascii_keeps_its_exact_spelling(self):
-        """Test the RFC 5987 name beside a safe fallback."""
+    def test_a_hand_named_project_downloads_under_a_slug(self):
+        """Test that spaces and accents in a file's own name are slugged."""
         self.write("Clé 5 #1.pairrank", project_data())
 
         disposition = self.client.get(
             f"/projects/{quote('Clé 5 #1.pairrank')}/rankings/export"
         ).headers["content-disposition"]
-        self.assertIn('filename="Cl_ 5 #1 rankings.csv"', disposition)
+        self.assertIn('filename="cle-5-1-rankings.csv"', disposition)
         exact = re.search(r"filename\*=UTF-8''(\S+)", disposition).group(1)
-        self.assertEqual(unquote(exact), "Clé 5 #1 rankings.csv")
+        self.assertEqual(unquote(exact), "cle-5-1-rankings.csv")
 
     def test_the_columns_are_the_desktop_export_s(self):
         """Test the header row."""
@@ -700,6 +700,23 @@ class TestTheExportEqualsTheDesktop(RankingsTestCase):
             widget._on_export_clicked()
         failed.assert_not_called()
         return target.read_bytes()
+
+    def test_the_desktop_offers_the_web_s_file_name(self):
+        """Test that the save dialog suggests the download's slugged name."""
+        from src.ui.results import ResultsWidget
+
+        session = self.session()
+        widget = ResultsWidget()
+        self.addCleanup(widget.deleteLater)
+        widget.set_rankings(
+            session.rankings(), session.project.votes, session.project.file_path
+        )
+        with mock.patch(
+            "src.ui.results.QFileDialog.getSaveFileName", return_value=("", "")
+        ) as dialog:
+            widget._on_export_clicked()
+
+        self.assertEqual(dialog.call_args.args[2], "switches-rankings.csv")
 
     def test_every_view_exports_the_same_file(self):
         """Test each combination of category and retired items."""

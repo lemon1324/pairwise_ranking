@@ -3,7 +3,7 @@
 import unittest
 from datetime import datetime, timedelta
 
-from src.app.record import UNKNOWN_OPPONENT_NAME, weighted_record
+from src.app.record import UNKNOWN_OPPONENT_NAME, opponent_lines, weighted_record
 from src.models.item import Item
 from src.models.vote import Vote
 
@@ -247,6 +247,64 @@ class TestWeightedRecordDecay(unittest.TestCase):
         )
 
         self.assertAlmostEqual(at_vote_time.wins[0].weight_decayed, 2.0)
+
+
+class TestOpponentLines(unittest.TestCase):
+    """Test cases for the one-line-per-opponent order every frontend shows."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.items = build_items()
+
+    def lines(self, votes, half_life=0.0):
+        """Return the opponent lines of item "a" for these votes."""
+        return opponent_lines(
+            weighted_record(
+                "a", votes, self.items, decay_timescale_days=half_life, reference_time=NOW
+            )
+        )
+
+    def test_wins_and_losses_against_one_opponent_share_a_line(self):
+        """Test that both sides of a matchup are merged onto one line."""
+        lines = self.lines([vote("a", "b", 2.0), vote("b", "a", 1.0)])
+
+        self.assertEqual(len(lines), 1)
+        self.assertEqual((lines[0].won_raw, lines[0].lost_raw), (2.0, 1.0))
+
+    def test_heaviest_total_comes_first(self):
+        """Test that won + lost, not net, decides the order."""
+        lines = self.lines([
+            vote("a", "b", 3.0),
+            vote("a", "c", 2.0),
+            vote("c", "a", 2.0),
+        ])
+
+        self.assertEqual([line.opponent_id for line in lines], ["c", "b"])
+
+    def test_decayed_weight_outranks_raw(self):
+        """
+        Test that a recent matchup outranks an older, heavier one.
+
+        With a 10-day half-life, 4.0 cast 30 days ago decays to 0.5, below the
+        1.0 cast today, although its raw weight is four times larger.
+        """
+        lines = self.lines(
+            [vote("a", "b", 4.0, days_ago=30), vote("a", "c", 1.0)], half_life=10.0
+        )
+
+        self.assertEqual([line.opponent_id for line in lines], ["c", "b"])
+
+    def test_raw_weight_breaks_a_decayed_tie(self):
+        """Test the tie-break when two decayed totals are equal."""
+        lines = self.lines([vote("a", "c", 1.0), vote("a", "b", 1.0)])
+
+        self.assertEqual([line.opponent_id for line in lines], ["b", "c"])
+
+    def test_name_then_id_break_a_full_tie(self):
+        """Test that equal weights fall back to name, then id."""
+        lines = self.lines([vote("a", "d", 1.0), vote("a", "c", 1.0), vote("a", "b", 1.0)])
+
+        self.assertEqual([line.opponent_id for line in lines], ["b", "c", "d"])
 
 
 if __name__ == "__main__":

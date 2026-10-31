@@ -12,10 +12,11 @@ Bradley-Terry fit with the project's decay, numbered by
 :func:`~src.models.ranking.assign_active_ranks`, so retired items keep their
 rating and carry no rank. The ± SE in rating points is the log-strength
 standard error on the scale the Compare tolerance uses
-(:func:`~src.app.confidence.rating_points_per_log_unit`). The detail's record
+(:func:`~src.models.ranking.rating_points_per_log_unit`). The detail's record
 is :meth:`~src.app.session.ProjectSession.item_details`, which reports every
 opponent's weight both raw and decayed; this sheet shows both (owner answer,
-phase 8), the decayed one in brackets. The desktop tab shows raw only.
+phase 8), the decayed one in brackets, heaviest decayed weight first. The
+desktop tab shows raw only, in the same order.
 
 **Every view of the sheet has an address**, in the shape the Items sheet gave
 it (§5c of the plan): ``category`` and ``retired`` are the query, the category
@@ -41,7 +42,6 @@ import csv
 import io
 import logging
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Optional
 from urllib.parse import quote, urlencode
 
@@ -50,9 +50,10 @@ from fastapi.responses import Response
 from fastapi.templating import Jinja2Templates
 
 from src.app.confidence import rating_points_per_log_unit
-from src.app.record import WeightedRecord
+from src.app.record import WeightedRecord, opponent_lines
+from src.app.register import export_file_name
 from src.models.project import Project
-from src.models.ranking import RankingResult
+from src.models.ranking import RankingResult, se_in_rating_points
 
 from ..deps import Principal, get_current_user, get_registry
 from ..registry import ProjectRegistry
@@ -103,11 +104,6 @@ RECORD_SHOWN = 7
 
 # What a figure the sheet cannot give reads as: no votes, or no rank.
 NO_FIGURE = "–"
-
-# The name the export is downloaded under, after the project's file stem. The
-# desktop offers "rankings.csv" in its save dialog; a browser has no dialog, so
-# the project's name goes in front and two exports do not overwrite each other.
-EXPORT_SUFFIX = "rankings.csv"
 
 
 def _templates(request: Request) -> Jinja2Templates:
@@ -254,9 +250,7 @@ def _se_points(result: RankingResult, scale: Optional[float]) -> Optional[int]:
         Optional[int]: The rounded standard error, or None when there is no
         scale to measure it on.
     """
-    if scale is None:
-        return None
-    return round(result.log_strength_se * scale)
+    return se_in_rating_points(result, scale)
 
 
 def _row(
@@ -452,11 +446,10 @@ def _weight(raw: float, decayed: float) -> dict:
 
 def _record_rows(record: WeightedRecord) -> list:
     """
-    Merge an item's wins and losses into one line per opponent.
+    Lay out an item's record as the mockup's table: a line per opponent.
 
-    The core keeps the two apart and opponents apart by id; the mockup's table
-    has a line per opponent with both columns, the opponents met most - by
-    total raw weight - first.
+    The merging and the order - heaviest decayed weight first - are the core's
+    (:func:`~src.app.record.opponent_lines`), shared with the desktop.
 
     Args:
         record: The item's weighted record.
@@ -465,25 +458,13 @@ def _record_rows(record: WeightedRecord) -> list:
         list: One mapping per opponent: ``name``, ``won`` and ``lost``, each a
         :func:`_weight`.
     """
-    lines: dict = {}
-    for side, entries in (("won", record.wins), ("lost", record.losses)):
-        for entry in entries:
-            line = lines.setdefault(
-                entry.opponent_id,
-                {"name": entry.name, "won": (0.0, 0.0), "lost": (0.0, 0.0)},
-            )
-            line[side] = (entry.weight_raw, entry.weight_decayed)
-    ordered = sorted(
-        lines.items(),
-        key=lambda pair: (
-            -(pair[1]["won"][0] + pair[1]["lost"][0]),
-            pair[1]["name"].casefold(),
-            pair[0],
-        ),
-    )
     return [
-        {"name": line["name"], "won": _weight(*line["won"]), "lost": _weight(*line["lost"])}
-        for _, line in ordered
+        {
+            "name": line.name,
+            "won": _weight(line.won_raw, line.won_decayed),
+            "lost": _weight(line.lost_raw, line.lost_decayed),
+        }
+        for line in opponent_lines(record)
     ]
 
 
@@ -569,13 +550,17 @@ def _download_name(project_id: str) -> str:
     """
     Name the downloaded export after its project.
 
+    A browser has no save dialog, so the project's name goes in front and two
+    projects' exports do not overwrite each other in the downloads folder. The
+    desktop offers the same name in its dialog.
+
     Args:
         project_id: The project's file name.
 
     Returns:
-        str: ``<stem> rankings.csv``.
+        str: ``<slug>-rankings.csv``.
     """
-    return f"{Path(project_id).stem} {EXPORT_SUFFIX}"
+    return export_file_name(project_id)
 
 
 def _disposition(file_name: str) -> str:

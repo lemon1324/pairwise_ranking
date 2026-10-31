@@ -256,7 +256,7 @@ class TestCrossSiteRequests(MiddlewareTestCase):
                 )
         self.assertEqual(
             self.project_files(),
-            ["A.pairrank", "B.pairrank", "C.pairrank", "D.pairrank"],
+            ["a.pairrank", "b.pairrank", "c.pairrank", "d.pairrank"],
         )
 
     def test_a_host_without_a_port_still_refuses_another_name(self):
@@ -276,7 +276,7 @@ class TestCrossSiteRequests(MiddlewareTestCase):
         self.assertEqual(self.create("A", sec_fetch_site="same-origin").status_code, 303)
         self.assertEqual(self.create("B", sec_fetch_site="none").status_code, 303)
         self.assertEqual(self.create("C", origin="http://testserver").status_code, 303)
-        self.assertEqual(self.project_files(), ["A.pairrank", "B.pairrank", "C.pairrank"])
+        self.assertEqual(self.project_files(), ["a.pairrank", "b.pairrank", "c.pairrank"])
 
     def test_fetch_metadata_outranks_origin(self):
         """Test that a same-origin request is not refused over its Origin."""
@@ -447,7 +447,7 @@ class TestBodySizeLimit(MiddlewareTestCase):
         response = self.import_project(self.project_bytes())
 
         self.assertEqual(response.status_code, 303)
-        self.assertEqual(self.project_files(), ["Imported.pairrank"])
+        self.assertEqual(self.project_files(), ["imported.pairrank"])
 
     def test_a_body_under_the_limit_reaches_the_import_check(self):
         """Test that the route's own size message still answers what gets through."""

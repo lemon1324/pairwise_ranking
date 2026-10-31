@@ -1,5 +1,6 @@
 """Bradley-Terry ranking model and pair selection algorithm."""
 
+import math
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime
@@ -35,6 +36,73 @@ class RankingResult:
     rank: Optional[int]
     comparison_count: int
     log_strength_se: float = 0.0
+
+
+# Rating every item is given when the log-strengths carry no spread, and the
+# centre of the z-score conversion otherwise.
+ELO_CENTER = 1500.0
+
+# Rating points one standard deviation of log-strength is worth: the spread of
+# the z-score conversion in :meth:`BradleyTerryModel._compute_elo_ratings`.
+ELO_SPREAD = 200.0
+
+# Below this, the log-strengths are all the same number and the conversion to
+# rating points has no meaning.
+MIN_LOG_STRENGTH_SPREAD = 1e-10
+
+
+def rating_points_per_log_unit(rankings: list[RankingResult]) -> Optional[float]:
+    """
+    Say how many rating points one unit of log-strength is worth.
+
+    The rating of an item is ``1500 + 200 * z``, where ``z`` is the z-score of
+    its log-strength across every item the model was given, retired ones
+    included, so one unit of log-strength is ``200 / std(log-strengths)``
+    points. The Compare tolerance, the +/- SE on a Rankings row and the
+    exported uncertainty are all a log-strength standard error times this,
+    which is what keeps them on one scale. An item whose log-strength is not
+    finite is left out.
+
+    Args:
+        rankings: Every result the model produced, retired items included.
+
+    Returns:
+        Optional[float]: The points per unit, or None when there is nothing to
+        measure or the log-strengths carry no spread, so rating points mean
+        nothing.
+    """
+    log_strengths = [
+        result.log_strength
+        for result in rankings
+        if math.isfinite(result.log_strength)
+    ]
+    if not log_strengths:
+        return None
+
+    spread = float(np.std(log_strengths))
+    if spread < MIN_LOG_STRENGTH_SPREAD:
+        return None
+
+    return ELO_SPREAD / spread
+
+
+def se_in_rating_points(result: RankingResult, scale: Optional[float]) -> Optional[int]:
+    """
+    Put a result's standard error in rating points, as every screen shows it.
+
+    Args:
+        result: The result.
+        scale: Rating points per unit of log-strength, from
+            :func:`rating_points_per_log_unit`, or None when the ratings carry
+            no spread.
+
+    Returns:
+        Optional[int]: The rounded standard error, or None when there is no
+        scale to measure it on.
+    """
+    if scale is None:
+        return None
+    return round(result.log_strength_se * scale)
 
 
 def assign_active_ranks(results: list[RankingResult]) -> list[RankingResult]:
@@ -283,12 +351,12 @@ class BradleyTerryModel:
         mean_s = np.mean(s)
         std_s = np.std(s)
 
-        if std_s < 1e-10:
+        if std_s < MIN_LOG_STRENGTH_SPREAD:
             # All items have same strength, give them all 1500
-            return np.full_like(s, 1500.0)
+            return np.full_like(s, ELO_CENTER)
 
         z = (s - mean_s) / std_s
-        return 1500.0 + z * 200.0
+        return ELO_CENTER + z * ELO_SPREAD
 
     def _count_comparisons(self) -> list[int]:
         """
